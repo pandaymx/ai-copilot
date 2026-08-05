@@ -28,12 +28,19 @@ export function MessageBubble({ message, streaming }: MessageBubbleProps) {
         isUser ? "flex-row-reverse" : "flex-row",
       )}
     >
-      <Avatar size="sm" className="mt-0.5 shrink-0">
+      <Avatar
+        size="sm"
+        className={cn(
+          "mt-0.5 shrink-0",
+          // AI 思考时：头像带顺时针旋转的翡翠绿呼吸光环
+          !isUser && streaming && "animate-[spin_3s_linear_infinite] ring-2 ring-emerald-500/60 ring-offset-2 ring-offset-background",
+        )}
+      >
         <AvatarFallback
           className={cn(
             isUser
-              ? "bg-primary text-primary-foreground"
-              : "bg-gradient-to-br from-emerald-500 to-teal-600 text-white",
+              ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+              : "bg-linear-to-br from-emerald-500 to-teal-600 text-white",
           )}
         >
           {isUser ? <User className="size-4" /> : <Bot className="size-4" />}
@@ -42,18 +49,23 @@ export function MessageBubble({ message, streaming }: MessageBubbleProps) {
 
       <div
         className={cn(
-          "flex min-w-0 max-w-[85%] flex-col gap-1",
+          "relative flex min-w-0 max-w-[85%] flex-col gap-1",
           isUser ? "items-end" : "items-start",
         )}
       >
+        {/* 暗夜流式流光：AI 气泡左侧动态竖向渐变线条 */}
+        {!isUser && streaming && (
+          <span className="absolute -left-3 top-1 bottom-1 w-0.5 rounded-full bg-linear-to-b from-emerald-500 to-transparent dark:block hidden" />
+        )}
+
         <div
           className={cn(
-            // 用户消息：深色圆角气泡
-            "rounded-2xl px-4 py-2.5 text-sm shadow-sm",
+            "rounded-2xl px-4 py-2.5 text-sm",
             isUser
-              ? "rounded-tr-md bg-primary font-medium text-primary-foreground"
-              : // AI 消息：卡片拟物风格
-                "rounded-tl-md border border-border bg-card text-card-foreground shadow-md/40 ring-1 ring-black/[0.03] dark:ring-white/[0.04]",
+              ? // 用户气泡：日间磨砂黑钛金灰 / 暗夜高亮米白
+                "rounded-tr-xs bg-zinc-900 font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
+              : // AI 气泡：日间冰灰微衬 / 暗夜石墨玻璃拟态
+                "rounded-tl-md bg-zinc-50/80 text-zinc-900 ring-1 ring-zinc-200/60 dark:bg-zinc-900/60 dark:text-zinc-100 dark:ring-zinc-800/60 dark:backdrop-blur",
           )}
         >
           {isUser ? (

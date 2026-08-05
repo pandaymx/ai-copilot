@@ -335,7 +335,7 @@ export default function Home() {
         <div className="sticky bottom-0 z-10 bg-linear-to-t from-background via-background/95 to-transparent px-4 pb-3 pt-3 sm:px-6">
           <form
             onSubmit={handleSubmit}
-            className="mx-auto flex w-full max-w-3xl flex-col gap-1.5 rounded-2xl border border-zinc-200/80 bg-background/90 p-2.5 shadow-md backdrop-blur dark:border-zinc-700/60"
+            className="mx-auto flex w-full max-w-3xl flex-col gap-1.5 rounded-2xl border border-zinc-200/80 bg-white p-2.5 shadow-lg shadow-zinc-200/50 backdrop-blur transition-shadow focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/20 dark:border-zinc-800/80 dark:bg-zinc-950 dark:shadow-none"
           >
             <div className="flex items-end gap-2">
               <textarea
@@ -345,7 +345,7 @@ export default function Home() {
                 onKeyDown={handleKeyDown}
                 rows={1}
                 placeholder="给 AI Copilot 发消息…"
-                className="max-h-32 min-h-9 flex-1 resize-none bg-transparent px-1.5 py-2 text-sm outline-none placeholder:text-muted-foreground"
+                className="max-h-32 min-h-9 flex-1 resize-none bg-transparent px-1.5 py-2 text-sm text-zinc-900 caret-emerald-500 outline-none placeholder:text-zinc-400 dark:text-zinc-100 dark:caret-emerald-400 dark:placeholder:text-zinc-500"
               />
               {isStreaming ? (
                 <Button
@@ -423,7 +423,7 @@ function EmptyState({ onPickPrompt }: { onPickPrompt: (text: string) => void }) 
             key={p.text}
             type="button"
             onClick={() => onPickPrompt(p.text)}
-            className="group flex items-center gap-2.5 rounded-xl border border-zinc-200/80 bg-card px-3 py-2.5 text-left text-sm text-foreground shadow-sm transition-all hover:border-emerald-500/50 hover:bg-emerald-500/5 hover:shadow-md dark:border-zinc-700/60"
+            className="group flex items-center gap-2.5 rounded-xl border border-zinc-200/80 bg-white px-3 py-2.5 text-left text-sm text-zinc-900 shadow-lg shadow-zinc-200/50 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/5 hover:shadow-md dark:border-zinc-800/80 dark:bg-zinc-950 dark:text-zinc-100 dark:shadow-none"
           >
             <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-base">
               {p.icon}
