@@ -6,15 +6,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import reactor.core.publisher.Mono;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
  * 全局异常处理：将异常统一转换为结构化错误响应 {@code { code, message, ... }}。
  *
- * <p>区分 4xx（配置 / 参数错误）与 5xx（上游厂商故障）。日志脱敏：不输出 apiKey 与完整请求体，
+ * <p>
+ * 区分 4xx（配置 / 参数错误）与 5xx（上游厂商故障）。日志脱敏：不输出 apiKey 与完整请求体，
  * 仅输出错误码、消息与必要的可用列表。
  */
 @RestControllerAdvice

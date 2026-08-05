@@ -80,7 +80,7 @@ public final class ProviderRegistry {
 				throw new ModelNotFoundException(null, modelId, Collections.emptyList());
 			}
 			if (owners.size() > 1) {
-				List<String> ownerIds = owners.stream().map(ProviderDescriptor::providerId).toList();
+				List<String> ownerIds = owners.stream().map(p -> p.providerId()).toList();
 				throw new ProviderNotFoundException(modelId, true, ownerIds);
 			}
 			ProviderDescriptor owner = owners.get(0);

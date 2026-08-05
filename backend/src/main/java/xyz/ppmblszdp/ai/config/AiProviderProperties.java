@@ -180,8 +180,8 @@ public record AiProviderProperties(
 		/** 第一个启用模型的对外 id（用于构造 ChatModel 时的默认 model 名）。 */
 		public String firstEnabledModelName() {
 			return resolveModels().stream()
-					.filter(ModelConfig::isEnabled)
-					.map(ModelConfig::resolveName)
+					.filter(m -> m != null && m.isEnabled())
+					.map(m -> m.resolveName())
 					.findFirst()
 					.orElse(null);
 		}

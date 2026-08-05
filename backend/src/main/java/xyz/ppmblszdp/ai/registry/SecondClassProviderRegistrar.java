@@ -89,8 +89,11 @@ public class SecondClassProviderRegistrar {
 		if (models.isEmpty()) {
 			throw new IllegalArgumentException("未声明任何可用模型");
 		}
-		String defaultModelId = models.values().stream().filter(ModelDescriptor::isDefault)
-				.map(ModelDescriptor::id).findFirst().orElse(null);
+		String defaultModelId = models.values().stream()
+				.filter(m -> m != null && m.isDefault())
+				.map(m -> m.id())
+				.findFirst()
+				.orElse(null);
 		return ProviderDescriptor.builder()
 				.providerId(providerId)
 				.displayName(cfg.resolveDisplayName())

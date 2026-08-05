@@ -82,8 +82,11 @@ public class FirstClassProviderRegistrar {
 		}
 		String displayName = (cfg != null && cfg.displayName() != null && !cfg.displayName().isBlank())
 				? cfg.displayName() : providerId;
-		String defaultModelId = models.values().stream().filter(ModelDescriptor::isDefault).map(ModelDescriptor::id)
-				.findFirst().orElse(null);
+		String defaultModelId = models.values().stream()
+				.filter(m -> m != null && m.isDefault())
+				.map(m -> m.id())
+				.findFirst()
+				.orElse(null);
 		ProviderDescriptor descriptor = ProviderDescriptor.builder()
 				.providerId(providerId)
 				.displayName(displayName)

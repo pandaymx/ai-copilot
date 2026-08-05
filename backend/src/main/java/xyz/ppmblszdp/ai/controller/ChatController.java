@@ -14,8 +14,6 @@ import xyz.ppmblszdp.ai.dto.ChatResponseDto;
 import xyz.ppmblszdp.ai.exception.AiException;
 import xyz.ppmblszdp.ai.service.ChatService;
 
-import java.util.Map;
-
 /**
  * 聊天接口控制器。
  *
