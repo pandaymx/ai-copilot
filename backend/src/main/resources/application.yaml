@@ -29,3 +29,144 @@ spring:
         model: ${OLLAMA_MODEL:llama3}
 
 
+# =====================================================================
+# 多模型供应商统一抽象层配置（本模块）
+# 与上方 spring.ai.* 解耦：spring.ai.* 负责一等公民的连接与自动装配，
+# 这里仅补充展示元数据、上下文预算，并完整描述二等公民。
+# =====================================================================
+app:
+  ai:
+    default-provider: ${AI_DEFAULT_PROVIDER:deepseek}
+    default-model: ${AI_DEFAULT_MODEL:deepseek-chat}
+    system-prompt: "你是一个专业、友好且可靠的 AI 助手。"
+
+    context:
+      reserve-output-tokens: 2048        # 为模型输出预留的 token 数
+      history-ratio: 0.7                 # 历史消息可占用的上下文预算比例（0~1]
+      default-max-context-tokens: 32768  # 模型未声明 maxContextTokens 时的兜底值
+      safety-factor: 1.1                 # Token 估算安全系数，>1 表示高估
+
+    # 一等公民：仅需声明「对外暴露哪些模型」及展示元数据。
+    # 连接参数（apiKey/baseUrl）仍由上方 spring.ai.* 管理，未配置密钥时由 starter 行为决定。
+    first-class:
+      deepseek:
+        display-name: DeepSeek
+        models:
+          - id: deepseek-chat
+            name: deepseek-chat
+            display-name: DeepSeek Chat
+            description: DeepSeek 通用对话模型
+            badge: 推荐
+            tags: [chat]
+            max-context-tokens: 32768
+            default: true
+      openai:
+        display-name: OpenAI
+        models:
+          - id: gpt-4o
+            name: gpt-4o
+            display-name: GPT-4o
+            description: OpenAI 多模态旗舰模型
+            tags: [multimodal]
+            max-context-tokens: 128000
+            default: true
+      google:
+        display-name: Google Gemini
+        models:
+          - id: gemini-2.5-flash
+            name: gemini-2.5-flash
+            display-name: Gemini 2.5 Flash
+            description: Google 轻量高速多模态模型
+            tags: [multimodal]
+            max-context-tokens: 1048576
+            default: true
+      ollama:
+        display-name: Ollama (本地)
+        models:
+          - id: llama3
+            name: llama3
+            display-name: Llama 3
+            description: 本地运行的开源模型，无需联网密钥
+            tags: [local]
+            max-context-tokens: 8192
+            default: true
+      anthropic:
+        display-name: Anthropic Claude
+        models:
+          - id: claude-sonnet-4
+            name: claude-sonnet-4-20250514
+            display-name: Claude Sonnet 4
+            description: Anthropic 旗舰对话模型
+            tags: [chat]
+            max-context-tokens: 200000
+            default: true
+
+    # 二等公民：纯 YAML 驱动新增厂商，无需改动 Java 代码。
+    # 密钥一律以 ${ENV:占位} 引用；占位值（your_xxx_here）会被识别为未配置而跳过注册。
+    second-class:
+      # 通义千问：OpenAI 兼容协议（DashScope compatible-mode）
+      - id: qwen
+        display-name: 通义千问
+        protocol: openai
+        base-url: ${QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+        api-key: ${QWEN_API_KEY:your_qwen_api_key_here}
+        models:
+          - id: qwen-max
+            name: qwen-max
+            display-name: 通义千问 Max
+            description: 通义千问最强版本
+            badge: 推荐
+            tags: [chat]
+            max-context-tokens: 32768
+            default: true
+          - id: qwen-plus
+            name: qwen-plus
+            display-name: 通义千问 Plus
+            description: 通义千问性价比版本
+            tags: [chat]
+            max-context-tokens: 131072
+
+      # 百度千帆：OpenAI 兼容协议（v2 兼容端点）
+      - id: qianfan
+        display-name: 百度千帆
+        protocol: openai
+        base-url: ${QIANFAN_BASE_URL:https://qianfan.baidubce.com/v2}
+        api-key: ${QIANFAN_API_KEY:your_qianfan_api_key_here}
+        models:
+          - id: ernie-4.5
+            name: ernie-4.5-8k-preview
+            display-name: 文心一言 4.5
+            description: 百度文心大模型
+            tags: [chat]
+            max-context-tokens: 8192
+            default: true
+
+      # 智谱 GLM：OpenAI 兼容协议
+      - id: zhipu
+        display-name: 智谱 GLM
+        protocol: openai
+        base-url: ${ZHIPU_BASE_URL:https://open.bigmodel.cn/api/paas/v4}
+        api-key: ${ZHIPU_API_KEY:your_zhipu_api_key_here}
+        models:
+          - id: glm-4
+            name: glm-4
+            display-name: 智谱 GLM-4
+            description: 智谱开源对话模型
+            tags: [chat]
+            max-context-tokens: 32768
+            default: true
+
+      # 自定义协议示例（需自行实现 CustomChatModelSupplier 并注册为名为 baiduNative 的 Bean）
+      # - id: baidu-native
+      #   display-name: 百度原生 AK/SK
+      #   protocol: custom
+      #   supplier: baiduNative
+      #   api-key: ${BAIDU_API_KEY:your_baidu_api_key_here}
+      #   models:
+      #     - id: ernie-native
+      #       name: ernie-4.0
+      #       display-name: 文心 4.0 (原生)
+      #       max-context-tokens: 8192
+      #       default: true
+
+

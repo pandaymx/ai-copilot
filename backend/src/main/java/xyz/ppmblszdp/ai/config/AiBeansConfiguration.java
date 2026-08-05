@@ -1,0 +1,83 @@
+package xyz.ppmblszdp.ai.config;
+
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import xyz.ppmblszdp.ai.context.ContextAssembler;
+import xyz.ppmblszdp.ai.context.HeuristicTokenEstimator;
+import xyz.ppmblszdp.ai.context.TokenEstimator;
+import xyz.ppmblszdp.ai.factory.AnthropicCompatibleChatModelFactory;
+import xyz.ppmblszdp.ai.factory.ChatModelFactory;
+import xyz.ppmblszdp.ai.factory.CustomChatModelFactory;
+import xyz.ppmblszdp.ai.factory.OpenAiCompatibleChatModelFactory;
+import xyz.ppmblszdp.ai.registry.FirstClassProviderRegistrar;
+import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
+import xyz.ppmblszdp.ai.registry.ProviderRegistry;
+import xyz.ppmblszdp.ai.registry.SecondClassProviderRegistrar;
+
+import java.util.Map;
+
+/**
+ * 统一抽象层的 Bean 装配。
+ *
+ * <p>注意本类刻意不直接 new 出 ChatModel：一等公民 ChatModel 由官方 starter 自动装配，
+ * 二等公民 ChatModel 由其对应的 {@link ChatModelFactory} 在注册阶段构造。此处只负责把
+ * 两个 Registrar 的产出合成一个不可变 {@link ProviderRegistry}。
+ */
+@Configuration
+@EnableConfigurationProperties(AiProviderProperties.class)
+public class AiBeansConfiguration {
+
+	@Bean
+	public OpenAiCompatibleChatModelFactory openAiCompatibleChatModelFactory() {
+		return new OpenAiCompatibleChatModelFactory();
+	}
+
+	@Bean
+	public AnthropicCompatibleChatModelFactory anthropicCompatibleChatModelFactory() {
+		return new AnthropicCompatibleChatModelFactory();
+	}
+
+	@Bean
+	public CustomChatModelFactory customChatModelFactory(Map<String, xyz.ppmblszdp.ai.spi.CustomChatModelSupplier> suppliers) {
+		return new CustomChatModelFactory(suppliers);
+	}
+
+	@Bean
+	public TokenEstimator tokenEstimator() {
+		// 安全系数 1.1：保守偏大，宁可少发也不超窗
+		return new HeuristicTokenEstimator(1.1d);
+	}
+
+	@Bean
+	public ContextAssembler contextAssembler(AiProviderProperties properties, TokenEstimator estimator) {
+		return new ContextAssembler(properties, estimator);
+	}
+
+	@Bean
+	public ProviderRegistry providerRegistry(
+			FirstClassProviderRegistrar firstClass,
+			SecondClassProviderRegistrar secondClass,
+			AiProviderProperties properties) {
+		Map<String, ProviderDescriptor> all = new java.util.LinkedHashMap<>();
+		all.putAll(firstClass.register());
+		all.putAll(secondClass.register());
+
+		ProviderRegistry.Builder builder = ProviderRegistry.builder();
+		all.values().forEach(builder::register);
+		String defProvider = (properties.defaultProvider() != null && !properties.defaultProvider().isBlank())
+				? properties.defaultProvider() : null;
+		String defModel = (properties.defaultModel() != null && !properties.defaultModel().isBlank())
+				? properties.defaultModel() : null;
+		builder.defaultProviderId(defProvider).defaultModelId(defModel);
+		ProviderRegistry registry = builder.build();
+		logRegistry(registry);
+		return registry;
+	}
+
+	private void logRegistry(ProviderRegistry registry) {
+		org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AiBeansConfiguration.class);
+		log.info("Provider 注册表构建完成，供应商数={}，默认供应商={}，默认模型={}",
+				registry.providers().size(), registry.defaultProviderId(), registry.defaultModelId());
+	}
+}

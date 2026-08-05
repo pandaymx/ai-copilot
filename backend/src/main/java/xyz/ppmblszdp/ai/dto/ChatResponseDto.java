@@ -1,0 +1,19 @@
+package xyz.ppmblszdp.ai.dto;
+
+/**
+ * 非流式聊天响应。
+ *
+ * @param content       完整回复文本
+ * @param provider      实际命中的供应商 id
+ * @param model         实际命中的模型 id
+ * @param usage         token 用量统计（可选，可空）
+ * @param finishReason  结束原因（可选，可空）
+ */
+public record ChatResponseDto(
+		String content,
+		String provider,
+		String model,
+		Object usage,
+		String finishReason
+) {
+}
