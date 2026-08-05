@@ -28,6 +28,16 @@ spring:
       chat:
         model: ${OLLAMA_MODEL:llama3}
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,metrics,prometheus"
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
 
 # =====================================================================
 # 多模型供应商统一抽象层配置（本模块）
