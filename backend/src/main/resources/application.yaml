@@ -73,13 +73,49 @@ app:
       google:
         display-name: Google Gemini
         models:
-          - id: gemini-2.5-flash
-            name: gemini-2.5-flash
-            display-name: Gemini 2.5 Flash
-            description: Google 轻量高速多模态模型
+          - id: gemini-3.6-flash
+            name: gemini-3.6-flash
+            display-name: Gemini 3.6 Flash
+            description: Google 轻量高速多模态模型（新版）
             tags: [multimodal]
             max-context-tokens: 1048576
             default: true
+          - id: gemini-3.5-flash
+            name: gemini-3.5-flash
+            display-name: Gemini 3.5 Flash
+            description: Google 轻量高速多模态模型
+            tags: [multimodal]
+            max-context-tokens: 1048576
+          - id: gemini-3.5-flash-lite
+            name: gemini-3.5-flash-lite
+            display-name: Gemini 3.5 Flash Lite
+            description: Google 轻量低成本多模态模型
+            tags: [multimodal]
+            max-context-tokens: 1048576
+          - id: gemini-3.1-pro-preview
+            name: gemini-3.1-pro-preview
+            display-name: Gemini 3.1 Pro Preview
+            description: Google 旗舰多模态模型预览版
+            tags: [multimodal]
+            max-context-tokens: 2097152
+          - id: gemini-3.1-flash-lite
+            name: gemini-3.1-flash-lite
+            display-name: Gemini 3.1 Flash Lite
+            description: Google 轻量低成本多模态模型
+            tags: [multimodal]
+            max-context-tokens: 1048576
+          - id: gemma-4-26b-a4b-it
+            name: gemma-4-26b-a4b-it
+            display-name: Gemma 4 26B
+            description: Google 开源轻量模型
+            tags: [open-source]
+            max-context-tokens: 262144
+          - id: gemma-4-31b-it
+            name: gemma-4-31b-it
+            display-name: Gemma 4 31B
+            description: Google 开源模型
+            tags: [open-source]
+            max-context-tokens: 262144
       ollama:
         display-name: Ollama (本地)
         models:
