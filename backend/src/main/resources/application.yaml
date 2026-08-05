@@ -1,3 +1,31 @@
+server:
+  port: ${SERVER_PORT:${PORT:8080}}
+
 spring:
+  config:
+    import:
+      - optional:file:.env[.properties] # 让 Spring 原生将 .env 解析为 properties 读取
   application:
     name: ai-copilot-backend
+  ai:
+    deepseek:
+      api-key: ${DEEPSEEK_API_KEY:${SPRING_AI_DEEPSEEK_API_KEY:your_deepseek_api_key_here}}
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      chat:
+        model: ${DEEPSEEK_MODEL:deepseek-chat}
+    openai:
+      api-key: ${OPENAI_API_KEY:${SPRING_AI_OPENAI_API_KEY:your_openai_api_key_here}}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+      chat:
+        model: ${OPENAI_MODEL:gpt-4o}
+    google:
+      genai:
+        api-key: ${GEMINI_API_KEY:${SPRING_AI_GOOGLE_GENAI_API_KEY:your_gemini_api_key_here}}
+        chat:
+          model: ${GEMINI_MODEL:gemini-2.5-flash}
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        model: ${OLLAMA_MODEL:llama3}
+
+
