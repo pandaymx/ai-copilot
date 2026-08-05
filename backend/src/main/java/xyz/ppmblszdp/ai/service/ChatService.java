@@ -46,7 +46,7 @@ public class ChatService {
 				request.systemPrompt(),
 				null,
 				resolved.model().maxContextTokens());
-		ChatOptions options = ChatOptions.builder().model(resolved.model().modelName()).build();
+		ChatOptions options = buildChatOptions(resolved);
 		Prompt prompt = new Prompt(messages, options);
 		log.info("非流式请求 → 供应商={}, 模型={}", resolved.provider().providerId(), resolved.model().id());
 
@@ -64,7 +64,7 @@ public class ChatService {
 				request.systemPrompt(),
 				null,
 				resolved.model().maxContextTokens());
-		ChatOptions options = ChatOptions.builder().model(resolved.model().modelName()).build();
+		ChatOptions options = buildChatOptions(resolved);
 		Prompt prompt = new Prompt(messages, options);
 		log.info("流式请求开始 → 供应商={}, 模型={}", resolved.provider().providerId(), resolved.model().id());
 
@@ -76,6 +76,40 @@ public class ChatService {
 						resolved.provider().providerId(), resolved.model().id()))
 				.doOnError(err -> log.warn("流式请求异常 → 供应商={}, 模型={}: {}",
 						resolved.provider().providerId(), resolved.model().id(), err.getMessage()));
+	}
+
+	private ChatOptions buildChatOptions(ResolvedModel resolved) {
+		String modelName = resolved.model().modelName();
+		String providerId = resolved.provider().providerId().toLowerCase();
+
+		if (providerId.contains("deepseek")) {
+			return org.springframework.ai.deepseek.DeepSeekChatOptions.builder()
+					.model(modelName)
+					.build();
+		}
+		if (providerId.contains("openai")) {
+			return org.springframework.ai.openai.OpenAiChatOptions.builder()
+					.model(modelName)
+					.build();
+		}
+		if (providerId.contains("google") || providerId.contains("gemini")) {
+			return org.springframework.ai.google.genai.GoogleGenAiChatOptions.builder()
+					.model(modelName)
+					.build();
+		}
+		if (providerId.contains("anthropic") || providerId.contains("claude")) {
+			return org.springframework.ai.anthropic.AnthropicChatOptions.builder()
+					.model(modelName)
+					.build();
+		}
+		if (providerId.contains("ollama")) {
+			return org.springframework.ai.ollama.api.OllamaChatOptions.builder()
+					.model(modelName)
+					.build();
+		}
+		return org.springframework.ai.openai.OpenAiChatOptions.builder()
+				.model(modelName)
+				.build();
 	}
 
 	private String extractText(org.springframework.ai.chat.model.ChatResponse resp) {

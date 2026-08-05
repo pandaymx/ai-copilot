@@ -14,7 +14,11 @@ export interface UseSpringAiStreamOptions {
   /** 自定义请求头，会与 Accept: text/event-stream 合并。 */
   headers?: Record<string, string>;
   /** 自定义请求体构造，便于适配不同模型的入参格式。 */
-  buildBody?: (input: string, history: SpringAiStreamMessage[]) => unknown;
+  buildBody?: (
+    input: string,
+    history: SpringAiStreamMessage[],
+    extraBody?: Record<string, unknown>,
+  ) => unknown;
   /**
    * 从单个 SSE data 字段（已剥离前缀、保留内部空白）中解析出增量文本。
    * 返回 null 表示无有效内容（如 [DONE] 或心跳）。
@@ -33,7 +37,7 @@ export interface UseSpringAiStreamResult {
   /** 最近一次错误信息。 */
   error: Error | null;
   /** 发送一条消息并开始流式接收。 */
-  send: (input: string) => void;
+  send: (input: string, extraBody?: Record<string, unknown>) => void;
   /** 中断当前流。 */
   stop: () => void;
   /** 清空已接收内容与历史。 */
@@ -76,8 +80,12 @@ function defaultParseChunk(data: string): string | null {
   }
 }
 
-function defaultBuildBody(input: string, history: SpringAiStreamMessage[]) {
-  return { message: input, history };
+function defaultBuildBody(
+  input: string,
+  history: SpringAiStreamMessage[],
+  extraBody?: Record<string, unknown>,
+) {
+  return { message: input, history, ...extraBody };
 }
 
 /**
@@ -126,7 +134,7 @@ export function useSpringAiStream(
   }, []);
 
   const send = useCallback(
-    (input: string) => {
+    (input: string, extraBody?: Record<string, unknown>) => {
       const message = input.trim();
       if (!message || loading) return;
 
@@ -156,7 +164,8 @@ export function useSpringAiStream(
               Accept: "text/event-stream",
               ...headers,
             },
-            body: JSON.stringify(buildBody(message, payload)),
+            body: JSON.stringify(buildBody(message, payload, extraBody)),
+
             signal: controller.signal,
             // 用户切换标签页时保持连接，避免流被浏览器挂起或重连异常。
             openWhenHidden: true,

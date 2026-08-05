@@ -18,7 +18,7 @@ import {
   type ChatMessage,
   MessageBubble,
 } from "@/components/chat/message-bubble";
-import { type ModelId, ModelSelector } from "@/components/chat/model-selector";
+import { type SelectedModel, ModelSelector } from "@/components/chat/model-selector";
 import { type ChatSession, Sidebar } from "@/components/chat/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,10 @@ const ACTIVE_KEY = "ai-copilot-active";
 
 let idCounter = 0;
 const nextId = () => `msg-${Date.now()}-${++idCounter}`;
+
+let sessionIdCounter = 0;
+const nextSessionId = () =>
+  `sess-${Date.now()}-${++sessionIdCounter}-${Math.random().toString(36).substring(2, 7)}`;
 
 const SUGGESTED_PROMPTS = [
   {
@@ -62,7 +66,18 @@ function loadSessions(): ChatSession[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as ChatSession[]) : [];
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ChatSession[];
+    const seen = new Set<string>();
+    const sanitized: ChatSession[] = [];
+    for (const item of parsed) {
+      if (!item.id || seen.has(item.id)) {
+        item.id = nextSessionId();
+      }
+      seen.add(item.id);
+      sanitized.push(item);
+    }
+    return sanitized;
   } catch {
     return [];
   }
@@ -78,7 +93,10 @@ export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [collapsed, setCollapsed] = useState(false);
-  const [model, setModel] = useState<ModelId>("spring-ai");
+  const [model, setModel] = useState<SelectedModel>({
+    provider: "deepseek",
+    model: "deepseek-chat",
+  });
 
   const isStreaming = loading;
   const hasError = Boolean(error);
@@ -93,7 +111,7 @@ export default function Home() {
   };
 
   const createSession = useCallback(() => {
-    const id = `sess-${Date.now()}`;
+    const id = nextSessionId();
     const session: ChatSession = {
       id,
       title: "新会话",
@@ -191,18 +209,23 @@ export default function Home() {
   function deleteSession(id: string) {
     setSessions((prev) => {
       const next = prev.filter((s) => s.id !== id);
-      if (id === activeId) {
-        if (next.length > 0) {
-          setActiveId(next[0].id);
-          setMessages(next[0].messages ?? []);
-          localStorage.setItem(ACTIVE_KEY, next[0].id);
-        } else {
-          setActiveId(null);
-          setMessages([]);
-          localStorage.removeItem(ACTIVE_KEY);
-        }
+      if (next.length === 0) {
+        const newSession: ChatSession = {
+          id: nextSessionId(),
+          title: "新会话",
+          updatedAt: Date.now(),
+          messages: [],
+        };
+        setActiveId(newSession.id);
+        setMessages([]);
+        localStorage.setItem(ACTIVE_KEY, newSession.id);
+        return [newSession];
       }
-      if (next.length === 0) createSession();
+      if (id === activeId) {
+        setActiveId(next[0].id);
+        setMessages(next[0].messages ?? []);
+        localStorage.setItem(ACTIVE_KEY, next[0].id);
+      }
       return next;
     });
   }
@@ -230,7 +253,7 @@ export default function Home() {
       ),
     );
     setInput("");
-    send(text);
+    send(text, { provider: model.provider, model: model.model });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
