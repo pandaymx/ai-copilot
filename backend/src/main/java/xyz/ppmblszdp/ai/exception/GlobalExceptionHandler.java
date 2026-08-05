@@ -33,6 +33,13 @@ public class GlobalExceptionHandler {
 		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body("INVALID_ARGUMENT", ex.getMessage()));
 	}
 
+	@ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+	public ResponseEntity<Map<String, Object>> handleResponseStatus(org.springframework.web.server.ResponseStatusException ex) {
+		log.warn("HTTP 状态异常 [{}]: {}", ex.getStatusCode(), ex.getReason() != null ? ex.getReason() : ex.getMessage());
+		return ResponseEntity.status(ex.getStatusCode())
+				.body(body(ex.getStatusCode().toString(), ex.getReason() != null ? ex.getReason() : ex.getMessage()));
+	}
+
 	@ExceptionHandler(Exception.class)
 	public ResponseEntity<Map<String, Object>> handleOther(Exception ex) {
 		log.error("未预期异常: {}", ex.getMessage(), ex);
