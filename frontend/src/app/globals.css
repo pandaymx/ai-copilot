@@ -128,3 +128,14 @@
     @apply font-sans;
   }
 }
+
+/** 隐藏滚动条但保留滚动能力（跨浏览器）。 */
+@layer utilities {
+  .scrollbar-hidden {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+  }
+}
