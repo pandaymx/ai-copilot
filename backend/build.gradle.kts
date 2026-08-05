@@ -23,6 +23,7 @@ extra["springAiVersion"] = "2.0.0"
 dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-actuator")
 	implementation("org.springframework.boot:spring-boot-starter-webflux")
+	implementation("org.springframework.ai:spring-ai-starter-model-anthropic")
 	implementation("org.springframework.ai:spring-ai-starter-model-deepseek")
 	implementation("org.springframework.ai:spring-ai-starter-model-google-genai")
 	implementation("org.springframework.ai:spring-ai-starter-model-ollama")
