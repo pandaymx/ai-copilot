@@ -1,6 +1,18 @@
 "use client";
 
-import { Bot, User } from "lucide-react";
+import {
+  Bot,
+  Brain,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  RotateCcw,
+  ThumbsDown,
+  ThumbsUp,
+  User,
+} from "lucide-react";
+import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { Markdown } from "./markdown";
@@ -9,63 +21,115 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  thinking?: string;
 }
 
 interface MessageBubbleProps {
   message: ChatMessage;
-  /** 是否为当前正在流式接收的助手消息（用于展示"思考中"状态）。 */
   streaming?: boolean;
+  onRegenerate?: () => void;
 }
 
-/** 单条对话气泡：用户右对齐、AI 左对齐，含头像与 Markdown 渲染。 */
-export function MessageBubble({ message, streaming }: MessageBubbleProps) {
+export function MessageBubble({
+  message,
+  streaming,
+  onRegenerate,
+}: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const [copied, setCopied] = useState(false);
+  const [liked, setLiked] = useState<boolean | null>(null);
+  const [showThinking, setShowThinking] = useState(true);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // 忽略复制失败
+    }
+  };
 
   return (
     <div
       className={cn(
-        "mx-auto flex w-full max-w-3xl gap-3 px-4 py-3 sm:px-6",
+        "group relative mx-auto flex w-full max-w-3xl gap-3.5 px-4 py-3 sm:px-6 transition-all",
         isUser ? "flex-row-reverse" : "flex-row",
       )}
     >
+      {/* 头像组件 */}
       <Avatar
         size="sm"
         className={cn(
-          "mt-0.5 shrink-0",
-          // AI 思考时：头像带顺时针旋转的翡翠绿呼吸光环
-          !isUser && streaming && "animate-[spin_3s_linear_infinite] ring-2 ring-emerald-500/60 ring-offset-2 ring-offset-background",
+          "mt-0.5 shrink-0 shadow-sm transition-transform duration-300 group-hover:scale-105",
+          !isUser &&
+            streaming &&
+            "ring-2 ring-indigo-500/80 ring-offset-2 ring-offset-background animate-pulse",
         )}
       >
         <AvatarFallback
           className={cn(
             isUser
-              ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-              : "bg-linear-to-br from-emerald-500 to-teal-600 text-white",
+              ? "bg-gradient-to-br from-zinc-800 to-zinc-900 text-white dark:from-zinc-100 dark:to-zinc-300 dark:text-zinc-900"
+              : "bg-gradient-to-br from-indigo-500 via-purple-600 to-pink-500 text-white",
           )}
         >
           {isUser ? <User className="size-4" /> : <Bot className="size-4" />}
         </AvatarFallback>
       </Avatar>
 
+      {/* 消息卡片主体 */}
       <div
         className={cn(
-          "relative flex min-w-0 max-w-[85%] flex-col gap-1",
+          "relative flex min-w-0 max-w-[85%] flex-col gap-1.5",
           isUser ? "items-end" : "items-start",
         )}
       >
-        {/* 暗夜流式流光：AI 气泡左侧动态竖向渐变线条 */}
-        {!isUser && streaming && (
-          <span className="absolute -left-3 top-1 bottom-1 w-0.5 rounded-full bg-linear-to-b from-emerald-500 to-transparent dark:block hidden" />
+        {/* AI 助手 Badge */}
+        {!isUser && (
+          <div className="flex items-center gap-2 px-1 text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+            <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+              AI Copilot
+            </span>
+            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-800/50">
+              Spring AI Core
+            </span>
+          </div>
         )}
 
+        {/* 思考过程折叠盒（针对推理型输出） */}
+        {!isUser && message.thinking && (
+          <div className="mb-1.5 w-full overflow-hidden rounded-xl border border-indigo-200/60 bg-indigo-50/40 text-xs dark:border-indigo-900/50 dark:bg-indigo-950/30">
+            <button
+              type="button"
+              onClick={() => setShowThinking((prev) => !prev)}
+              className="flex w-full items-center justify-between px-3 py-2 text-indigo-700 hover:bg-indigo-100/50 dark:text-indigo-300 dark:hover:bg-indigo-900/30 font-medium"
+            >
+              <div className="flex items-center gap-1.5">
+                <Brain className="size-3.5 animate-pulse text-indigo-500" />
+                <span>思考过程 ({streaming ? "推理中..." : "已完成"})</span>
+              </div>
+              {showThinking ? (
+                <ChevronDown className="size-3.5" />
+              ) : (
+                <ChevronRight className="size-3.5" />
+              )}
+            </button>
+            {showThinking && (
+              <div className="border-t border-indigo-200/40 p-3 text-zinc-600 leading-relaxed dark:border-indigo-900/40 dark:text-zinc-400">
+                {message.thinking}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 气泡本文 */}
         <div
           className={cn(
-            "rounded-2xl px-4 py-2.5 text-sm",
+            "relative rounded-2xl px-4 py-3 text-sm shadow-xs transition-all duration-200",
             isUser
-              ? // 用户气泡：日间磨砂黑钛金灰 / 暗夜高亮米白
-                "rounded-tr-xs bg-zinc-900 font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
-              : // AI 气泡：日间冰灰微衬 / 暗夜石墨玻璃拟态
-                "rounded-tl-md bg-zinc-50/80 text-zinc-900 ring-1 ring-zinc-200/60 dark:bg-zinc-900/60 dark:text-zinc-100 dark:ring-zinc-800/60 dark:backdrop-blur",
+              ? "rounded-tr-xs bg-zinc-900 font-medium text-white shadow-md shadow-zinc-900/10 dark:bg-zinc-100 dark:text-zinc-900 dark:shadow-none"
+              : "rounded-tl-xs bg-white text-zinc-900 border border-zinc-200/80 shadow-sm dark:bg-zinc-900/80 dark:text-zinc-100 dark:border-zinc-800/80 backdrop-blur-md",
           )}
         >
           {isUser ? (
@@ -76,25 +140,78 @@ export function MessageBubble({ message, streaming }: MessageBubbleProps) {
             <BreathingCursor />
           ) : null}
         </div>
+
+        {/* AI 消息底栏 Action Bar (Hover 显示) */}
+        {!isUser && message.content && (
+          <div className="flex items-center gap-1 px-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="flex size-7 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200 transition-colors"
+              title="复制回答"
+            >
+              {copied ? (
+                <Check className="size-3.5 text-emerald-500" />
+              ) : (
+                <Copy className="size-3.5" />
+              )}
+            </button>
+
+            {onRegenerate && (
+              <button
+                type="button"
+                onClick={onRegenerate}
+                className="flex size-7 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200 transition-colors"
+                title="重新生成"
+              >
+                <RotateCcw className="size-3.5" />
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setLiked(liked === true ? null : true)}
+              className={cn(
+                "flex size-7 items-center justify-center rounded-lg text-zinc-400 transition-colors",
+                liked === true
+                  ? "text-indigo-600 bg-indigo-50 dark:bg-indigo-950/50 dark:text-indigo-400"
+                  : "hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200",
+              )}
+              title="赞"
+            >
+              <ThumbsUp className="size-3.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setLiked(liked === false ? null : false)}
+              className={cn(
+                "flex size-7 items-center justify-center rounded-lg text-zinc-400 transition-colors",
+                liked === false
+                  ? "text-rose-600 bg-rose-50 dark:bg-rose-950/50 dark:text-rose-400"
+                  : "hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200",
+              )}
+              title="踩"
+            >
+              <ThumbsDown className="size-3.5" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-/** AI 生成中：精致的光标呼吸动画（竖直光标高亮 + 柔光脉冲）。 */
+/** 生成中优雅动画指示器 */
 function BreathingCursor() {
   return (
-    <output
-      className="flex items-center gap-2 py-1.5"
-      aria-label="正在生成"
-      aria-live="polite"
-    >
-      <span className="relative inline-flex size-2.5">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500/70" />
-        <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
-      </span>
-      <span className="relative h-4 w-[2px] animate-pulse rounded-full bg-foreground/70" />
-      <span className="text-sm text-muted-foreground">生成中…</span>
-    </output>
+    <div className="flex items-center gap-2.5 py-1 text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+      <div className="flex items-center gap-1">
+        <span className="size-2 rounded-full bg-indigo-500 animate-ping" />
+        <span className="size-2 rounded-full bg-purple-500 animate-pulse" />
+        <span className="size-2 rounded-full bg-pink-500 animate-bounce" />
+      </div>
+      <span>AI 正在思考与撰写...</span>
+    </div>
   );
 }

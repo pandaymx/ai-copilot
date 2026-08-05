@@ -2,25 +2,25 @@
 
 import {
   AlertTriangle,
-  ChevronDown,
-  Paperclip,
+  Code2,
+  Cpu,
+  Layers,
   PanelLeftOpen,
+  Paperclip,
   RotateCcw,
   Send,
   Sparkles,
   Square,
+  Wand2,
 } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type ChatMessage,
   MessageBubble,
 } from "@/components/chat/message-bubble";
+import { type ModelId, ModelSelector } from "@/components/chat/model-selector";
 import { type ChatSession, Sidebar } from "@/components/chat/sidebar";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { useSpringAiStream } from "@/hooks/useSpringAiStream";
 
@@ -30,30 +30,34 @@ const ACTIVE_KEY = "ai-copilot-active";
 let idCounter = 0;
 const nextId = () => `msg-${Date.now()}-${++idCounter}`;
 
-type ModelId = "spring-ai" | "gpt" | "claude";
-
-const MODELS: { id: ModelId; label: string }[] = [
-  { id: "spring-ai", label: "Spring AI" },
-  { id: "gpt", label: "GPT-4o" },
-  { id: "claude", label: "Claude 3.5" },
+const SUGGESTED_PROMPTS = [
+  {
+    icon: Code2,
+    category: "代码开发",
+    text: "用 Spring Boot 4.x 写一个 Reactive WebFlux SSE 流式控制器",
+    gradient: "from-blue-500 to-cyan-500",
+  },
+  {
+    icon: Cpu,
+    category: "性能调优",
+    text: "对比分析 Java 25 Virtual Threads 与 Kotlin 协程在 IO 密集场景的差异",
+    gradient: "from-emerald-500 to-teal-500",
+  },
+  {
+    icon: Layers,
+    category: "架构设计",
+    text: "设计一个高并发、低延迟的分布式 AI Agent 状态流转模型",
+    gradient: "from-purple-500 to-indigo-500",
+  },
+  {
+    icon: Wand2,
+    category: "前端工程",
+    text: "编写一个支持 Server-Sent Events 流式打字机效果的 React Hook",
+    gradient: "from-amber-500 to-orange-500",
+  },
 ];
 
-const SUGGESTED_PROMPTS: { icon: string; text: string }[] = [
-  {
-    icon: "💡",
-    text: "用 Spring Boot 4.x 写一个 WebFlux SSE 控制器",
-  },
-  {
-    icon: "🚀",
-    text: "解释 Java 25 Virtual Threads 与协程的区别",
-  },
-  {
-    icon: "🛠️",
-    text: "编写一个 React + TypeScript 流式 Hook",
-  },
-];
-
-/** 从 localStorage 读取会话列表（首次进入提供空态）。 */
+/** 从 localStorage 读取会话列表 */
 function loadSessions(): ChatSession[] {
   if (typeof window === "undefined") return [];
   try {
@@ -76,19 +80,17 @@ export default function Home() {
   const [collapsed, setCollapsed] = useState(false);
   const [model, setModel] = useState<ModelId>("spring-ai");
 
-  /** 预设 Prompt 卡片点击：直接发送。 */
-  const handlePickPrompt = (text: string) => {
-    setInput(text);
-    if (!isStreaming) handleSend(text);
-  };
-
   const isStreaming = loading;
   const hasError = Boolean(error);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // 记录当前会话中"正在生成"的占位消息 id，便于把流式 content 写回。
   const liveIdRef = useRef<string | null>(null);
+
+  const handlePickPrompt = (text: string) => {
+    setInput(text);
+    if (!isStreaming) handleSend(text);
+  };
 
   const createSession = useCallback(() => {
     const id = `sess-${Date.now()}`;
@@ -104,7 +106,7 @@ export default function Home() {
     localStorage.setItem(ACTIVE_KEY, id);
   }, []);
 
-  // 初始化：恢复会话或新建首个会话。
+  // 初始化：恢复会话或新建首个会话
   useEffect(() => {
     const restored = loadSessions();
     const activeRaw =
@@ -120,21 +122,20 @@ export default function Home() {
     }
   }, [createSession]);
 
-  // 会话列表（含消息历史）持久化。
+  // 会话持久化
   useEffect(() => {
     if (sessions.length > 0) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
     }
   }, [sessions]);
 
-  // 自动滚动到底部（AI 逐字输出时钉住）。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 依赖用于触发滚动副作用。
+  // 自动滚动到底部
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 副作用触发滚动
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, content]);
 
-  // 流式内容写回当前会话的最后一条（live）助手消息，并同步持久化。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 依赖 content/loading 触发写回。
+  // 流式内容写回
   useEffect(() => {
     if (liveIdRef.current) {
       setMessages((prev) => {
@@ -153,7 +154,6 @@ export default function Home() {
     }
     if (!isStreaming && liveIdRef.current) {
       liveIdRef.current = null;
-      // 流结束：用首句生成会话标题。
       setSessions((prev) =>
         prev.map((s) =>
           s.id === activeId && s.title === "新会话"
@@ -166,8 +166,8 @@ export default function Home() {
     }
   }, [content, isStreaming, activeId]);
 
-  // 自适应文本框高度。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 依赖 input 以重算高度。
+  // 自适应文本框高度
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 高度随 input 重新计算
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -205,6 +205,12 @@ export default function Home() {
       if (next.length === 0) createSession();
       return next;
     });
+  }
+
+  function renameSession(id: string, newTitle: string) {
+    setSessions((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, title: newTitle } : s)),
+    );
   }
 
   const handleSend = (textOverride?: string) => {
@@ -247,7 +253,7 @@ export default function Home() {
   };
 
   return (
-    <div className="relative flex h-dvh overflow-hidden bg-zinc-50 dark:bg-zinc-950">
+    <div className="relative flex h-dvh overflow-hidden bg-ambient-mesh bg-zinc-50 dark:bg-zinc-950">
       <Sidebar
         sessions={sessions}
         activeId={activeId}
@@ -255,62 +261,74 @@ export default function Home() {
         onSelect={selectSession}
         onNew={createSession}
         onDelete={deleteSession}
+        onRename={renameSession}
         onToggleCollapsed={() => setCollapsed((c) => !c)}
       />
 
-      {/* 移动端：展开侧边栏时的遮罩 */}
+      {/* 移动端遮罩 */}
       {!collapsed && (
         <button
           type="button"
-          className="fixed inset-0 z-20 bg-black/40 md:hidden"
+          className="fixed inset-0 z-20 bg-black/40 backdrop-blur-xs md:hidden"
           onClick={() => setCollapsed(true)}
           aria-label="关闭侧边栏"
         />
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col bg-background">
-        {/* 顶栏 */}
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/80 px-4 py-3 backdrop-blur sm:px-6">
-          <div className="flex items-center gap-2">
+      <div className="flex min-w-0 flex-1 flex-col bg-transparent">
+        {/* 顶部 Header */}
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200/60 bg-white/70 px-4 py-3 backdrop-blur-xl dark:border-zinc-800/60 dark:bg-zinc-950/70 sm:px-6">
+          <div className="flex items-center gap-3">
             {collapsed && (
               <Button
                 variant="ghost"
-                size="icon"
-                className="md:hidden"
+                size="icon-sm"
+                className="md:hidden text-zinc-600 dark:text-zinc-300"
                 onClick={() => setCollapsed(false)}
                 aria-label="打开侧边栏"
               >
                 <PanelLeftOpen className="size-4" />
               </Button>
             )}
-            <span className="size-2 rounded-full bg-emerald-500" />
-            <h1 className="font-heading text-base font-semibold">AI Copilot</h1>
+            <div className="flex items-center gap-2">
+              <span className="relative flex size-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
+              </span>
+              <h1 className="font-heading text-sm font-bold tracking-tight text-zinc-800 dark:text-zinc-100">
+                Spring AI Copilot
+              </h1>
+            </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleReset}
-            disabled={isStreaming || messages.length === 0}
-          >
-            <RotateCcw className="size-4" />
-            清空
-          </Button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleReset}
+              disabled={isStreaming || messages.length === 0}
+              className="gap-1.5 text-xs text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            >
+              <RotateCcw className="size-3.5" />
+              清空
+            </Button>
+          </div>
         </header>
 
-        {/* 错误提示（居中卡片） */}
+        {/* 错误提示卡片 */}
         {hasError && (
-          <div className="mx-auto mt-3 w-full max-w-3xl px-4 sm:px-6">
-            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <div className="mx-auto mt-4 w-full max-w-3xl px-4 sm:px-6">
+            <div className="flex items-start gap-2.5 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs text-rose-600 dark:text-rose-400 shadow-sm backdrop-blur-md">
               <AlertTriangle className="mt-0.5 size-4 shrink-0" />
               <span>
-                连接失败：{error?.message ?? "未知错误"}。请检查 Spring AI
-                后端服务 是否可用后重试。
+                服务连接受阻：{error?.message ?? "后端未能即时响应"}。请确保后端
+                Spring AI 服务已正常启动。
               </span>
             </div>
           </div>
         )}
 
-        {/* 消息列表（居中，最大宽度限制） */}
+        {/* 主消息列表区 */}
         <main
           className="flex flex-1 flex-col overflow-y-auto scroll-smooth scrollbar-hidden"
           aria-live="polite"
@@ -318,24 +336,27 @@ export default function Home() {
           {messages.length === 0 ? (
             <EmptyState onPickPrompt={handlePickPrompt} />
           ) : (
-            <>
+            <div className="py-4">
               {messages.map((m) => (
                 <MessageBubble
                   key={m.id}
                   message={m}
                   streaming={m.id === "assistant-live" && isStreaming}
+                  onRegenerate={() =>
+                    handleSend(messages[messages.length - 2]?.content)
+                  }
                 />
               ))}
               <div ref={bottomRef} className="h-6" />
-            </>
+            </div>
           )}
         </main>
 
-        {/* 输入区：相对对话区居中、悬浮吸底、自动撑高的卡片 */}
-        <div className="sticky bottom-0 z-10 bg-linear-to-t from-background via-background/95 to-transparent px-4 pb-3 pt-3 sm:px-6">
+        {/* 底部悬浮发光输入框 */}
+        <div className="sticky bottom-0 z-10 bg-gradient-to-t from-zinc-50 via-zinc-50/90 to-transparent pb-4 pt-2 dark:from-zinc-950 dark:via-zinc-950/90 px-4 sm:px-6">
           <form
             onSubmit={handleSubmit}
-            className="mx-auto flex w-full max-w-3xl flex-col gap-1.5 rounded-2xl border border-zinc-200/80 bg-white p-2.5 shadow-lg shadow-zinc-200/50 backdrop-blur transition-shadow focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/20 dark:border-zinc-800/80 dark:bg-zinc-950 dark:shadow-none"
+            className="mx-auto flex w-full max-w-3xl flex-col gap-2 rounded-2xl border border-zinc-200/80 bg-white/90 p-3 shadow-2xl shadow-indigo-500/10 backdrop-blur-xl transition-all duration-200 focus-within:border-indigo-500/60 focus-within:ring-2 focus-within:ring-indigo-500/20 dark:border-zinc-800/80 dark:bg-zinc-900/90 dark:shadow-none"
           >
             <div className="flex items-end gap-2">
               <textarea
@@ -344,8 +365,8 @@ export default function Home() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 rows={1}
-                placeholder="给 AI Copilot 发消息…"
-                className="max-h-32 min-h-9 flex-1 resize-none bg-transparent px-1.5 py-2 text-sm text-zinc-900 caret-emerald-500 outline-none placeholder:text-zinc-400 dark:text-zinc-100 dark:caret-emerald-400 dark:placeholder:text-zinc-500"
+                placeholder="给 Spring AI 发发送指令或问题..."
+                className="max-h-36 min-h-9 flex-1 resize-none bg-transparent px-2 py-1 text-sm text-zinc-900 caret-indigo-500 outline-none placeholder:text-zinc-400 dark:text-zinc-100 dark:caret-indigo-400 dark:placeholder:text-zinc-500 leading-relaxed"
               />
               {isStreaming ? (
                 <Button
@@ -354,36 +375,37 @@ export default function Home() {
                   size="icon"
                   onClick={stop}
                   aria-label="停止生成"
+                  className="rounded-xl shadow-sm"
                 >
                   <Square className="size-4" />
                 </Button>
               ) : (
-                <Button
+                <button
                   type="submit"
-                  size="icon"
                   disabled={!input.trim()}
                   aria-label="发送"
+                  className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-500/25 transition-all duration-200 hover:scale-105 hover:shadow-indigo-500/40 disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none"
                 >
                   <Send className="size-4" />
-                </Button>
+                </button>
               )}
             </div>
 
-            {/* 工具栏：附件 / 模型选择 / 快捷键提示 */}
-            <div className="flex items-center justify-between px-1 pt-0.5">
-              <div className="flex items-center gap-1">
+            {/* 底部工具栏 */}
+            <div className="flex items-center justify-between border-t border-zinc-100 px-1 pt-2 dark:border-zinc-800/60">
+              <div className="flex items-center gap-2">
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  className="text-muted-foreground"
-                  aria-label="上传附件"
+                  className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                  aria-label="添加文件"
                 >
                   <Paperclip className="size-4" />
                 </Button>
-                <ModelSelect value={model} onChange={setModel} />
+                <ModelSelector value={model} onChange={setModel} />
               </div>
-              <span className="select-none text-[11px] text-muted-foreground/70">
+              <span className="select-none font-mono text-[11px] text-zinc-400 dark:text-zinc-500">
                 ⌘ + Enter 发送
               </span>
             </div>
@@ -394,74 +416,67 @@ export default function Home() {
   );
 }
 
-/** 用首句（最多 18 字）作为会话标题。 */
+/** 衍生会话标题 */
 function deriveTitle(text: string): string {
   const firstLine = text.trim().split("\n")[0].trim();
   if (!firstLine) return "新会话";
   return firstLine.length > 18 ? `${firstLine.slice(0, 18)}…` : firstLine;
 }
 
-function EmptyState({ onPickPrompt }: { onPickPrompt: (text: string) => void }) {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-6 px-6 text-center">
-      <div className="flex size-12 items-center justify-center rounded-2xl bg-emerald-600/10 text-emerald-600">
-        <Send className="size-5" />
-      </div>
-      <div className="space-y-1.5">
-        <p className="font-heading text-lg font-semibold text-foreground">
-          开始与 AI Copilot 对话
-        </p>
-        <p className="max-w-sm text-sm text-muted-foreground">
-          基于 Spring AI 流式响应，支持 Markdown 渲染、代码高亮与实时增量输出。
-        </p>
-      </div>
-
-      {/* 预设 Prompt 推荐卡片 */}
-      <div className="grid w-full max-w-xl grid-cols-2 gap-3">
-        {SUGGESTED_PROMPTS.map((p) => (
-          <button
-            key={p.text}
-            type="button"
-            onClick={() => onPickPrompt(p.text)}
-            className="group flex items-center gap-2.5 rounded-xl border border-zinc-200/80 bg-white px-3 py-2.5 text-left text-sm text-zinc-900 shadow-lg shadow-zinc-200/50 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/5 hover:shadow-md dark:border-zinc-800/80 dark:bg-zinc-950 dark:text-zinc-100 dark:shadow-none"
-          >
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-base">
-              {p.icon}
-            </span>
-            <span className="min-w-0 flex-1 truncate">{p.text}</span>
-            <Sparkles className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** 模型选择器（轻量下拉，基于原生 select 样式化）。 */
-function ModelSelect({
-  value,
-  onChange,
+/** 沉浸式欢迎页与场景推荐卡片 */
+function EmptyState({
+  onPickPrompt,
 }: {
-  value: ModelId;
-  onChange: (id: ModelId) => void;
+  onPickPrompt: (text: string) => void;
 }) {
-  const label = MODELS.find((m) => m.id === value)?.label ?? "模型";
   return (
-    <div className="relative">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as ModelId)}
-        aria-label="选择模型"
-        className="h-8 cursor-pointer appearance-none rounded-lg border border-zinc-200/80 bg-transparent pl-2.5 pr-7 text-xs text-muted-foreground outline-none transition-colors hover:border-emerald-500/50 hover:text-foreground focus-visible:border-ring dark:border-zinc-700/60"
-      >
-        {MODELS.map((m) => (
-          <option key={m.id} value={m.id} className="bg-background text-foreground">
-            {m.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-      <span className="sr-only">{label}</span>
+    <div className="flex flex-1 flex-col items-center justify-center gap-8 px-6 py-12 text-center">
+      {/* 极光 Header Icon */}
+      <div className="relative">
+        <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-30 blur-lg animate-pulse" />
+        <div className="relative flex size-16 items-center justify-center rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 text-white shadow-xl shadow-indigo-500/25">
+          <Sparkles className="size-8" />
+        </div>
+      </div>
+
+      <div className="max-w-md space-y-2">
+        <h2 className="font-heading text-2xl font-bold tracking-tight bg-gradient-to-r from-zinc-900 via-zinc-700 to-zinc-900 bg-clip-text text-transparent dark:from-white dark:via-zinc-200 dark:to-white">
+          今天想与 AI 创造什么？
+        </h2>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+          基于 Spring AI
+          企业级核心架构，支持高并发流式计算、代码实时构建与多维度推理。
+        </p>
+      </div>
+
+      {/* 预设场景 Prompt 推荐卡片 */}
+      <div className="grid w-full max-w-2xl grid-cols-1 sm:grid-cols-2 gap-3.5">
+        {SUGGESTED_PROMPTS.map((p) => {
+          const Icon = p.icon;
+          return (
+            <button
+              key={p.text}
+              type="button"
+              onClick={() => onPickPrompt(p.text)}
+              className="group flex flex-col items-start justify-between rounded-2xl border border-zinc-200/80 bg-white/80 p-4 text-left shadow-xs backdrop-blur-md transition-all duration-200 hover:border-indigo-500/40 hover:bg-white hover:shadow-lg hover:shadow-indigo-500/5 dark:border-zinc-800/80 dark:bg-zinc-900/60 dark:hover:border-indigo-500/50 dark:hover:bg-zinc-900"
+            >
+              <div className="flex w-full items-center justify-between gap-2">
+                <span
+                  className={`flex size-8 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-xs ${p.gradient}`}
+                >
+                  <Icon className="size-4" />
+                </span>
+                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                  {p.category}
+                </span>
+              </div>
+              <p className="mt-3 text-xs font-medium text-zinc-800 dark:text-zinc-200 leading-relaxed group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                {p.text}
+              </p>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
