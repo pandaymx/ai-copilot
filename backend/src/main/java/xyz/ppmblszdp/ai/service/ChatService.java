@@ -240,36 +240,30 @@ public class ChatService {
 		if (providerId.contains("deepseek")) {
 			return DeepSeekChatOptions.builder()
 					.model(modelName)
-					.maxTokens(4096)
 					.build();
 		}
 		if (providerId.contains("openai")) {
 			return OpenAiChatOptions.builder()
 					.model(modelName)
-					.maxTokens(4096)
 					.build();
 		}
 		if (providerId.contains("google") || providerId.contains("gemini")) {
 			return GoogleGenAiChatOptions.builder()
 					.model(modelName)
-					.maxOutputTokens(4096)
 					.build();
 		}
 		if (providerId.contains("anthropic") || providerId.contains("claude")) {
 			return AnthropicChatOptions.builder()
 					.model(modelName)
-					.maxTokens(4096)
 					.build();
 		}
 		if (providerId.contains("ollama")) {
 			return OllamaChatOptions.builder()
 					.model(modelName)
-					.maxTokens(4096)
 					.build();
 		}
 		return OpenAiChatOptions.builder()
 				.model(modelName)
-				.maxTokens(4096)
 				.build();
 	}
 
