@@ -75,6 +75,16 @@ function loadSessions(): ChatSession[] {
         item.id = nextSessionId();
       }
       seen.add(item.id);
+      if (Array.isArray(item.messages)) {
+        const msgSeen = new Set<string>();
+        item.messages = item.messages.map((m) => {
+          if (!m.id || m.id === "assistant-live" || msgSeen.has(m.id)) {
+            m.id = nextId();
+          }
+          msgSeen.add(m.id);
+          return m;
+        });
+      }
       sanitized.push(item);
     }
     return sanitized;
