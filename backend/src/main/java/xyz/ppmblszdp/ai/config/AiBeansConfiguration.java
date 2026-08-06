@@ -2,9 +2,13 @@ package xyz.ppmblszdp.ai.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import xyz.ppmblszdp.ai.context.ContextAssembler;
 import xyz.ppmblszdp.ai.context.HeuristicTokenEstimator;
 import xyz.ppmblszdp.ai.context.TokenEstimator;
@@ -45,6 +49,22 @@ public class AiBeansConfiguration {
 	@Bean
 	public CustomChatModelFactory customChatModelFactory(Map<String, CustomChatModelSupplier> suppliers) {
 		return new CustomChatModelFactory(suppliers);
+	}
+
+	@Bean
+	@Primary
+	public EmbeddingModel primaryEmbeddingModel(
+			@Qualifier("openAiEmbeddingModel") ObjectProvider<EmbeddingModel> openAiEmbeddingModel,
+			@Qualifier("ollamaEmbeddingModel") ObjectProvider<EmbeddingModel> ollamaEmbeddingModel) {
+		EmbeddingModel model = openAiEmbeddingModel.getIfAvailable();
+		if (model != null) {
+			return model;
+		}
+		EmbeddingModel ollama = ollamaEmbeddingModel.getIfAvailable();
+		if (ollama != null) {
+			return ollama;
+		}
+		throw new IllegalStateException("未找到可用的 EmbeddingModel Bean");
 	}
 
 	@Bean
