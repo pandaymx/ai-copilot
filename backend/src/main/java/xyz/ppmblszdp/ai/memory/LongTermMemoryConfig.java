@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
+import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -20,11 +21,15 @@ import java.util.Map;
 /**
  * 长期记忆配置：用户画像/偏好经 embedding 存入 pgvector，每次请求按 userId 维度向量检索后注入。
  *
- * <p>与会话记忆职责分离：会话记忆=短期上下文，长期记忆=跨会话个性化。
- * 检索隔离通过 {@code metadata.userId} + {@code FilterExpressionBuilder.eq("userId", ...)} 实现，
+ * <p>
+ * 与会话记忆职责分离：会话记忆=短期上下文，长期记忆=跨会话个性化。
+ * 检索隔离通过 {@code metadata.userId} +
+ * {@code FilterExpressionBuilder.eq("userId", ...)} 实现，
  * 确保用户 A 不会检索到用户 B 的偏好。
  *
- * <p>仅在 {@code app.ai.memory.enabled=true} 时装配；PgVectorStore 由 spring-ai-starter-vector-store-pgvector
+ * <p>
+ * 仅在 {@code app.ai.memory.enabled=true} 时装配；PgVectorStore 由
+ * spring-ai-starter-vector-store-pgvector
  * 自动装配（复用同一 PostgreSQL 实例）。
  */
 @Configuration
@@ -52,8 +57,19 @@ public class LongTermMemoryConfig {
 					.topK(topK)
 					.filterExpression(filter)
 					.build();
+			PromptTemplate customPromptTemplate = new PromptTemplate("""
+					{query}
+
+					[参考信息/用户偏好]
+					---------------------
+					{question_answer_context}
+					---------------------
+
+					注意：以上上下文信息仅供参考。若参考信息中未包含相关答案，请直接利用你的通用知识库正常解答用户的问题，切勿拒绝回答。
+					""");
 			return QuestionAnswerAdvisor.builder(safeVs)
 					.searchRequest(search)
+					.promptTemplate(customPromptTemplate)
 					.build();
 		};
 	}
