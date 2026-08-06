@@ -60,21 +60,22 @@ function looksLikeIncompleteJson(data: string): boolean {
 function defaultParseChunk(data: string): string | null {
   if (!data || data === "[DONE]") return null;
   try {
-    // Spring AI 默认返回 JSON，形如 ChatResponse：
-    // { "result": { "output": { "text": "..." } } }
-    // 同时兼容 OpenAI 风格的 delta.content。
     const parsed = JSON.parse(data);
     if (typeof parsed === "string") return parsed;
+
+    if (parsed?.error) {
+      const msg = parsed.message || parsed.code || "后端响应错误";
+      return `\n\n⚠️ [服务异常]: ${msg}`;
+    }
+
     const nested =
+      parsed?.content ??
       parsed?.result?.output?.text ??
       parsed?.choices?.[0]?.delta?.content ??
       parsed?.choices?.[0]?.message?.content ??
-      parsed?.content ??
       parsed?.text;
     return typeof nested === "string" ? nested : null;
   } catch {
-    // 解析失败：若是像不完整 JSON 的片段（分包导致），舍弃以避免乱码；
-    // 否则视为纯文本流（Flux<String>）直接返回增量文本。
     if (looksLikeIncompleteJson(data)) return null;
     return data;
   }

@@ -153,36 +153,38 @@ export default function Home() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, content]);
 
-  // 流式内容写回
+  // 流式内容实时写回 DOM
   useEffect(() => {
-    if (liveIdRef.current) {
-      setMessages((prev) => {
-        const next = prev.map((m) =>
-          m.id === liveIdRef.current ? { ...m, content } : m,
-        );
-        setSessions((list) =>
-          list.map((s) =>
-            s.id === activeId
-              ? { ...s, messages: next, updatedAt: Date.now() }
-              : s,
-          ),
-        );
-        return next;
-      });
-    }
+    if (!liveIdRef.current) return;
+    const liveId = liveIdRef.current;
+    setMessages((prev) =>
+      prev.map((m) => (m.id === liveId ? { ...m, content } : m)),
+    );
+  }, [content]);
+
+  // 流式完成后持久化同步会话列表
+  useEffect(() => {
     if (!isStreaming && liveIdRef.current) {
+      const liveId = liveIdRef.current;
       liveIdRef.current = null;
       setSessions((prev) =>
-        prev.map((s) =>
-          s.id === activeId && s.title === "新会话"
-            ? { ...s, title: deriveTitle(content), updatedAt: Date.now() }
-            : s.id === activeId
-              ? { ...s, updatedAt: Date.now() }
-              : s,
-        ),
+        prev.map((s) => {
+          if (s.id !== activeId) return s;
+          const updatedMessages = (s.messages ?? []).map((m) =>
+            m.id === liveId ? { ...m, content } : m,
+          );
+          const newTitle =
+            s.title === "新会话" ? deriveTitle(content) : s.title;
+          return {
+            ...s,
+            title: newTitle,
+            messages: updatedMessages,
+            updatedAt: Date.now(),
+          };
+        }),
       );
     }
-  }, [content, isStreaming, activeId]);
+  }, [isStreaming, content, activeId]);
 
   // 自适应文本框高度
   // biome-ignore lint/correctness/useExhaustiveDependencies: 高度随 input 重新计算
