@@ -57,6 +57,7 @@ public class ChatService {
 	private final ObjectProvider<ChatMemory> sessionChatMemory;
 	private final ObjectProvider<LongTermMemoryConfig.LongTermMemoryAdvisorFactory> longTermFactory;
 	private final ObjectProvider<ChatRateLimiter.RateLimiter> rateLimiter;
+	private final SessionService sessionService;
 	private final boolean memoryEnabled;
 
 	public ChatService(
@@ -65,12 +66,14 @@ public class ChatService {
 			ObjectProvider<ChatMemory> sessionChatMemory,
 			ObjectProvider<LongTermMemoryConfig.LongTermMemoryAdvisorFactory> longTermFactory,
 			ObjectProvider<ChatRateLimiter.RateLimiter> rateLimiter,
+			SessionService sessionService,
 			xyz.ppmblszdp.ai.config.AiProviderProperties properties) {
 		this.registry = registry;
 		this.contextAssembler = contextAssembler;
 		this.sessionChatMemory = sessionChatMemory;
 		this.longTermFactory = longTermFactory;
 		this.rateLimiter = rateLimiter;
+		this.sessionService = sessionService;
 		this.memoryEnabled = properties.resolveMemory().isEnabled();
 	}
 
@@ -181,7 +184,19 @@ public class ChatService {
 		if (!useMemory(request)) {
 			return request.conversationId();
 		}
-		return ensureConversation(request).conversationId();
+		String cid = ensureConversation(request).conversationId();
+		if (cid != null && !cid.isBlank()) {
+			sessionService.touchSession(cid, deriveDefaultTitle(request.message()));
+		}
+		return cid;
+	}
+
+	private static String deriveDefaultTitle(String text) {
+		if (text == null || text.isBlank()) {
+			return "新会话";
+		}
+		String firstLine = text.trim().split("\n")[0].trim();
+		return firstLine.length() > 18 ? firstLine.substring(0, 18) + "…" : firstLine;
 	}
 
 	private Mono<ChatResponseDto> callWithoutMemory(ResolvedModel resolved, ChatRequest request, ChatOptions options) {

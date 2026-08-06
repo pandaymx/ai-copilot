@@ -15,6 +15,7 @@ import xyz.ppmblszdp.ai.dto.TitleRequest;
 import xyz.ppmblszdp.ai.dto.TitleResponse;
 import xyz.ppmblszdp.ai.exception.AiException;
 import xyz.ppmblszdp.ai.service.ChatService;
+import xyz.ppmblszdp.ai.service.SessionService;
 import xyz.ppmblszdp.ai.service.TitleService;
 
 /**
@@ -34,10 +35,12 @@ public class ChatController {
 
 	private final ChatService chatService;
 	private final TitleService titleService;
+	private final SessionService sessionService;
 
-	public ChatController(ChatService chatService, TitleService titleService) {
+	public ChatController(ChatService chatService, TitleService titleService, SessionService sessionService) {
 		this.chatService = chatService;
 		this.titleService = titleService;
+		this.sessionService = sessionService;
 	}
 
 	@PostMapping
@@ -72,6 +75,11 @@ public class ChatController {
 	public Mono<TitleResponse> title(@RequestBody TitleRequest request) {
 		return titleService
 				.generateTitle(request.message(), request.answer(), request.provider(), request.model())
+				.doOnNext(generatedTitle -> {
+					if (generatedTitle != null && !generatedTitle.isBlank() && request.conversationId() != null && !request.conversationId().isBlank()) {
+						sessionService.renameSession(request.conversationId(), generatedTitle);
+					}
+				})
 				.map(TitleResponse::new)
 				.defaultIfEmpty(new TitleResponse(""));
 	}

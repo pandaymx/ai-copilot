@@ -1,0 +1,113 @@
+package xyz.ppmblszdp.ai.service;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.MessageType;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.stereotype.Service;
+import xyz.ppmblszdp.ai.dto.SessionDto;
+import xyz.ppmblszdp.ai.repository.SessionRepository;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * 会话服务：整合 PostgreSQL 会话元数据表与 ChatMemory 消息上下文。
+ */
+@Service
+public class SessionService {
+
+	private static final Logger log = LoggerFactory.getLogger(SessionService.class);
+
+	private final SessionRepository sessionRepository;
+	private final ObjectProvider<ChatMemory> chatMemoryProvider;
+
+	public SessionService(SessionRepository sessionRepository, ObjectProvider<ChatMemory> chatMemoryProvider) {
+		this.sessionRepository = sessionRepository;
+		this.chatMemoryProvider = chatMemoryProvider;
+	}
+
+	/** 查询所有历史会话列表 */
+	public List<SessionDto> getAllSessions() {
+		return sessionRepository.findAll();
+	}
+
+	/** 查询指定会话的完整历史（含元数据与消息数组） */
+	public Optional<SessionDto.SessionDetail> getSessionDetail(String id) {
+		Optional<SessionDto> metaOpt = sessionRepository.findById(id);
+		ChatMemory memory = chatMemoryProvider.getIfAvailable();
+		
+		List<SessionDto.MessageItem> messageItems = new ArrayList<>();
+		if (memory != null) {
+			try {
+				List<Message> rawMessages = memory.get(id);
+				int index = 0;
+				for (Message m : rawMessages) {
+					// 过滤系统全局 prompt，仅将用户与助手对话暴露给前端
+					if (m.getMessageType() == MessageType.SYSTEM) {
+						continue;
+					}
+					String role = switch (m.getMessageType()) {
+						case USER -> "user";
+						case ASSISTANT -> "assistant";
+						default -> "user";
+					};
+					String msgId = "db-msg-" + id + "-" + (++index);
+					messageItems.add(new SessionDto.MessageItem(msgId, role, m.getText()));
+				}
+			} catch (Exception ex) {
+				log.warn("从 ChatMemory 读取会话 '{}' 消息失败: {}", id, ex.getMessage());
+			}
+		}
+
+		if (metaOpt.isPresent()) {
+			SessionDto meta = metaOpt.get();
+			return Optional.of(new SessionDto.SessionDetail(
+					meta.id(), meta.title(), meta.updatedAt(), meta.isDefaultTitle(), messageItems
+			));
+		} else if (!messageItems.isEmpty()) {
+			// 如果元数据表中未命中，但 ChatMemory 中有记录，构造兜底元数据
+			return Optional.of(new SessionDto.SessionDetail(
+					id, "历史会话", System.currentTimeMillis(), false, messageItems
+			));
+		}
+		return Optional.empty();
+	}
+
+	/** 新建/置顶/更新会话元数据 */
+	public void recordSession(String id, String title, boolean isDefaultTitle) {
+		sessionRepository.upsertSession(id, title, System.currentTimeMillis(), isDefaultTitle);
+	}
+
+	/** 发送消息时刷新会话时间戳 */
+	public void touchSession(String id, String fallbackTitle) {
+		sessionRepository.touchSession(id, fallbackTitle, System.currentTimeMillis());
+	}
+
+	/** 重命名会话标题 */
+	public boolean renameSession(String id, String newTitle) {
+		Optional<SessionDto> existing = sessionRepository.findById(id);
+		if (existing.isEmpty()) {
+			sessionRepository.upsertSession(id, newTitle, System.currentTimeMillis(), false);
+		} else {
+			sessionRepository.updateTitle(id, newTitle, false);
+		}
+		return true;
+	}
+
+	/** 删除指定会话 */
+	public void deleteSession(String id) {
+		sessionRepository.deleteById(id);
+		ChatMemory memory = chatMemoryProvider.getIfAvailable();
+		if (memory != null) {
+			try {
+				memory.clear(id);
+			} catch (Exception ex) {
+				log.warn("清除会话 '{}' ChatMemory 失败: {}", id, ex.getMessage());
+			}
+		}
+	}
+}

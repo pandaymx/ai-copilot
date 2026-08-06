@@ -6,6 +6,7 @@ export interface FetchTitleInput {
   answer: string;
   provider?: string | null;
   model?: string | null;
+  conversationId?: string | null;
 }
 
 export async function fetchTitle(
@@ -20,6 +21,7 @@ export async function fetchTitle(
         answer: input.answer ?? "",
         provider: input.provider ?? null,
         model: input.model ?? null,
+        conversationId: input.conversationId ?? null,
       }),
     });
     if (!res.ok) {

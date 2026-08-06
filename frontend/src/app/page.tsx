@@ -26,6 +26,12 @@ import { type ChatSession, Sidebar } from "@/components/chat/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { useSpringAiStream } from "@/hooks/useSpringAiStream";
+import {
+  deleteSessionApi,
+  fetchSessionDetailApi,
+  fetchSessionsApi,
+  renameSessionApi,
+} from "@/lib/api";
 import { fetchTitle } from "@/lib/title";
 import { cn } from "@/lib/utils";
 
@@ -165,6 +171,7 @@ export default function Home() {
           answer: finalContent,
           provider: model.provider,
           model: model.model,
+          conversationId: activeId,
         });
         setSessions((prev) =>
           prev.map((s) => {
@@ -237,28 +244,44 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, []);
 
-  // 初始化：恢复上次活动会话（若存在）或默认保持草稿根目录 & 恢复上次选择的模型
+  // 初始化：优先从 PostgreSQL 检索全量历史会话，若无后端数据则降级回 localStorage
   useEffect(() => {
     const savedModel = loadSavedModel();
     setModel(savedModel);
 
-    const restored = loadSessions();
-    setSessions(restored);
+    void (async () => {
+      const dbSessions = await fetchSessionsApi();
+      const initialSessions =
+        dbSessions && dbSessions.length > 0 ? dbSessions : loadSessions();
+      setSessions(initialSessions);
 
-    const activeRaw =
-      typeof window !== "undefined" ? localStorage.getItem(ACTIVE_KEY) : null;
-    if (activeRaw && restored.some((s) => s.id === activeRaw)) {
-      setActiveId(activeRaw);
-      const active = restored.find((s) => s.id === activeRaw);
-      if (active) setMessages(active.messages ?? []);
-    } else {
-      // 默认转到根目录草稿状态
-      setActiveId(null);
-      setMessages([]);
-      if (typeof window !== "undefined") {
-        localStorage.removeItem(ACTIVE_KEY);
+      const activeRaw =
+        typeof window !== "undefined" ? localStorage.getItem(ACTIVE_KEY) : null;
+      const targetId =
+        activeRaw && initialSessions.some((s) => s.id === activeRaw)
+          ? activeRaw
+          : (initialSessions[0]?.id ?? null);
+
+      if (targetId) {
+        setActiveId(targetId);
+        if (typeof window !== "undefined") {
+          localStorage.setItem(ACTIVE_KEY, targetId);
+        }
+        const detail = await fetchSessionDetailApi(targetId);
+        if (detail?.messages && detail.messages.length > 0) {
+          setMessages(detail.messages);
+        } else {
+          const fallback = initialSessions.find((s) => s.id === targetId);
+          setMessages(fallback?.messages ?? []);
+        }
+      } else {
+        setActiveId(null);
+        setMessages([]);
+        if (typeof window !== "undefined") {
+          localStorage.removeItem(ACTIVE_KEY);
+        }
       }
-    }
+    })();
   }, []);
 
   // 模型选择持久化
@@ -299,23 +322,31 @@ export default function Home() {
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [input]);
 
-  function selectSession(id: string) {
+  async function selectSession(id: string) {
     if (id === activeId) {
       setCollapsed(true);
       return;
     }
     setActiveId(id);
-    const target = sessions.find((s) => s.id === id);
-    setMessages(target?.messages ?? []);
     liveIdRef.current = null;
     stop();
-    localStorage.setItem(ACTIVE_KEY, id);
-    if (typeof window !== "undefined" && window.innerWidth < 768) {
-      setCollapsed(true);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(ACTIVE_KEY, id);
+      if (window.innerWidth < 768) {
+        setCollapsed(true);
+      }
+    }
+    const detail = await fetchSessionDetailApi(id);
+    if (detail?.messages && detail.messages.length > 0) {
+      setMessages(detail.messages);
+    } else {
+      const target = sessions.find((s) => s.id === id);
+      setMessages(target?.messages ?? []);
     }
   }
 
   function deleteSession(id: string) {
+    void deleteSessionApi(id);
     setSessions((prev) => prev.filter((s) => s.id !== id));
     if (id === activeId) {
       goToRootDraft();
@@ -323,6 +354,7 @@ export default function Home() {
   }
 
   function renameSession(id: string, newTitle: string) {
+    void renameSessionApi(id, newTitle);
     setSessions((prev) =>
       prev.map((s) =>
         s.id === id ? { ...s, title: newTitle, isDefaultTitle: false } : s,
