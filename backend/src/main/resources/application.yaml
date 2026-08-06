@@ -177,7 +177,7 @@ app:
     # 仅在 enabled=true 时启用记忆路径；否则 ChatService 退化为旧 history 模式。
     # 注意：即便未启用记忆，应用也能正常启动（DB/Redis 不可达不阻断启动）。
     memory:
-      enabled: ${AI_MEMORY_ENABLED:false}        # 记忆路径总开关；false 时完全退化为旧 history 模式
+      enabled: ${AI_MEMORY_ENABLED:true}        # 记忆路径总开关；有数据库/Redis 时持久化到 spring_ai_chat_memory 表
       hot-cache-size: ${AI_MEMORY_HOT_CACHE_SIZE:20}   # Redis 热缓存保留最近 N 条；同时作为记忆检索条数上限
       long-term-top-k: ${AI_MEMORY_LONGTERM_TOP_K:5}    # 长期记忆向量检索 Top-K
       conversation-ttl-days: ${AI_MEMORY_TTL_DAYS:14}  # 会话热缓存在 Redis 的 TTL（天），防止冷数据常驻

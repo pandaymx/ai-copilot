@@ -3,12 +3,14 @@ package xyz.ppmblszdp.ai.memory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,15 +24,13 @@ import java.util.LinkedList;
 import java.util.List;
 
 /**
- * 会话记忆配置：以 Spring AI 自动配置的 {@code ChatMemory}（底层 JDBC 存储库 = Ground Truth）为基础，
+ * 会话记忆配置：以底层 {@link ChatMemoryRepository}（JDBC 存储库 = Ground Truth）为基础，
  * 用 {@link RedisCachingChatMemory} 装饰器缓存最近 N 条热消息加速高频会话读取。
  *
  * <p>
- * Spring AI 在引入 {@code spring-ai-starter-model-chat-memory-repository-jdbc}
- * 后自动配置名为
- * {@code chatMemory} 的 {@link ChatMemory} bean（PostgreSQL 持久化）。本配置在其上叠加 Redis
- * 热缓存，
- * 并把装饰器标记为 {@code @Primary}，使业务层注入的是带缓存的版本。
+ * 当引入 {@code spring-ai-starter-model-chat-memory-repository-jdbc} 时，Spring AI
+ * 自动配置 {@code JdbcChatMemoryRepository}。本配置通过构造 {@link MessageWindowChatMemory} 并在其上叠加 Redis
+ * 热缓存，并将装饰器标记为 {@code @Primary}，使业务层注入带缓存的版本。
  *
  * <p>
  * 仅在 {@code app.ai.memory.enabled=true} 时装配。
@@ -46,18 +46,24 @@ public class ChatMemoryConfig {
 	@Bean
 	@Primary
 	public ChatMemory sessionChatMemory(
-			@Qualifier("chatMemory") ChatMemory jdbcDelegate,
+			ObjectProvider<ChatMemoryRepository> chatMemoryRepositoryProvider,
 			ObjectProvider<StringRedisTemplate> redisTemplate,
 			AiProviderProperties properties) {
+		ChatMemoryRepository repository = chatMemoryRepositoryProvider.getIfAvailable(InMemoryChatMemoryRepository::new);
+		ChatMemory delegate = MessageWindowChatMemory.builder()
+				.chatMemoryRepository(repository)
+				.build();
+
 		int hotCacheSize = properties.resolveMemory().resolveHotCacheSize();
 		int ttlDays = properties.resolveMemory().resolveConversationTtlDays();
 		StringRedisTemplate redis = redisTemplate.getIfAvailable();
 		if (redis == null) {
-			log.warn("未检测到 Redis（StringRedisTemplate 不可用），会话记忆回退为纯 JDBC 模式（无热缓存）");
-			return jdbcDelegate;
+			log.warn("未检测到 Redis（StringRedisTemplate 不可用），会话记忆回退为纯持久化模式（无热缓存）");
+			return delegate;
 		}
-		log.info("会话记忆装配完成：JDBC 持久化 + Redis 热缓存(hotCacheSize={}, ttlDays={})", hotCacheSize, ttlDays);
-		return new RedisCachingChatMemory(jdbcDelegate, redis, hotCacheSize, Duration.ofDays(ttlDays));
+		log.info("会话记忆装配完成：持久化(Repository={}) + Redis 热缓存(hotCacheSize={}, ttlDays={})",
+				repository.getClass().getSimpleName(), hotCacheSize, ttlDays);
+		return new RedisCachingChatMemory(delegate, redis, hotCacheSize, Duration.ofDays(ttlDays));
 	}
 
 	/**
