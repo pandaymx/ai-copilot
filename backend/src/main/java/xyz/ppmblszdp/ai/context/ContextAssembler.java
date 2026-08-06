@@ -8,20 +8,26 @@ import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.dto.ChatMessageDto;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
  * 上下文组装器：本方案核心算法。
  *
- * <p>职责：
+ * <p>
+ * 职责：
  * <ol>
- *   <li><b>System Prompt 保底注入</b>：优先级 请求内 system > provider 级 > 全局，且永不参与历史裁剪；</li>
- *   <li><b>历史去重</b>：前端 {@code history} 末尾通常已包含本轮 {@code message}（前端 send 时先 push 再发），
- *       需识别并去重，否则用户消息会被发送两遍；</li>
- *   <li><b>Token 预算</b>：可用预算 = 上下文窗口 × historyRatio − systemTokens − reserveOutputTokens；</li>
- *   <li><b>反向滑动窗口</b>：从最新消息向前累加，超预算即止，O(n) 单趟；</li>
- *   <li><b>轮次成对对齐</b>：以 user/assistant 轮次为单位，避免裁出「有 assistant 无 user」的孤儿消息；</li>
- *   <li><b>类型转换</b>：转为 Spring AI 的 {@link Message} 列表（System/User/Assistant）。</li>
+ * <li><b>System Prompt 保底注入</b>：优先级 请求内 system > provider 级 >
+ * 全局，且永不参与历史裁剪；</li>
+ * <li><b>历史去重</b>：前端 {@code history} 末尾通常已包含本轮 {@code message}（前端 send 时先 push
+ * 再发），
+ * 需识别并去重，否则用户消息会被发送两遍；</li>
+ * <li><b>Token 预算</b>：可用预算 = 上下文窗口 × historyRatio − systemTokens −
+ * reserveOutputTokens；</li>
+ * <li><b>反向滑动窗口</b>：从最新消息向前累加，超预算即止，O(n) 单趟；</li>
+ * <li><b>轮次成对对齐</b>：以 user/assistant 轮次为单位，避免裁出「有 assistant 无 user」的孤儿消息；</li>
+ * <li><b>类型转换</b>：转为 Spring AI 的 {@link Message}
+ * 列表（System/User/Assistant）。</li>
  * </ol>
  */
 public class ContextAssembler {
@@ -37,15 +43,15 @@ public class ContextAssembler {
 	/**
 	 * 组装消息列表。
 	 *
-	 * @param message   当前用户消息（必填）
-	 * @param history   历史消息（可能已含当前消息，需去重）
-	 * @param requestSystem 请求级 system prompt 覆盖（可空）
-	 * @param providerSystem 供应商级 system prompt（可空）
+	 * @param message          当前用户消息（必填）
+	 * @param history          历史消息（可能已含当前消息，需去重）
+	 * @param requestSystem    请求级 system prompt 覆盖（可空）
+	 * @param providerSystem   供应商级 system prompt（可空）
 	 * @param maxContextTokens 模型上下文窗口大小
 	 * @return 可直接用于 {@code new Prompt(messages, options)} 的消息列表
 	 */
 	public List<Message> assemble(String message, List<ChatMessageDto> history,
-								  String requestSystem, String providerSystem, int maxContextTokens) {
+			String requestSystem, String providerSystem, int maxContextTokens) {
 		String system = resolveSystem(requestSystem, providerSystem);
 		int systemTokens = (system != null) ? estimator.estimate(system) : 0;
 
@@ -84,6 +90,12 @@ public class ContextAssembler {
 		}
 		String global = properties.systemPrompt();
 		return (global != null && !global.isBlank()) ? global : null;
+	}
+
+	/** 暴露全局/默认系统提示词（记忆路径中作为 ChatClient system 兜底）。 */
+	public String defaultSystemPrompt() {
+		String global = properties.systemPrompt();
+		return (global != null && !global.isBlank()) ? global : "你是一个专业、友好且可靠的 AI 助手。";
 	}
 
 	/**
@@ -137,7 +149,7 @@ public class ContextAssembler {
 			kept.add(msg);
 		}
 		// kept 是反向收集的，需反转回正序
-		java.util.Collections.reverse(kept);
+		Collections.reverse(kept);
 		return kept;
 	}
 

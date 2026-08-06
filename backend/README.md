@@ -250,16 +250,23 @@ app:
   ],
   "provider": "qwen",        // 可选；缺省回落全局默认
   "model": "qwen-max",       // 可选；缺省回落该供应商默认模型
-  "systemPrompt": "可选覆盖的系统提示词"
+  "systemPrompt": "可选覆盖的系统提示词",
+  "conversationId": "可选；记忆驱动会话 id，用于多轮对话",
+  "userId": "可选；长期记忆隔离维度（用户画像/偏好）"
 }
 ```
 
 > **前端契约向后兼容**：只传 `{ message, history }` 也能跑通（provider/model 缺省回落全局默认）。
 > `history` 末尾若已包含本轮 `message`，后端会自动**去重**，避免用户消息发送两遍。
+> 传入 `conversationId` 即启用**记忆驱动路径**（需 `app.ai.memory.enabled=true`）：后端自动从
+> PostgreSQL 读写会话历史，前端无需自行维护 `history` 即可多轮对话；若前端未传 `conversationId`，
+> 后端会生成 UUID 并在流式首帧 `{"type":"conversation","conversationId":"..."}` 回传，前端应保存该值用于后续轮次。
+> 不传 `conversationId` 时退化为旧 `history` 模式，完全零改动兼容。
 
 响应：SSE 流，每帧为紧凑 JSON：
 
 ```
+data: {"type":"conversation","conversationId":"uuid-xxxx"}   // 仅记忆路径且后端生成时
 data: {"content":"你好"}
 data: {"content":"，我是"}
 ...
@@ -346,6 +353,77 @@ app:
 | 流式中断只看到网络错误 | 上游厂商超时；已通过 `onErrorResume` + 错误事件兜底 |
 | 用户消息重复 | 前端 `history` 已含当前消息且后端未去重（当前已自动去重） |
 | 返回 4xx 配置错误 | `provider`/`model` 拼写错误或未启用 |
+
+---
+
+## 7.5. 记忆子系统（Spring AI Adapter 集成）
+
+自本版本起，后端支持**会话记忆 + 长期记忆**双轨记忆，基于 Spring AI 2.0 原生 `ChatMemory` /
+Advisor 范式实现，替代原来「前端维护 history」的纯前端驱动模式（旧模式仍兼容）。
+
+### 架构与职责
+
+- **会话记忆**：按 `conversationId` 隔离，持久化于 **PostgreSQL**（`spring_ai_chat_memory` 表，
+  由 `spring-ai-starter-model-chat-memory-repository-jdbc` 自动建表）。`MessageChatMemoryAdvisor`
+  在每次请求时通过 `ChatMemory.CONVERSATION_ID` 参数动态注入会话 id（**每条请求独立注入，避免多线程并发串线**），
+  流式结束时自动回写本次对话。
+- **Redis 热缓存**：`RedisCachingChatMemory` 装饰器在 JDBC 之上缓存最近 `hotCacheSize`（默认 20）条热消息：
+  - 读：先查 Redis List，命中且条数满足直接返回；未命中回源 JDBC 并回填，设置 TTL（默认 14 天）防冷数据常驻。
+  - 写：先写 JDBC（Ground Truth），再写 Redis 并更新 TTL。
+  - Redis 不可用时自动降级为纯 JDBC，不阻断业务。
+- **长期记忆**：用户画像/偏好经 embedding 存入 **pgvector**（`ai_long_term_memory` 表），每次请求由
+  `QuestionAnswerAdvisor` 按 `userId` 维度向量检索 Top-K 注入。检索隔离通过
+  `FilterExpressionBuilder.eq("userId", ...)` 实现，确保用户 A 不会检索到用户 B 的偏好。
+- **限流**：`ChatRateLimiter` 基于 Redis 固定窗口计数（`INCR + EXPIRE`），保护上游配额；Redis 不可用时降级放行。
+
+### 启用方式
+
+记忆路径由总开关 `app.ai.memory.enabled` 控制（默认 `false`，此时完全退化为旧 `history` 模式）：
+
+```yaml
+app:
+  ai:
+    memory:
+      enabled: true                      # 记忆路径总开关
+      hot-cache-size: 20                 # Redis 热缓存条数 / RETRIEVE_SIZE 上限
+      longterm-top-k: 5                  # 长期记忆 Top-K
+      conversation-ttl-days: 14          # 会话热缓存 TTL（天）
+      rate-limit:
+        enabled: false                   # Redis 限流开关（默认关闭）
+        capacity: 20
+        refill-seconds: 60
+
+spring:
+  datasource:                            # PostgreSQL（会话记忆 + 长期记忆共用）
+    url: jdbc:postgresql://localhost:5432/ai_copilot
+    username: ai
+    password: ai
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  ai:
+    vectorstore:
+      pgvector:
+        index-type: HNSW
+        distance-type: COSINE
+        dimensions: 1536
+```
+
+### Docker 依赖
+
+`compose.yaml` 已新增 `postgres`（pgvector 镜像）与 `redis` 服务。一键启动：
+
+```bash
+docker compose up -d postgres redis
+# 表结构（会话记忆表 + 向量表 + vector 扩展）由 Spring AI starter 在启动时自动建，无需手动执行 SQL。
+```
+
+### 兼容性
+
+- 仅传 `{ message, history }` → 沿用 `ContextAssembler` 旧路径，零改动兼容。
+- 传 `conversationId` → 走记忆驱动；前端无需维护 `history`。`conversationId` 缺省时后端生成并回传。
+- 记忆相关异常降级为「无记忆单次对话」并打 WARN，不向上抛 5xx。
 
 ---
 

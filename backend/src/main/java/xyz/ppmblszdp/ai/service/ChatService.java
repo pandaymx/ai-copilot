@@ -2,14 +2,28 @@ package xyz.ppmblszdp.ai.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.api.Advisor;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.anthropic.AnthropicChatOptions;
+import org.springframework.ai.deepseek.DeepSeekChatOptions;
+import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
+import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import xyz.ppmblszdp.ai.context.ContextAssembler;
 import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
+import xyz.ppmblszdp.ai.memory.ChatRateLimiter;
+import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
 
@@ -19,8 +33,17 @@ import java.util.List;
 /**
  * 聊天业务服务。
  *
- * <p>流程：resolve 路由 → ContextAssembler 组装消息 → 构造 {@link Prompt}（含具体模型名 options）
- * → 调用 ChatModel 的 call / stream。流式加超时保护，异常向上抛给 Controller 转 SSE 错误事件。
+ * <p>三种路径：
+ * <ol>
+ *   <li><b>记忆驱动</b>（有 conversationId 且 app.ai.memory.enabled=true）：走 ChatClient + Advisor
+ *       （MessageChatMemoryAdvisor 会话记忆 + 长期记忆 Advisor），conversationId 在每次请求时动态注入，
+ *       多线程并发不会串线；</li>
+ *   <li><b>旧 history 模式</b>（无 conversationId）：沿用 ContextAssembler 组装历史，完全向后兼容；</li>
+ *   <li><b>单轮</b>（无 conversationId 且无 history）：仅当前消息。</li>
+ * </ol>
+ *
+ * <p>记忆相关异常降级为「无记忆单次对话」，不向上抛 5xx；ContextAssembler 的 Token 预算裁剪在旧路径生效，
+ * 记忆路径由 MessageChatMemoryAdvisor 的 RETRIEVE_SIZE 控制提取条数。
  */
 @Service
 public class ChatService {
@@ -31,51 +54,183 @@ public class ChatService {
 
 	private final ProviderRegistry registry;
 	private final ContextAssembler contextAssembler;
+	private final ObjectProvider<ChatMemory> sessionChatMemory;
+	private final ObjectProvider<LongTermMemoryConfig.LongTermMemoryAdvisorFactory> longTermFactory;
+	private final ObjectProvider<ChatRateLimiter.RateLimiter> rateLimiter;
+	private final boolean memoryEnabled;
 
-	public ChatService(ProviderRegistry registry, ContextAssembler contextAssembler) {
+	public ChatService(
+			ProviderRegistry registry,
+			ContextAssembler contextAssembler,
+			ObjectProvider<ChatMemory> sessionChatMemory,
+			ObjectProvider<LongTermMemoryConfig.LongTermMemoryAdvisorFactory> longTermFactory,
+			ObjectProvider<ChatRateLimiter.RateLimiter> rateLimiter,
+			xyz.ppmblszdp.ai.config.AiProviderProperties properties) {
 		this.registry = registry;
 		this.contextAssembler = contextAssembler;
+		this.sessionChatMemory = sessionChatMemory;
+		this.longTermFactory = longTermFactory;
+		this.rateLimiter = rateLimiter;
+		this.memoryEnabled = properties.resolveMemory().isEnabled();
 	}
 
 	/** 非流式：一次性返回完整回复。 */
 	public Mono<ChatResponseDto> chat(ChatRequest request) {
 		ResolvedModel resolved = registry.resolve(request.provider(), request.model());
-		List<org.springframework.ai.chat.messages.Message> messages = contextAssembler.assemble(
-				request.message(),
-				request.history(),
-				request.systemPrompt(),
-				null,
-				resolved.model().maxContextTokens());
-		ChatOptions options = buildChatOptions(resolved);
-		Prompt prompt = new Prompt(messages, options);
-		log.info("非流式请求 → 供应商={}, 模型={}", resolved.provider().providerId(), resolved.model().id());
+		ChatRateLimiter.RateLimiter limiter = rateLimiter.getIfAvailable();
+		if (limiter != null && !limiter.tryAcquire(request.resolveUserId())) {
+			log.warn("非流式请求被限流 → 用户={}", request.resolveUserId());
+			return Mono.just(new ChatResponseDto(
+					"请求过于频繁，请稍后再试。", resolved.provider().providerId(),
+					resolved.model().id(), request.conversationId(), null, null));
+		}
+		log.info("非流式请求 → 供应商={}, 模型={}, 记忆路径={}",
+				resolved.provider().providerId(), resolved.model().id(), useMemory(request));
 
-		return Mono.fromCallable(() -> resolved.chatModel().call(prompt))
-				.map(resp -> extractText(resp))
-				.map(text -> new ChatResponseDto(text, resolved.provider().providerId(), resolved.model().id(), null, null));
+		boolean memoryPath = useMemory(request);
+		ChatOptions options = buildChatOptions(resolved);
+
+		if (memoryPath) {
+			ChatMemory memory = sessionChatMemory.getIfAvailable();
+			if (memory == null) {
+				log.warn("记忆路径已选但 ChatMemory 不可用，降级为单轮");
+				return callWithoutMemory(resolved, request, options);
+			}
+			ChatRequest req = ensureConversation(request);
+			ChatClient client = resolved.chatClient();
+			MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(memory).build();
+			ChatClient.CallResponseSpec spec = client.prompt()
+					.system(sp -> sp.text(resolveSystemPrompt(req)))
+					.user(req.message())
+					.advisors(a -> a
+							.param(ChatMemory.CONVERSATION_ID, req.conversationId()))
+					.advisors(memoryAdvisor)
+					.advisors(a -> applyLongTermAdvisor(a, req))
+					.options(options.mutate())
+					.call();
+			return Mono.fromCallable(() -> spec.chatResponse())
+					.map(resp -> new ChatResponseDto(
+							extractText(resp),
+							resolved.provider().providerId(),
+							resolved.model().id(),
+							req.conversationId(),
+							null,
+							null));
+		}
+		return callWithoutMemory(resolved, request, options);
 	}
 
 	/** 流式：增量文本 Flux。 */
 	public Flux<String> streamChat(ChatRequest request) {
 		ResolvedModel resolved = registry.resolve(request.provider(), request.model());
-		List<org.springframework.ai.chat.messages.Message> messages = contextAssembler.assemble(
-				request.message(),
-				request.history(),
-				request.systemPrompt(),
-				null,
-				resolved.model().maxContextTokens());
-		ChatOptions options = buildChatOptions(resolved);
-		Prompt prompt = new Prompt(messages, options);
-		log.info("流式请求开始 → 供应商={}, 模型={}", resolved.provider().providerId(), resolved.model().id());
+		ChatRateLimiter.RateLimiter limiter = rateLimiter.getIfAvailable();
+		if (limiter != null && !limiter.tryAcquire(request.resolveUserId())) {
+			log.warn("流式请求被限流 → 用户={}", request.resolveUserId());
+			return Flux.just("请求过于频繁，请稍后再试。");
+		}
+		log.info("流式请求开始 → 供应商={}, 模型={}, 记忆路径={}",
+				resolved.provider().providerId(), resolved.model().id(), useMemory(request));
 
+		boolean memoryPath = useMemory(request);
+		ChatOptions options = buildChatOptions(resolved);
+
+		if (memoryPath) {
+			ChatMemory memory = sessionChatMemory.getIfAvailable();
+			if (memory == null) {
+				log.warn("记忆路径已选但 ChatMemory 不可用，降级为单轮");
+				return streamWithoutMemory(resolved, request, options);
+			}
+			ChatRequest req = ensureConversation(request);
+			ChatClient client = resolved.chatClient();
+			MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(memory).build();
+			return client.prompt()
+					.system(sp -> sp.text(resolveSystemPrompt(req)))
+					.user(req.message())
+					.advisors(a -> a
+							.param(ChatMemory.CONVERSATION_ID, req.conversationId()))
+					.advisors(memoryAdvisor)
+					.advisors(a -> applyLongTermAdvisor(a, req))
+					.options(options.mutate())
+					.stream()
+					.chatResponse()
+					.timeout(STREAM_TIMEOUT)
+					.map(resp -> extractText(resp))
+					.filter(text -> text != null && !text.isEmpty())
+					.doOnComplete(() -> log.info("流式请求结束 → 供应商={}, 模型={}, 会话={}",
+							resolved.provider().providerId(), resolved.model().id(), req.conversationId()))
+					.doOnError(err -> log.warn("流式请求异常 → 供应商={}, 模型={}, 会话={}: {}",
+							resolved.provider().providerId(), resolved.model().id(), req.conversationId(), err.getMessage()));
+		}
+		return streamWithoutMemory(resolved, request, options);
+	}
+
+	private boolean useMemory(ChatRequest request) {
+		return memoryEnabled && request.hasConversation();
+	}
+
+	/** 记忆路径下保证 conversationId 存在：前端未传则后端生成 UUID，便于多轮串联。 */
+	private ChatRequest ensureConversation(ChatRequest request) {
+		if (request.hasConversation()) {
+			return request;
+		}
+		return request.withConversationId(java.util.UUID.randomUUID().toString());
+	}
+
+	/** 供 Controller 透传：返回本次请求最终使用的 conversationId（已回填生成值）。 */
+	public String resolveConversationId(ChatRequest request) {
+		if (!useMemory(request)) {
+			return request.conversationId();
+		}
+		return ensureConversation(request).conversationId();
+	}
+
+	private Mono<ChatResponseDto> callWithoutMemory(ResolvedModel resolved, ChatRequest request, ChatOptions options) {
+		List<Message> messages = contextAssembler.assemble(
+				request.message(), request.history(), request.systemPrompt(),
+				null, resolved.model().maxContextTokens());
+		Prompt prompt =
+				new Prompt(messages, options);
+		return Mono.fromCallable(() -> resolved.chatModel().call(prompt))
+				.map(resp -> new ChatResponseDto(
+						extractText(resp), resolved.provider().providerId(), resolved.model().id(),
+						request.conversationId(), null, null));
+	}
+
+	private Flux<String> streamWithoutMemory(ResolvedModel resolved, ChatRequest request, ChatOptions options) {
+		List<Message> messages = contextAssembler.assemble(
+				request.message(), request.history(), request.systemPrompt(),
+				null, resolved.model().maxContextTokens());
+		Prompt prompt =
+				new Prompt(messages, options);
 		return resolved.chatModel().stream(prompt)
 				.timeout(STREAM_TIMEOUT)
 				.map(resp -> extractText(resp))
 				.filter(text -> text != null && !text.isEmpty())
-				.doOnComplete(() -> log.info("流式请求结束 → 供应商={}, 模型={}",
+				.doOnComplete(() -> log.info("流式请求结束(旧路径) → 供应商={}, 模型={}",
 						resolved.provider().providerId(), resolved.model().id()))
-				.doOnError(err -> log.warn("流式请求异常 → 供应商={}, 模型={}: {}",
+				.doOnError(err -> log.warn("流式请求异常(旧路径) → 供应商={}, 模型={}: {}",
 						resolved.provider().providerId(), resolved.model().id(), err.getMessage()));
+	}
+
+	private String resolveSystemPrompt(ChatRequest request) {
+		return (request.systemPrompt() != null && !request.systemPrompt().isBlank())
+				? request.systemPrompt()
+				: contextAssembler.defaultSystemPrompt();
+	}
+
+	private void applyLongTermAdvisor(
+			ChatClient.AdvisorSpec a, ChatRequest request) {
+		LongTermMemoryConfig.LongTermMemoryAdvisorFactory factory =
+				longTermFactory.getIfAvailable();
+		if (factory == null) {
+			return;
+		}
+		// 按 userId 维度隔离长期记忆检索，避免跨用户污染；每次请求独立构造 advisor，不串线
+		Advisor advisor = factory.forUser(request.resolveUserId());
+		if (advisor == null) {
+			return;
+		}
+		a.advisors(advisor);
 	}
 
 	private ChatOptions buildChatOptions(ResolvedModel resolved) {
@@ -83,42 +238,42 @@ public class ChatService {
 		String providerId = resolved.provider().providerId().toLowerCase();
 
 		if (providerId.contains("deepseek")) {
-			return org.springframework.ai.deepseek.DeepSeekChatOptions.builder()
+			return DeepSeekChatOptions.builder()
 					.model(modelName)
 					.maxTokens(4096)
 					.build();
 		}
 		if (providerId.contains("openai")) {
-			return org.springframework.ai.openai.OpenAiChatOptions.builder()
+			return OpenAiChatOptions.builder()
 					.model(modelName)
 					.maxTokens(4096)
 					.build();
 		}
 		if (providerId.contains("google") || providerId.contains("gemini")) {
-			return org.springframework.ai.google.genai.GoogleGenAiChatOptions.builder()
+			return GoogleGenAiChatOptions.builder()
 					.model(modelName)
 					.maxOutputTokens(4096)
 					.build();
 		}
 		if (providerId.contains("anthropic") || providerId.contains("claude")) {
-			return org.springframework.ai.anthropic.AnthropicChatOptions.builder()
+			return AnthropicChatOptions.builder()
 					.model(modelName)
 					.maxTokens(4096)
 					.build();
 		}
 		if (providerId.contains("ollama")) {
-			return org.springframework.ai.ollama.api.OllamaChatOptions.builder()
+			return OllamaChatOptions.builder()
 					.model(modelName)
 					.maxTokens(4096)
 					.build();
 		}
-		return org.springframework.ai.openai.OpenAiChatOptions.builder()
+		return OpenAiChatOptions.builder()
 				.model(modelName)
 				.maxTokens(4096)
 				.build();
 	}
 
-	private String extractText(org.springframework.ai.chat.model.ChatResponse resp) {
+	private String extractText(ChatResponse resp) {
 		if (resp == null) {
 			return "";
 		}

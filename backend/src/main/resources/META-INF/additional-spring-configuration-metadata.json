@@ -1,0 +1,39 @@
+{
+  "properties": [
+    {
+      "name": "app.ai.first-class.*.models[].default",
+      "type": "java.lang.Boolean",
+      "description": "是否为所属供应商的默认模型"
+    },
+    {
+      "name": "app.ai.first-class.*.models[*].default",
+      "type": "java.lang.Boolean",
+      "description": "是否为所属供应商的默认模型"
+    },
+    {
+      "name": "app.ai.first-class.*.models.default",
+      "type": "java.lang.Boolean",
+      "description": "是否为所属供应商的默认模型"
+    },
+    {
+      "name": "app.ai.second-class[].models[].default",
+      "type": "java.lang.Boolean",
+      "description": "是否为所属供应商的默认模型"
+    },
+    {
+      "name": "app.ai.second-class[*].models[*].default",
+      "type": "java.lang.Boolean",
+      "description": "是否为所属供应商的默认模型"
+    },
+    {
+      "name": "app.ai.second-class.*.models[].default",
+      "type": "java.lang.Boolean",
+      "description": "是否为所属供应商的默认模型"
+    },
+    {
+      "name": "app.ai.second-class.*.models[*].default",
+      "type": "java.lang.Boolean",
+      "description": "是否为所属供应商的默认模型"
+    }
+  ]
+}

@@ -43,8 +43,14 @@ public class ChatController {
 
 	@PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	public Flux<String> stream(@RequestBody ChatRequest request) {
-		return chatService.streamChat(request)
-				.map(chunk -> "{\"content\":" + escapeJson(chunk) + "}")
+		// 记忆路径：先把后端最终使用的 conversationId 以元数据帧透传给前端，便于多轮串联
+		String conversationId = chatService.resolveConversationId(request);
+		boolean emitConversation = conversationId != null && !conversationId.isBlank();
+		Flux<String> head = emitConversation
+				? Flux.just("{\"type\":\"conversation\",\"conversationId\":" + escapeJson(conversationId) + "}")
+				: Flux.empty();
+		return head.concatWith(chatService.streamChat(request)
+						.map(chunk -> "{\"content\":" + escapeJson(chunk) + "}"))
 				.concatWithValues("[DONE]")
 				.onErrorResume(AiException.class, ex ->
 						Flux.just("{\"error\":true,\"code\":\"" + ex.getErrorCode() + "\",\"message\":"

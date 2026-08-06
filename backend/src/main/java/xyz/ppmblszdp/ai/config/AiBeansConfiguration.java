@@ -1,5 +1,7 @@
 package xyz.ppmblszdp.ai.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,7 +16,9 @@ import xyz.ppmblszdp.ai.registry.FirstClassProviderRegistrar;
 import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.SecondClassProviderRegistrar;
+import xyz.ppmblszdp.ai.spi.CustomChatModelSupplier;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -39,7 +43,7 @@ public class AiBeansConfiguration {
 	}
 
 	@Bean
-	public CustomChatModelFactory customChatModelFactory(Map<String, xyz.ppmblszdp.ai.spi.CustomChatModelSupplier> suppliers) {
+	public CustomChatModelFactory customChatModelFactory(Map<String, CustomChatModelSupplier> suppliers) {
 		return new CustomChatModelFactory(suppliers);
 	}
 
@@ -59,7 +63,7 @@ public class AiBeansConfiguration {
 			FirstClassProviderRegistrar firstClass,
 			SecondClassProviderRegistrar secondClass,
 			AiProviderProperties properties) {
-		Map<String, ProviderDescriptor> all = new java.util.LinkedHashMap<>();
+		Map<String, ProviderDescriptor> all = new LinkedHashMap<>();
 		all.putAll(firstClass.register());
 		all.putAll(secondClass.register());
 
@@ -76,7 +80,7 @@ public class AiBeansConfiguration {
 	}
 
 	private void logRegistry(ProviderRegistry registry) {
-		org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AiBeansConfiguration.class);
+		Logger log = LoggerFactory.getLogger(AiBeansConfiguration.class);
 		log.info("Provider 注册表构建完成，供应商数={}，默认供应商={}，默认模型={}",
 				registry.providers().size(), registry.defaultProviderId(), registry.defaultModelId());
 	}

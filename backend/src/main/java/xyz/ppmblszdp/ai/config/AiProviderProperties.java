@@ -2,6 +2,7 @@ package xyz.ppmblszdp.ai.config;
 
 import jakarta.annotation.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.Name;
 
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,7 @@ public record AiProviderProperties(
 		@Nullable String defaultModel,
 		@Nullable String systemPrompt,
 		@Nullable ContextConfig context,
+		@Nullable MemoryConfig memory,
 		@Nullable Map<String, FirstClassConfig> firstClass,
 		@Nullable List<SecondClassConfig> secondClass
 ) {
@@ -46,6 +48,11 @@ public record AiProviderProperties(
 
 	public List<SecondClassConfig> resolveSecondClass() {
 		return secondClass == null ? List.of() : secondClass;
+	}
+
+	/** 记忆子系统配置（绑定 {@code app.ai.memory.*}）。 */
+	public MemoryConfig resolveMemory() {
+		return memory != null ? memory : MemoryConfig.defaults();
 	}
 
 	/**
@@ -87,6 +94,78 @@ public record AiProviderProperties(
 
 		public double resolveSafetyFactor() {
 			return (safetyFactor != null && safetyFactor >= 1.0d) ? safetyFactor : 1.1d;
+		}
+	}
+
+	/**
+	 * 记忆子系统配置。
+	 *
+	 * @param enabled            记忆路径总开关；false 时 ChatService 退化为旧 history 模式
+	 * @param hotCacheSize       Redis 热缓存保留最近 N 条；同时作为会话记忆 RETRIEVE_SIZE 上限
+	 * @param longTermTopK       长期记忆向量检索 Top-K
+	 * @param conversationTtlDays 会话热缓存在 Redis 的 TTL（天），防止冷数据常驻
+	 * @param rateLimit          基于 Redis 的对话限流配置
+	 */
+	public record MemoryConfig(
+			@Nullable Boolean enabled,
+			@Nullable Integer hotCacheSize,
+			@Name("long-term-top-k") @Nullable Integer longTermTopK,
+			@Nullable Integer conversationTtlDays,
+			@Nullable RateLimitConfig rateLimit
+	) {
+
+		public static MemoryConfig defaults() {
+			return new MemoryConfig(false, 20, 5, 14, null);
+		}
+
+		public boolean isEnabled() {
+			return enabled != null && enabled;
+		}
+
+		public int resolveHotCacheSize() {
+			return (hotCacheSize != null && hotCacheSize > 0) ? hotCacheSize : 20;
+		}
+
+		public int resolveLongTermTopK() {
+			return (longTermTopK != null && longTermTopK > 0) ? longTermTopK : 5;
+		}
+
+		public int resolveConversationTtlDays() {
+			return (conversationTtlDays != null && conversationTtlDays > 0) ? conversationTtlDays : 14;
+		}
+
+		public RateLimitConfig resolveRateLimit() {
+			return rateLimit != null ? rateLimit : RateLimitConfig.defaults();
+		}
+	}
+
+	/**
+	 * 基于 Redis 的对话限流配置（保护上游 API 配额）；Redis 不可用时降级放行。
+	 *
+	 * @param enabled         是否启用限流
+	 * @param capacity        窗口内最大请求数
+	 * @param refillSeconds   限流窗口（秒）
+	 */
+	public record RateLimitConfig(
+			@Nullable Boolean enabled,
+			@Nullable Integer capacity,
+			@Nullable Integer refillSeconds
+	) {
+
+		public static RateLimitConfig defaults() {
+			return new RateLimitConfig(false, 20, 60);
+		}
+
+		public boolean isEnabled() {
+			return enabled != null && enabled;
+		}
+
+		public int resolveCapacity() {
+			return (capacity != null && capacity > 0) ? capacity : 20;
+		}
+
+		public int resolveRefillSeconds() {
+			return (refillSeconds != null && refillSeconds > 0) ? refillSeconds : 60;
 		}
 	}
 

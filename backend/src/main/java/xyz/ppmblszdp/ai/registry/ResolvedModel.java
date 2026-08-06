@@ -1,5 +1,6 @@
 package xyz.ppmblszdp.ai.registry;
 
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 
 /**
@@ -12,4 +13,9 @@ public record ResolvedModel(
 		ProviderDescriptor provider,
 		ModelDescriptor model
 ) {
+
+	/** 记忆路径专用：委托到供应商描述符预构建的 {@link ChatClient}。 */
+	public ChatClient chatClient() {
+		return provider.chatClient();
+	}
 }

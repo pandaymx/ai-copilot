@@ -5,8 +5,20 @@ spring:
   config:
     import:
       - optional:file:.env[.properties] # 让 Spring 原生将 .env 解析为 properties 读取
-  application:
-    name: ai-copilot-backend
+  docker:
+    compose:
+      lifecycle-management: start-only
+      readiness:
+        wait: always
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:ai_copilot}
+    username: ${POSTGRES_USER:ai}
+    password: ${POSTGRES_PASSWORD:ai}
+    driver-class-name: org.postgresql.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
   ai:
     deepseek:
       api-key: ${DEEPSEEK_API_KEY:${SPRING_AI_DEEPSEEK_API_KEY:your_deepseek_api_key_here}}
@@ -27,6 +39,20 @@ spring:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
       chat:
         model: ${OLLAMA_MODEL:llama3}
+    # 会话记忆表（spring_ai_chat_memory）交由 JDBC 记忆 starter 在启动时自动建表；
+    # 向量表（ai_long_term_memory）由 pgvector starter 自动建（含 CREATE EXTENSION IF NOT EXISTS vector）。
+    chat:
+      memory:
+        repository:
+          jdbc:
+            initialize-schema: always
+    vectorstore:
+      pgvector:
+        initialize-schema: true
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
+        dimensions: 1536
+        # embedding 由 configured embedding model 提供；会话消息与长期记忆共用同一 pg 实例
 
 management:
   endpoints:
@@ -147,6 +173,19 @@ app:
             max-context-tokens: 200000
             default: true
 
+    # 记忆子系统配置（会话记忆 JdbcChatMemory + 长期记忆 pgvector + Redis 热缓存/限流）
+    # 仅在 enabled=true 时启用记忆路径；否则 ChatService 退化为旧 history 模式。
+    # 注意：即便未启用记忆，应用也能正常启动（DB/Redis 不可达不阻断启动）。
+    memory:
+      enabled: ${AI_MEMORY_ENABLED:false}        # 记忆路径总开关；false 时完全退化为旧 history 模式
+      hot-cache-size: ${AI_MEMORY_HOT_CACHE_SIZE:20}   # Redis 热缓存保留最近 N 条；同时作为记忆检索条数上限
+      long-term-top-k: ${AI_MEMORY_LONGTERM_TOP_K:5}    # 长期记忆向量检索 Top-K
+      conversation-ttl-days: ${AI_MEMORY_TTL_DAYS:14}  # 会话热缓存在 Redis 的 TTL（天），防止冷数据常驻
+      rate-limit:
+        enabled: ${AI_MEMORY_RATELIMIT_ENABLED:false}  # Redis 限流开关（默认关闭，避免无 Redis 时阻断）
+        capacity: ${AI_MEMORY_RATELIMIT_CAPACITY:20}   # 窗口内最大请求数
+        refill-seconds: ${AI_MEMORY_RATELIMIT_REFILL:60}  # 限流窗口（秒）
+
     # 二等公民：纯 YAML 驱动新增厂商，无需改动 Java 代码。
     # 密钥一律以 ${ENV:占位} 引用；占位值（your_xxx_here）会被识别为未配置而跳过注册。
     second-class:
@@ -209,10 +248,11 @@ app:
       #   supplier: baiduNative
       #   api-key: ${BAIDU_API_KEY:your_baidu_api_key_here}
       #   models:
-      #     - id: ernie-native
-      #       name: ernie-4.0
-      #       display-name: 文心 4.0 (原生)
-      #       max-context-tokens: 8192
-      #       default: true
+      #             - id: ernie-native
+        #       name: ernie-4.0
+        #       display-name: 文心 4.0 (原生)
+        #       max-context-tokens: 8192
+        #       default: true
+
 
 

@@ -1,6 +1,7 @@
 package xyz.ppmblszdp.ai.config;
 
 import jakarta.annotation.Nullable;
+import org.springframework.boot.context.properties.bind.Name;
 
 import java.util.List;
 
@@ -32,7 +33,7 @@ public record ModelConfig(
 		@Nullable List<String> tags,
 		@Nullable Integer maxContextTokens,
 		@Nullable Boolean enabled,
-		@Nullable Boolean defaultModel
+		@Name("default") @Nullable Boolean defaultModel
 ) {
 
 	/**

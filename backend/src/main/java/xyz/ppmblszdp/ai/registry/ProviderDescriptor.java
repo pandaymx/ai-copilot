@@ -1,6 +1,9 @@
 package xyz.ppmblszdp.ai.registry;
 
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+
+import java.util.Map;
 
 /**
  * 注册在 {@link ProviderRegistry} 中的供应商描述符（不可变）。
@@ -17,7 +20,8 @@ public final class ProviderDescriptor {
 	private final String protocol;
 	private final Tier tier;
 	private final ChatModel chatModel;
-	private final java.util.Map<String, ModelDescriptor> models;
+	private final ChatClient chatClient;
+	private final Map<String, ModelDescriptor> models;
 	private final String defaultModelId;
 
 	private ProviderDescriptor(Builder b) {
@@ -26,7 +30,8 @@ public final class ProviderDescriptor {
 		this.protocol = b.protocol;
 		this.tier = b.tier;
 		this.chatModel = b.chatModel;
-		this.models = java.util.Map.copyOf(b.models);
+		this.chatClient = (b.chatClient != null) ? b.chatClient : ChatClient.builder(b.chatModel).build();
+		this.models = Map.copyOf(b.models);
 		this.defaultModelId = b.defaultModelId;
 	}
 
@@ -54,8 +59,16 @@ public final class ProviderDescriptor {
 		return chatModel;
 	}
 
+	/**
+	 * 记忆路径专用：预构建的 {@link ChatClient}（由 {@code ChatClient.builder(chatModel)} 零成本构造）。
+	 * 业务层挂载 Advisor 时复用此实例，避免每次请求重建。
+	 */
+	public ChatClient chatClient() {
+		return chatClient;
+	}
+
 	/** 该供应商下已注册的模型索引（modelId -> 描述符），永不为 null。 */
-	public java.util.Map<String, ModelDescriptor> models() {
+	public Map<String, ModelDescriptor> models() {
 		return models;
 	}
 
@@ -69,7 +82,8 @@ public final class ProviderDescriptor {
 		private String protocol = "openai";
 		private Tier tier = Tier.SECOND_CLASS;
 		private ChatModel chatModel;
-		private java.util.Map<String, ModelDescriptor> models = java.util.Map.of();
+		private ChatClient chatClient;
+		private Map<String, ModelDescriptor> models = Map.of();
 		private String defaultModelId;
 
 		public Builder providerId(String v) {
@@ -99,7 +113,12 @@ public final class ProviderDescriptor {
 			return this;
 		}
 
-		public Builder models(java.util.Map<String, ModelDescriptor> v) {
+		public Builder chatClient(ChatClient v) {
+			this.chatClient = v;
+			return this;
+		}
+
+		public Builder models(Map<String, ModelDescriptor> v) {
 			this.models = v;
 			return this;
 		}
