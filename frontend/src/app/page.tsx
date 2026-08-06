@@ -18,7 +18,10 @@ import {
   type ChatMessage,
   MessageBubble,
 } from "@/components/chat/message-bubble";
-import { type SelectedModel, ModelSelector } from "@/components/chat/model-selector";
+import {
+  ModelSelector,
+  type SelectedModel,
+} from "@/components/chat/model-selector";
 import { type ChatSession, Sidebar } from "@/components/chat/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";

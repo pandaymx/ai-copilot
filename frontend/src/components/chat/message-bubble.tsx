@@ -124,22 +124,26 @@ export function MessageBubble({
         )}
 
         {/* 气泡本文 */}
-        <div
-          className={cn(
-            "relative rounded-2xl px-4 py-3 text-sm shadow-xs transition-all duration-200",
-            isUser
-              ? "rounded-tr-xs bg-zinc-900 font-medium text-white shadow-md shadow-zinc-900/10 dark:bg-zinc-100 dark:text-zinc-900 dark:shadow-none"
-              : "rounded-tl-xs bg-white text-zinc-900 border border-zinc-200/80 shadow-sm dark:bg-zinc-900/80 dark:text-zinc-100 dark:border-zinc-800/80 backdrop-blur-md",
-          )}
-        >
-          {isUser ? (
-            <p className="whitespace-pre-wrap break-words">{message.content}</p>
-          ) : message.content ? (
-            <Markdown content={message.content} />
-          ) : streaming ? (
-            <BreathingCursor />
-          ) : null}
-        </div>
+        {(isUser || message.content || streaming) && (
+          <div
+            className={cn(
+              "relative rounded-2xl px-4 py-3 text-sm shadow-xs transition-all duration-200",
+              isUser
+                ? "rounded-tr-xs bg-zinc-900 font-medium text-white shadow-md shadow-zinc-900/10 dark:bg-zinc-100 dark:text-zinc-900 dark:shadow-none"
+                : "rounded-tl-xs bg-white text-zinc-900 border border-zinc-200/80 shadow-sm dark:bg-zinc-900/80 dark:text-zinc-100 dark:border-zinc-800/80 backdrop-blur-md",
+            )}
+          >
+            {isUser ? (
+              <p className="whitespace-pre-wrap break-words">
+                {message.content}
+              </p>
+            ) : message.content ? (
+              <Markdown content={message.content} />
+            ) : streaming ? (
+              <BreathingCursor />
+            ) : null}
+          </div>
+        )}
 
         {/* AI 消息底栏 Action Bar (Hover 显示) */}
         {!isUser && message.content && (

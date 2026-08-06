@@ -319,7 +319,8 @@ export function ModelSelector({
               </div>
               {catalog.map((p) => {
                 const isActive = p.id === activeProviderId;
-                const isCurrentlySelectedProvider = p.id === currentProvider?.id;
+                const isCurrentlySelectedProvider =
+                  p.id === currentProvider?.id;
                 const meta = getProviderIconAndAccent(p.id);
                 const Icon = meta.icon;
 
@@ -383,7 +384,8 @@ export function ModelSelector({
                 </span>
               </div>
 
-              {activeProviderObj?.models && activeProviderObj.models.length > 0 ? (
+              {activeProviderObj?.models &&
+              activeProviderObj.models.length > 0 ? (
                 activeProviderObj.models.map((m) => {
                   const isSelectedModel =
                     value.provider === activeProviderObj.id &&
