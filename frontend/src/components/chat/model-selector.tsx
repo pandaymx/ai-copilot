@@ -321,9 +321,9 @@ export function ModelSelector({
           </div>
 
           {/* 双级分栏联动主体 */}
-          <div className="mt-2.5 grid grid-cols-12 gap-2.5 min-h-[260px] max-h-[340px]">
+          <div className="mt-2.5 grid grid-cols-12 gap-2.5 h-[340px]">
             {/* 左栏：一级结构 (供应商列表) */}
-            <div className="col-span-5 space-y-1 border-r border-zinc-100 pr-2 dark:border-zinc-800/60 overflow-y-auto scrollbar-hidden">
+            <div className="col-span-5 min-h-0 h-full space-y-1 border-r border-zinc-100 pr-2 dark:border-zinc-800/60 overflow-y-auto overscroll-contain">
               <div className="px-2 py-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
                 1. 供应商 ({catalog.length})
               </div>
@@ -387,7 +387,7 @@ export function ModelSelector({
             </div>
 
             {/* 右栏：二级结构 (指定供应商下的模型卡片) */}
-            <div className="col-span-7 space-y-1.5 overflow-y-auto scrollbar-hidden pl-1">
+            <div className="col-span-7 min-h-0 h-full space-y-1.5 overflow-y-auto overscroll-contain pl-1">
               <div className="flex items-center justify-between px-1 py-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
                 <span>
                   2. 可用模型 ({activeProviderObj?.displayName ?? ""})
