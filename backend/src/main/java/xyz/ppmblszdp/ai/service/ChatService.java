@@ -85,30 +85,36 @@ public class ChatService {
 		if (providerId.contains("deepseek")) {
 			return org.springframework.ai.deepseek.DeepSeekChatOptions.builder()
 					.model(modelName)
+					.maxTokens(4096)
 					.build();
 		}
 		if (providerId.contains("openai")) {
 			return org.springframework.ai.openai.OpenAiChatOptions.builder()
 					.model(modelName)
+					.maxTokens(4096)
 					.build();
 		}
 		if (providerId.contains("google") || providerId.contains("gemini")) {
 			return org.springframework.ai.google.genai.GoogleGenAiChatOptions.builder()
 					.model(modelName)
+					.maxOutputTokens(4096)
 					.build();
 		}
 		if (providerId.contains("anthropic") || providerId.contains("claude")) {
 			return org.springframework.ai.anthropic.AnthropicChatOptions.builder()
 					.model(modelName)
+					.maxTokens(4096)
 					.build();
 		}
 		if (providerId.contains("ollama")) {
 			return org.springframework.ai.ollama.api.OllamaChatOptions.builder()
 					.model(modelName)
+					.maxTokens(4096)
 					.build();
 		}
 		return org.springframework.ai.openai.OpenAiChatOptions.builder()
 				.model(modelName)
+				.maxTokens(4096)
 				.build();
 	}
 
