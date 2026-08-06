@@ -26,6 +26,7 @@ import { type ChatSession, Sidebar } from "@/components/chat/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { useSpringAiStream } from "@/hooks/useSpringAiStream";
+import { fetchTitle } from "@/lib/title";
 
 const STORAGE_KEY = "ai-copilot-sessions";
 const ACTIVE_KEY = "ai-copilot-active";
@@ -89,6 +90,10 @@ function loadSessions(): ChatSession[] {
           return m;
         });
       }
+      // 老数据兼容：未定义 isDefaultTitle 视作 false，避免后续多轮冲掉已有标题
+      if (typeof item.isDefaultTitle !== "boolean") {
+        item.isDefaultTitle = false;
+      }
       sanitized.push(item);
     }
     return sanitized;
@@ -130,6 +135,45 @@ export default function Home() {
         }
       }
     },
+    // 流完整结束后（成功/异常均触发）：同步会话列表，并对默认标题会话异步生成 AI 标题。
+    // 此处 finalContent 为闭包内最終累计文本，避免 useEffect 监听 content 的闭包/重复触发问题。
+    onFinish: (finalContent) => {
+      const liveId = liveIdRef.current;
+      if (!liveId || !activeId) return;
+      liveIdRef.current = null;
+      const question = liveUserTextRef.current;
+      liveUserTextRef.current = "";
+
+      setSessions((prev) =>
+        prev.map((s) => {
+          if (s.id !== activeId) return s;
+          const updatedMessages = (s.messages ?? []).map((m) =>
+            m.id === liveId ? { ...m, content: finalContent } : m,
+          );
+          return { ...s, messages: updatedMessages, updatedAt: Date.now() };
+        }),
+      );
+
+      // 仅当标题仍为自动生成（未被用户重命名、也未被 AI 改写）时才更新标题
+      const target = sessionsRef.current.find((s) => s.id === activeId);
+      if (!target || target.isDefaultTitle !== true) return;
+
+      void (async () => {
+        const aiTitle = await fetchTitle({
+          message: question,
+          answer: finalContent,
+          provider: model.provider,
+          model: model.model,
+        });
+        setSessions((prev) =>
+          prev.map((s) => {
+            if (s.id !== activeId || s.isDefaultTitle !== true) return s;
+            const title = aiTitle ?? deriveTitle(finalContent);
+            return { ...s, title, isDefaultTitle: false, updatedAt: Date.now() };
+          }),
+        );
+      })();
+    },
   });
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -148,6 +192,13 @@ export default function Home() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const liveIdRef = useRef<string | null>(null);
+  // 当前流式轮次对应的用户问题文本，用于流结束后生成标题
+  const liveUserTextRef = useRef<string>("");
+  // 最新 sessions 的引用，供 onFinish 闭包读取最新标题状态，避免闭包捕获过期值
+  const sessionsRef = useRef<ChatSession[]>([]);
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
 
   const handlePickPrompt = (text: string) => {
     setInput(text);
@@ -218,30 +269,6 @@ export default function Home() {
     );
   }, [content]);
 
-  // 流式完成后持久化同步会话列表
-  useEffect(() => {
-    if (!isStreaming && liveIdRef.current && activeId) {
-      const liveId = liveIdRef.current;
-      liveIdRef.current = null;
-      setSessions((prev) =>
-        prev.map((s) => {
-          if (s.id !== activeId) return s;
-          const updatedMessages = (s.messages ?? []).map((m) =>
-            m.id === liveId ? { ...m, content } : m,
-          );
-          const newTitle =
-            s.title === "新会话" ? deriveTitle(content) : s.title;
-          return {
-            ...s,
-            title: newTitle,
-            messages: updatedMessages,
-            updatedAt: Date.now(),
-          };
-        }),
-      );
-    }
-  }, [isStreaming, content, activeId]);
-
   // 自适应文本框高度
   // biome-ignore lint/correctness/useExhaustiveDependencies: 高度随 input 重新计算
   useEffect(() => {
@@ -273,7 +300,9 @@ export default function Home() {
 
   function renameSession(id: string, newTitle: string) {
     setSessions((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, title: newTitle } : s)),
+      prev.map((s) =>
+        s.id === id ? { ...s, title: newTitle, isDefaultTitle: false } : s,
+      ),
     );
   }
 
@@ -306,6 +335,7 @@ export default function Home() {
         title: deriveTitle(text),
         updatedAt: Date.now(),
         messages: next,
+        isDefaultTitle: true,
       };
       setActiveId(currentConvId);
       setSessions((prev) => [newSession, ...prev]);
@@ -324,6 +354,7 @@ export default function Home() {
 
     setMessages(next);
     setInput("");
+    liveUserTextRef.current = text;
     send(text, {
       provider: model.provider,
       model: model.model,

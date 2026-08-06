@@ -23,6 +23,12 @@ export interface ChatSession {
   updatedAt: number;
   /** 持久化的消息历史（仅用于存储，列表中不展示）。 */
   messages?: ChatMessage[];
+  /**
+   * 标志位：true=标题为自动生成（首轮用问题生成），可在 AI 回答完成后被改写；
+   * false=用户手动重命名或已被 AI 改写，不应被后续轮次覆盖。
+   * 老数据未定义时一律视作 false（见 loadSessions）。
+   */
+  isDefaultTitle?: boolean;
 }
 
 interface SidebarProps {

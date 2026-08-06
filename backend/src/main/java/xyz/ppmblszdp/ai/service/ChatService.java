@@ -237,33 +237,40 @@ public class ChatService {
 		String modelName = resolved.model().modelName();
 		String providerId = resolved.provider().providerId().toLowerCase();
 
+		// 全局默认采样温度 0.2：偏向确定性、稳定的回复
 		if (providerId.contains("deepseek")) {
 			return DeepSeekChatOptions.builder()
 					.model(modelName)
+					.temperature(0.2)
 					.build();
 		}
 		if (providerId.contains("openai")) {
 			return OpenAiChatOptions.builder()
 					.model(modelName)
+					.temperature(0.2)
 					.build();
 		}
 		if (providerId.contains("google") || providerId.contains("gemini")) {
 			return GoogleGenAiChatOptions.builder()
 					.model(modelName)
+					.temperature(0.2)
 					.build();
 		}
 		if (providerId.contains("anthropic") || providerId.contains("claude")) {
 			return AnthropicChatOptions.builder()
 					.model(modelName)
+					.temperature(0.2)
 					.build();
 		}
 		if (providerId.contains("ollama")) {
 			return OllamaChatOptions.builder()
 					.model(modelName)
+					.temperature(0.2)
 					.build();
 		}
 		return OpenAiChatOptions.builder()
 				.model(modelName)
+				.temperature(0.2)
 				.build();
 	}
 

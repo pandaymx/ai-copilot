@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,6 +17,8 @@ import xyz.ppmblszdp.ai.factory.AnthropicCompatibleChatModelFactory;
 import xyz.ppmblszdp.ai.factory.ChatModelFactory;
 import xyz.ppmblszdp.ai.factory.CustomChatModelFactory;
 import xyz.ppmblszdp.ai.factory.OpenAiCompatibleChatModelFactory;
+import xyz.ppmblszdp.ai.memory.NoOpEmbeddingModel;
+import xyz.ppmblszdp.ai.memory.SafeEmbeddingModel;
 import xyz.ppmblszdp.ai.registry.FirstClassProviderRegistrar;
 import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
@@ -56,28 +59,28 @@ public class AiBeansConfiguration {
 	public EmbeddingModel primaryEmbeddingModel(
 			@Qualifier("openAiEmbeddingModel") ObjectProvider<EmbeddingModel> openAiEmbeddingModel,
 			@Qualifier("ollamaEmbeddingModel") ObjectProvider<EmbeddingModel> ollamaEmbeddingModel,
-			@org.springframework.beans.factory.annotation.Value("${spring.ai.openai.api-key:}") String openaiApiKey) {
+			@Value("${spring.ai.openai.api-key:}") String openaiApiKey) {
 		Logger log = LoggerFactory.getLogger(AiBeansConfiguration.class);
 		boolean openaiKeyValid = ApiKeyValidator.isValid(openaiApiKey);
 		if (openaiKeyValid) {
 			EmbeddingModel openAi = openAiEmbeddingModel.getIfAvailable();
 			if (openAi != null) {
 				log.info("EmbeddingModel 选择: OpenAI (已包装 SafeEmbeddingModel)");
-				return new xyz.ppmblszdp.ai.memory.SafeEmbeddingModel(openAi);
+				return new SafeEmbeddingModel(openAi);
 			}
 		}
 		EmbeddingModel ollama = ollamaEmbeddingModel.getIfAvailable();
 		if (ollama != null) {
 			log.info("EmbeddingModel 选择: Ollama (已包装 SafeEmbeddingModel)");
-			return new xyz.ppmblszdp.ai.memory.SafeEmbeddingModel(ollama);
+			return new SafeEmbeddingModel(ollama);
 		}
 		EmbeddingModel openAi = openAiEmbeddingModel.getIfAvailable();
 		if (openAi != null) {
 			log.warn("OpenAI API Key 未配置或无效，且未检测到 Ollama Embedding，启用 SafeEmbeddingModel(OpenAI) 容错静默降级");
-			return new xyz.ppmblszdp.ai.memory.SafeEmbeddingModel(openAi);
+			return new SafeEmbeddingModel(openAi);
 		}
 		log.warn("未检测到可用的 EmbeddingModel Bean，启用 NoOpEmbeddingModel 容错降级");
-		return new xyz.ppmblszdp.ai.memory.SafeEmbeddingModel(new xyz.ppmblszdp.ai.memory.NoOpEmbeddingModel());
+		return new SafeEmbeddingModel(new NoOpEmbeddingModel());
 	}
 
 	@Bean

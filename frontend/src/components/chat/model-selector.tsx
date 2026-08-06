@@ -188,6 +188,16 @@ export function ModelSelector({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // 自定义模型输入（允许在选定供应商下自由指定任意模型名）
+  const [customModelInput, setCustomModelInput] = useState<string>(
+    catalog.find((p) => p.id === value.provider)?.models.some((m) => m.id === value.model)
+      ? ""
+      : value.model || "",
+  );
+  const isCustomSelected =
+    !!value.model &&
+    !(catalog.find((p) => p.id === value.provider)?.models.some((m) => m.id === value.model) ?? false);
+
   // 尝试从后端获取动态模型清单 /api/models
   useEffect(() => {
     if (initialProviders && initialProviders.length > 0) return;
@@ -445,6 +455,52 @@ export function ModelSelector({
                   当前供应商暂无可用模型
                 </div>
               )}
+
+              {/* 自定义模型：允许直接输入该供应商下的任意模型名 */}
+              <div className="mt-1.5 rounded-xl border border-dashed border-indigo-300/70 bg-indigo-50/40 p-2.5 dark:border-indigo-500/40 dark:bg-indigo-950/25">
+                <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                  <Sparkles className="size-3" />
+                  自定义模型
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={customModelInput}
+                    onChange={(e) => setCustomModelInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && customModelInput.trim()) {
+                        onChange({
+                          provider: activeProviderObj.id,
+                          model: customModelInput.trim(),
+                        });
+                        setOpen(false);
+                      }
+                    }}
+                    placeholder="输入模型名，如 gpt-4o-mini"
+                    className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-[11px] text-zinc-800 outline-none transition-colors placeholder:text-zinc-400 focus:border-indigo-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                  />
+                  <button
+                    type="button"
+                    disabled={!customModelInput.trim()}
+                    onClick={() => {
+                      if (!customModelInput.trim()) return;
+                      onChange({
+                        provider: activeProviderObj.id,
+                        model: customModelInput.trim(),
+                      });
+                      setOpen(false);
+                    }}
+                    className="shrink-0 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    使用
+                  </button>
+                </div>
+                {isCustomSelected && (
+                  <p className="mt-1.5 text-[10px] text-emerald-600 dark:text-emerald-400">
+                    当前为自定义模型：{value.model}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </div>

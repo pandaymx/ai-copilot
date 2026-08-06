@@ -11,8 +11,11 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
+import xyz.ppmblszdp.ai.dto.TitleRequest;
+import xyz.ppmblszdp.ai.dto.TitleResponse;
 import xyz.ppmblszdp.ai.exception.AiException;
 import xyz.ppmblszdp.ai.service.ChatService;
+import xyz.ppmblszdp.ai.service.TitleService;
 
 /**
  * 聊天接口控制器。
@@ -30,9 +33,11 @@ public class ChatController {
 	private static final Logger log = LoggerFactory.getLogger(ChatController.class);
 
 	private final ChatService chatService;
+	private final TitleService titleService;
 
-	public ChatController(ChatService chatService) {
+	public ChatController(ChatService chatService, TitleService titleService) {
 		this.chatService = chatService;
+		this.titleService = titleService;
 	}
 
 	@PostMapping
@@ -60,6 +65,15 @@ public class ChatController {
 					return Flux.just("{\"error\":true,\"code\":\"UPSTREAM_ERROR\",\"message\":"
 							+ escapeJson(ex.getMessage()) + "}");
 				});
+	}
+
+	@PostMapping(value = "/title", consumes = MediaType.APPLICATION_JSON_VALUE,
+			produces = MediaType.APPLICATION_JSON_VALUE)
+	public Mono<TitleResponse> title(@RequestBody TitleRequest request) {
+		return titleService
+				.generateTitle(request.message(), request.answer(), request.provider(), request.model())
+				.map(TitleResponse::new)
+				.defaultIfEmpty(new TitleResponse(""));
 	}
 
 	private static String escapeJson(String s) {

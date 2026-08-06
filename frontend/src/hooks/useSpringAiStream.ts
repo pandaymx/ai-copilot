@@ -29,6 +29,8 @@ export interface UseSpringAiStreamOptions {
   onConversationId?: (conversationId: string) => void;
   /** 在请求前对消息历史做处理（如裁剪）。 */
   onBeforeSend?: (history: SpringAiStreamMessage[]) => SpringAiStreamMessage[];
+  /** 流完整结束后回调（成功完成或异常均触发），参数为最终累计文本。 */
+  onFinish?: (finalContent: string) => void;
 }
 
 export interface UseSpringAiStreamResult {
@@ -110,6 +112,7 @@ export function useSpringAiStream(
     parseChunk = defaultParseChunk,
     onConversationId,
     onBeforeSend,
+    onFinish,
   } = options;
 
   const [content, setContent] = useState("");
@@ -213,6 +216,7 @@ export function useSpringAiStream(
           if (abortRef.current === controller) {
             abortRef.current = null;
             setLoading(false);
+            onFinish?.(contentRef.current);
           }
         }
       };
@@ -226,6 +230,7 @@ export function useSpringAiStream(
       parseChunk,
       onConversationId,
       onBeforeSend,
+      onFinish,
       loading,
     ],
   );

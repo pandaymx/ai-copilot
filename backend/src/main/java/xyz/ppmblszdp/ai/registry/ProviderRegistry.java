@@ -63,7 +63,15 @@ public final class ProviderRegistry {
 		if (modelId != null && !modelId.isBlank()) {
 			ModelDescriptor model = provider.models().get(modelId.trim());
 			if (model == null) {
-				throw new ModelNotFoundException(providerId, modelId, new ArrayList<>(provider.models().keySet()));
+				// 支持自定义模型：provider 已注册但 model 不在预设清单中时，
+				// 以传入的 modelId 作为下发给厂商 API 的模型名，便于用户自由指定任意模型。
+				model = ModelDescriptor.builder()
+						.id(modelId.trim())
+						.modelName(modelId.trim())
+						.displayName(modelId.trim())
+						.description("自定义模型")
+						.isDefault(false)
+						.build();
 			}
 			return new ResolvedModel(provider.chatModel(), provider, model);
 		}
