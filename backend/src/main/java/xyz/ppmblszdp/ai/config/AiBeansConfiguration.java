@@ -55,16 +55,29 @@ public class AiBeansConfiguration {
 	@Primary
 	public EmbeddingModel primaryEmbeddingModel(
 			@Qualifier("openAiEmbeddingModel") ObjectProvider<EmbeddingModel> openAiEmbeddingModel,
-			@Qualifier("ollamaEmbeddingModel") ObjectProvider<EmbeddingModel> ollamaEmbeddingModel) {
-		EmbeddingModel model = openAiEmbeddingModel.getIfAvailable();
-		if (model != null) {
-			return model;
+			@Qualifier("ollamaEmbeddingModel") ObjectProvider<EmbeddingModel> ollamaEmbeddingModel,
+			@org.springframework.beans.factory.annotation.Value("${spring.ai.openai.api-key:}") String openaiApiKey) {
+		Logger log = LoggerFactory.getLogger(AiBeansConfiguration.class);
+		boolean openaiKeyValid = ApiKeyValidator.isValid(openaiApiKey);
+		if (openaiKeyValid) {
+			EmbeddingModel openAi = openAiEmbeddingModel.getIfAvailable();
+			if (openAi != null) {
+				log.info("EmbeddingModel 选择: OpenAI (已包装 SafeEmbeddingModel)");
+				return new xyz.ppmblszdp.ai.memory.SafeEmbeddingModel(openAi);
+			}
 		}
 		EmbeddingModel ollama = ollamaEmbeddingModel.getIfAvailable();
 		if (ollama != null) {
-			return ollama;
+			log.info("EmbeddingModel 选择: Ollama (已包装 SafeEmbeddingModel)");
+			return new xyz.ppmblszdp.ai.memory.SafeEmbeddingModel(ollama);
 		}
-		throw new IllegalStateException("未找到可用的 EmbeddingModel Bean");
+		EmbeddingModel openAi = openAiEmbeddingModel.getIfAvailable();
+		if (openAi != null) {
+			log.warn("OpenAI API Key 未配置或无效，且未检测到 Ollama Embedding，启用 SafeEmbeddingModel(OpenAI) 容错静默降级");
+			return new xyz.ppmblszdp.ai.memory.SafeEmbeddingModel(openAi);
+		}
+		log.warn("未检测到可用的 EmbeddingModel Bean，启用 NoOpEmbeddingModel 容错降级");
+		return new xyz.ppmblszdp.ai.memory.SafeEmbeddingModel(new xyz.ppmblszdp.ai.memory.NoOpEmbeddingModel());
 	}
 
 	@Bean

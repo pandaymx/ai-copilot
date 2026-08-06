@@ -43,7 +43,8 @@ public class LongTermMemoryConfig {
 			log.warn("未检测到 VectorStore（pgvector 未装配），长期记忆降级为空（不注入长期记忆）");
 			return (userId) -> null;
 		}
-		log.info("长期记忆工厂装配完成：pgvector 检索 TopK={}", topK);
+		VectorStore safeVs = new SafeVectorStore(vs);
+		log.info("长期记忆工厂装配完成：SafeVectorStore (pgvector 检索 TopK={})", topK);
 		return (userId) -> {
 			FilterExpressionBuilder b = new FilterExpressionBuilder();
 			var filter = b.eq("userId", userId).build();
@@ -51,7 +52,7 @@ public class LongTermMemoryConfig {
 					.topK(topK)
 					.filterExpression(filter)
 					.build();
-			return QuestionAnswerAdvisor.builder(vs)
+			return QuestionAnswerAdvisor.builder(safeVs)
 					.searchRequest(search)
 					.build();
 		};
