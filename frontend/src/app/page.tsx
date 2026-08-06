@@ -241,7 +241,7 @@ export default function Home() {
   const handleSend = (textOverride?: string) => {
     const text = (textOverride ?? input).trim();
     if (!text || isStreaming) return;
-    const liveId = "assistant-live";
+    const liveId = nextId();
     liveIdRef.current = liveId;
     const next: ChatMessage[] = [
       ...messages,
@@ -366,7 +366,7 @@ export default function Home() {
                 <MessageBubble
                   key={m.id}
                   message={m}
-                  streaming={m.id === "assistant-live" && isStreaming}
+                  streaming={m.id === liveIdRef.current && isStreaming}
                   onRegenerate={() =>
                     handleSend(messages[messages.length - 2]?.content)
                   }

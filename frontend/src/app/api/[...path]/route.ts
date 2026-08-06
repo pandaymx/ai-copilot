@@ -1,5 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 const BACKEND_BASE_URL =
   process.env.BACKEND_URL || "http://localhost:8084/api/:path*";
 
@@ -33,14 +35,27 @@ export async function POST(
       backendRes.headers.get("content-type")?.includes("text/event-stream") ??
       path.includes("stream");
 
+    if (isSse && backendRes.body) {
+      const { readable, writable } = new TransformStream();
+      backendRes.body.pipeTo(writable).catch(() => {});
+
+      return new Response(readable, {
+        status: backendRes.status,
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          "X-Accel-Buffering": "no",
+          "X-Content-Type-Options": "nosniff",
+          Connection: "keep-alive",
+        },
+      });
+    }
+
     return new Response(backendRes.body, {
       status: backendRes.status,
       headers: {
-        "Content-Type": isSse
-          ? "text/event-stream; charset=utf-8"
-          : backendRes.headers.get("content-type") || "application/json",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
+        "Content-Type":
+          backendRes.headers.get("content-type") || "application/json",
       },
     });
   } catch (err) {
