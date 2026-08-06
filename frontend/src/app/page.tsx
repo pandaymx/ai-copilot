@@ -154,38 +154,40 @@ export default function Home() {
     if (!isStreaming) handleSend(text);
   };
 
-  const createSession = useCallback(() => {
-    const id = nextSessionId();
-    const session: ChatSession = {
-      id,
-      title: "新会话",
-      updatedAt: Date.now(),
-      messages: [],
-    };
-    setSessions((prev) => [session, ...prev]);
-    setActiveId(id);
+  const goToRootDraft = useCallback(() => {
+    stop();
+    liveIdRef.current = null;
+    setActiveId(null);
     setMessages([]);
-    localStorage.setItem(ACTIVE_KEY, id);
-  }, []);
+    setInput("");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(ACTIVE_KEY);
+    }
+  }, [stop]);
 
-  // 初始化：恢复会话或新建首个会话 & 恢复上次选择的模型
+  // 初始化：恢复上次活动会话（若存在）或默认保持草稿根目录 & 恢复上次选择的模型
   useEffect(() => {
     const savedModel = loadSavedModel();
     setModel(savedModel);
 
     const restored = loadSessions();
+    setSessions(restored);
+
     const activeRaw =
       typeof window !== "undefined" ? localStorage.getItem(ACTIVE_KEY) : null;
-    if (restored.length > 0) {
-      setSessions(restored);
-      const aid = activeRaw ?? restored[0].id;
-      setActiveId(aid);
-      const active = restored.find((s) => s.id === aid);
+    if (activeRaw && restored.some((s) => s.id === activeRaw)) {
+      setActiveId(activeRaw);
+      const active = restored.find((s) => s.id === activeRaw);
       if (active) setMessages(active.messages ?? []);
     } else {
-      createSession();
+      // 默认转到根目录草稿状态
+      setActiveId(null);
+      setMessages([]);
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(ACTIVE_KEY);
+      }
     }
-  }, [createSession]);
+  }, []);
 
   // 模型选择持久化
   useEffect(() => {
@@ -196,7 +198,7 @@ export default function Home() {
 
   // 会话持久化
   useEffect(() => {
-    if (sessions.length > 0) {
+    if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
     }
   }, [sessions]);
@@ -218,7 +220,7 @@ export default function Home() {
 
   // 流式完成后持久化同步会话列表
   useEffect(() => {
-    if (!isStreaming && liveIdRef.current) {
+    if (!isStreaming && liveIdRef.current && activeId) {
       const liveId = liveIdRef.current;
       liveIdRef.current = null;
       setSessions((prev) =>
@@ -263,27 +265,10 @@ export default function Home() {
   }
 
   function deleteSession(id: string) {
-    setSessions((prev) => {
-      const next = prev.filter((s) => s.id !== id);
-      if (next.length === 0) {
-        const newSession: ChatSession = {
-          id: nextSessionId(),
-          title: "新会话",
-          updatedAt: Date.now(),
-          messages: [],
-        };
-        setActiveId(newSession.id);
-        setMessages([]);
-        localStorage.setItem(ACTIVE_KEY, newSession.id);
-        return [newSession];
-      }
-      if (id === activeId) {
-        setActiveId(next[0].id);
-        setMessages(next[0].messages ?? []);
-        localStorage.setItem(ACTIVE_KEY, next[0].id);
-      }
-      return next;
-    });
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+    if (id === activeId) {
+      goToRootDraft();
+    }
   }
 
   function renameSession(id: string, newTitle: string) {
@@ -295,6 +280,7 @@ export default function Home() {
   const handleSend = (textOverride?: string) => {
     const text = (textOverride ?? input).trim();
     if (!text || isStreaming) return;
+
     const liveId = nextId();
     liveIdRef.current = liveId;
 
@@ -309,17 +295,39 @@ export default function Home() {
       { id: nextId(), role: "user", content: text },
       { id: liveId, role: "assistant", content: "" },
     ];
+
+    let currentConvId = activeId;
+
+    if (!currentConvId) {
+      // 处于根目录草稿状态时，发起对话才创建并保存会话
+      currentConvId = nextSessionId();
+      const newSession: ChatSession = {
+        id: currentConvId,
+        title: deriveTitle(text),
+        updatedAt: Date.now(),
+        messages: next,
+      };
+      setActiveId(currentConvId);
+      setSessions((prev) => [newSession, ...prev]);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(ACTIVE_KEY, currentConvId);
+      }
+    } else {
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === currentConvId
+            ? { ...s, messages: next, updatedAt: Date.now() }
+            : s,
+        ),
+      );
+    }
+
     setMessages(next);
-    setSessions((prev) =>
-      prev.map((s) =>
-        s.id === activeId ? { ...s, messages: next, updatedAt: Date.now() } : s,
-      ),
-    );
     setInput("");
     send(text, {
       provider: model.provider,
       model: model.model,
-      conversationId: activeId ?? undefined,
+      conversationId: currentConvId,
       history: historyPayload,
     });
   };
@@ -337,10 +345,7 @@ export default function Home() {
   };
 
   const handleReset = () => {
-    stop();
-    liveIdRef.current = null;
-    setMessages([]);
-    setInput("");
+    goToRootDraft();
   };
 
   return (
@@ -350,7 +355,7 @@ export default function Home() {
         activeId={activeId}
         collapsed={collapsed}
         onSelect={selectSession}
-        onNew={createSession}
+        onNew={goToRootDraft}
         onDelete={deleteSession}
         onRename={renameSession}
         onToggleCollapsed={() => setCollapsed((c) => !c)}
