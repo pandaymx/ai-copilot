@@ -119,6 +119,17 @@ function loadSavedModel(): SelectedModel {
 export default function Home() {
   const { content, loading, error, send, stop } = useSpringAiStream({
     endpoint: "/api/chat/stream",
+    onConversationId: (serverConvId) => {
+      if (serverConvId && activeId && serverConvId !== activeId) {
+        setActiveId(serverConvId);
+        setSessions((prev) =>
+          prev.map((s) => (s.id === activeId ? { ...s, id: serverConvId } : s)),
+        );
+        if (typeof window !== "undefined") {
+          localStorage.setItem(ACTIVE_KEY, serverConvId);
+        }
+      }
+    },
   });
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -286,8 +297,15 @@ export default function Home() {
     if (!text || isStreaming) return;
     const liveId = nextId();
     liveIdRef.current = liveId;
+
+    const isRegenerate = Boolean(textOverride);
+    const historySource = isRegenerate ? messages.slice(0, -2) : messages;
+    const historyPayload = historySource
+      .filter((m) => m.content.trim() !== "")
+      .map((m) => ({ role: m.role, content: m.content }));
+
     const next: ChatMessage[] = [
-      ...messages,
+      ...historySource,
       { id: nextId(), role: "user", content: text },
       { id: liveId, role: "assistant", content: "" },
     ];
@@ -298,7 +316,12 @@ export default function Home() {
       ),
     );
     setInput("");
-    send(text, { provider: model.provider, model: model.model });
+    send(text, {
+      provider: model.provider,
+      model: model.model,
+      conversationId: activeId ?? undefined,
+      history: historyPayload,
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -343,49 +366,51 @@ export default function Home() {
         />
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col bg-transparent">
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-transparent">
         {/* 顶部 Header */}
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200/60 bg-white/70 px-4 py-3 backdrop-blur-xl dark:border-zinc-800/60 dark:bg-zinc-950/70 sm:px-6">
-          <div className="flex items-center gap-3">
-            {collapsed && (
+        <header className="shrink-0 z-10 border-b border-zinc-200/60 bg-white/70 backdrop-blur-xl dark:border-zinc-800/60 dark:bg-zinc-950/70">
+          <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3 sm:px-6">
+            <div className="flex items-center gap-3">
+              {collapsed && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-zinc-600 dark:text-zinc-300"
+                  onClick={() => setCollapsed(false)}
+                  aria-label="打开侧边栏"
+                >
+                  <PanelLeftOpen className="size-4" />
+                </Button>
+              )}
+              <div className="flex items-center gap-2">
+                <span className="relative flex size-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
+                </span>
+                <h1 className="font-heading text-sm font-bold tracking-tight text-zinc-800 dark:text-zinc-100">
+                  Spring AI Copilot
+                </h1>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
               <Button
                 variant="ghost"
-                size="icon-sm"
-                className="md:hidden text-zinc-600 dark:text-zinc-300"
-                onClick={() => setCollapsed(false)}
-                aria-label="打开侧边栏"
+                size="sm"
+                onClick={handleReset}
+                disabled={isStreaming || messages.length === 0}
+                className="gap-1.5 text-xs text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
               >
-                <PanelLeftOpen className="size-4" />
+                <RotateCcw className="size-3.5" />
+                清空
               </Button>
-            )}
-            <div className="flex items-center gap-2">
-              <span className="relative flex size-2.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
-              </span>
-              <h1 className="font-heading text-sm font-bold tracking-tight text-zinc-800 dark:text-zinc-100">
-                Spring AI Copilot
-              </h1>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleReset}
-              disabled={isStreaming || messages.length === 0}
-              className="gap-1.5 text-xs text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-            >
-              <RotateCcw className="size-3.5" />
-              清空
-            </Button>
           </div>
         </header>
 
         {/* 错误提示卡片 */}
         {hasError && (
-          <div className="mx-auto mt-4 w-full max-w-3xl px-4 sm:px-6">
+          <div className="mx-auto mt-4 w-full max-w-3xl shrink-0 px-4 sm:px-6">
             <div className="flex items-start gap-2.5 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs text-rose-600 dark:text-rose-400 shadow-sm backdrop-blur-md">
               <AlertTriangle className="mt-0.5 size-4 shrink-0" />
               <span>
@@ -398,13 +423,13 @@ export default function Home() {
 
         {/* 主消息列表区 */}
         <main
-          className="flex flex-1 flex-col overflow-y-auto scroll-smooth scrollbar-hidden"
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-smooth scrollbar-hidden"
           aria-live="polite"
         >
           {messages.length === 0 ? (
             <EmptyState onPickPrompt={handlePickPrompt} />
           ) : (
-            <div className="py-4">
+            <div className="mx-auto w-full max-w-3xl py-4">
               {messages.map((m) => (
                 <MessageBubble
                   key={m.id}

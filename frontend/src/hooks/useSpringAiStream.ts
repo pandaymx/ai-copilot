@@ -25,6 +25,8 @@ export interface UseSpringAiStreamOptions {
    * JSON 解析失败时应返回 null，不要回退为原文追加，以免半截 JSON 造成乱码。
    */
   parseChunk?: (data: string) => string | null;
+  /** 在收到后端返回的会话 ID 时回调 */
+  onConversationId?: (conversationId: string) => void;
   /** 在请求前对消息历史做处理（如裁剪）。 */
   onBeforeSend?: (history: SpringAiStreamMessage[]) => SpringAiStreamMessage[];
 }
@@ -62,6 +64,10 @@ function defaultParseChunk(data: string): string | null {
   try {
     const parsed = JSON.parse(data);
     if (typeof parsed === "string") return parsed;
+
+    if (parsed?.type === "conversation") {
+      return null;
+    }
 
     if (parsed?.error) {
       const msg = parsed.message || parsed.code || "后端响应错误";
@@ -102,6 +108,7 @@ export function useSpringAiStream(
     headers,
     buildBody = defaultBuildBody,
     parseChunk = defaultParseChunk,
+    onConversationId,
     onBeforeSend,
   } = options;
 
@@ -174,6 +181,16 @@ export function useSpringAiStream(
             // 再交由 parseChunk 处理，保留内部空白。
             onmessage(ev) {
               if (!ev.data) return;
+              try {
+                const parsed = JSON.parse(ev.data);
+                if (parsed?.type === "conversation" && parsed.conversationId) {
+                  onConversationId?.(parsed.conversationId);
+                  return;
+                }
+              } catch {
+                // 非 JSON 分帧忽略 JSON.parse 错误
+              }
+
               const delta = parseChunk(ev.data);
               if (delta) {
                 contentRef.current += delta;
@@ -202,7 +219,15 @@ export function useSpringAiStream(
 
       void run();
     },
-    [endpoint, headers, buildBody, parseChunk, onBeforeSend, loading],
+    [
+      endpoint,
+      headers,
+      buildBody,
+      parseChunk,
+      onConversationId,
+      onBeforeSend,
+      loading,
+    ],
   );
 
   return { content, loading, error, send, stop, reset };

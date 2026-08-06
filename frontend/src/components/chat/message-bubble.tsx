@@ -53,7 +53,7 @@ export function MessageBubble({
   return (
     <div
       className={cn(
-        "group relative mx-auto flex w-full max-w-3xl gap-3.5 px-4 py-3 sm:px-6 transition-all",
+        "group relative flex w-full gap-3.5 px-4 py-3 sm:px-6 transition-all",
         isUser ? "flex-row-reverse" : "flex-row",
       )}
     >
@@ -81,8 +81,8 @@ export function MessageBubble({
       {/* 消息卡片主体 */}
       <div
         className={cn(
-          "relative flex min-w-0 max-w-[85%] flex-col gap-1.5",
-          isUser ? "items-end" : "items-start",
+          "relative flex min-w-0 flex-col gap-1.5",
+          isUser ? "items-end max-w-[85%]" : "items-start w-full min-w-0",
         )}
       >
         {/* AI 助手 Badge */}
@@ -99,7 +99,7 @@ export function MessageBubble({
 
         {/* 思考过程折叠盒（针对推理型输出） */}
         {!isUser && message.thinking && (
-          <div className="mb-1.5 w-full overflow-hidden rounded-xl border border-indigo-200/60 bg-indigo-50/40 text-xs dark:border-indigo-900/50 dark:bg-indigo-950/30">
+          <div className="mb-1.5 w-full min-w-0 overflow-hidden rounded-xl border border-indigo-200/60 bg-indigo-50/40 text-xs dark:border-indigo-900/50 dark:bg-indigo-950/30">
             <button
               type="button"
               onClick={() => setShowThinking((prev) => !prev)}
@@ -127,10 +127,10 @@ export function MessageBubble({
         {(isUser || message.content || streaming) && (
           <div
             className={cn(
-              "relative rounded-2xl px-4 py-3 text-sm shadow-xs transition-all duration-200",
+              "relative min-w-0 rounded-2xl px-4 py-3 text-sm shadow-xs transition-all duration-200",
               isUser
-                ? "rounded-tr-xs bg-zinc-900 font-medium text-white shadow-md shadow-zinc-900/10 dark:bg-zinc-100 dark:text-zinc-900 dark:shadow-none"
-                : "rounded-tl-xs bg-white text-zinc-900 border border-zinc-200/80 shadow-sm dark:bg-zinc-900/80 dark:text-zinc-100 dark:border-zinc-800/80 backdrop-blur-md",
+                ? "rounded-tr-xs bg-zinc-900 font-medium text-white shadow-md shadow-zinc-900/10 dark:bg-gradient-to-r dark:from-indigo-600 dark:to-purple-600 dark:text-white dark:shadow-indigo-500/20"
+                : "w-full rounded-tl-xs bg-white text-zinc-900 border border-zinc-200/80 shadow-sm dark:bg-zinc-900/80 dark:text-zinc-100 dark:border-zinc-800/80 backdrop-blur-md",
             )}
           >
             {isUser ? (

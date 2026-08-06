@@ -32,7 +32,7 @@ function CodeBlock({
   };
 
   return (
-    <div className="group/code relative my-4 overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950/95 shadow-xl shadow-black/20">
+    <div className="not-prose group/code relative my-4 w-full min-w-0 overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950/95 shadow-xl shadow-black/20">
       {/* 终端 Header */}
       <div className="flex items-center justify-between border-b border-zinc-800/80 bg-zinc-900/90 px-3.5 py-2">
         <div className="flex items-center gap-2">
@@ -75,13 +75,13 @@ function CodeBlock({
       </div>
 
       {/* 语法高亮 */}
-      <div className="overflow-x-auto p-4 font-mono text-xs leading-relaxed text-zinc-200">
+      <div className="w-full min-w-0 overflow-x-auto p-4 font-mono text-xs leading-relaxed text-zinc-200">
         <SyntaxHighlighter
           language={language}
           style={oneDark}
           showLineNumbers={code.split("\n").length > 3}
           lineNumberStyle={{
-            minWidth: "2rem",
+            minWidth: "2.2rem",
             paddingRight: "1rem",
             color: "rgba(156, 163, 175, 0.4)",
             textAlign: "right",
@@ -108,14 +108,13 @@ export function Markdown({ content }: { content: string }) {
   return (
     <div
       className={cn(
-        "prose prose-zinc max-w-none break-words text-sm dark:prose-invert leading-relaxed",
+        "prose prose-zinc w-full min-w-0 max-w-none break-words text-sm dark:prose-invert leading-relaxed",
         "prose-p:my-2 prose-p:leading-relaxed",
         "prose-headings:font-heading prose-headings:font-semibold prose-headings:tracking-tight",
         "prose-h1:text-lg prose-h1:my-3",
         "prose-h2:text-base prose-h2:my-2.5",
         "prose-h3:text-sm prose-h3:my-2",
         "prose-pre:p-0 prose-pre:bg-transparent prose-pre:m-0",
-        "prose-code:rounded-md prose-code:bg-zinc-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:font-mono prose-code:text-[0.825em] prose-code:font-medium prose-code:text-indigo-600 dark:prose-code:bg-zinc-800/80 dark:prose-code:text-indigo-300 prose-code:before:content-[''] prose-code:after:content-['']",
         "prose-blockquote:my-3 prose-blockquote:border-l-2 prose-blockquote:border-indigo-500 prose-blockquote:bg-indigo-50/40 prose-blockquote:px-4 prose-blockquote:py-2 prose-blockquote:rounded-r-xl prose-blockquote:not-italic dark:prose-blockquote:bg-indigo-950/20",
         "prose-ul:my-2 prose-ul:list-disc prose-ul:pl-5",
         "prose-ol:my-2 prose-ol:list-decimal prose-ol:pl-5",
@@ -135,7 +134,13 @@ export function Markdown({ content }: { content: string }) {
               return <CodeBlock className={className}>{children}</CodeBlock>;
             }
             return (
-              <code className={className} {...props}>
+              <code
+                className={cn(
+                  "rounded-md bg-zinc-100 px-1.5 py-0.5 font-mono text-[0.825em] font-medium text-indigo-600 dark:bg-zinc-800/80 dark:text-indigo-300",
+                  className,
+                )}
+                {...props}
+              >
                 {children}
               </code>
             );
