@@ -27,6 +27,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { useSpringAiStream } from "@/hooks/useSpringAiStream";
 import { fetchTitle } from "@/lib/title";
+import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "ai-copilot-sessions";
 const ACTIVE_KEY = "ai-copilot-active";
@@ -169,7 +170,12 @@ export default function Home() {
           prev.map((s) => {
             if (s.id !== activeId || s.isDefaultTitle !== true) return s;
             const title = aiTitle ?? deriveTitle(finalContent);
-            return { ...s, title, isDefaultTitle: false, updatedAt: Date.now() };
+            return {
+              ...s,
+              title,
+              isDefaultTitle: false,
+              updatedAt: Date.now(),
+            };
           }),
         );
       })();
@@ -213,8 +219,23 @@ export default function Home() {
     setInput("");
     if (typeof window !== "undefined") {
       localStorage.removeItem(ACTIVE_KEY);
+      if (window.innerWidth < 768) {
+        setCollapsed(true);
+      }
     }
   }, [stop]);
+
+  // 快捷键 Cmd + B / Ctrl + B 切换侧边栏
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        setCollapsed((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
 
   // 初始化：恢复上次活动会话（若存在）或默认保持草稿根目录 & 恢复上次选择的模型
   useEffect(() => {
@@ -289,6 +310,9 @@ export default function Home() {
     liveIdRef.current = null;
     stop();
     localStorage.setItem(ACTIVE_KEY, id);
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setCollapsed(true);
+    }
   }
 
   function deleteSession(id: string) {
@@ -393,27 +417,31 @@ export default function Home() {
       />
 
       {/* 移动端遮罩 */}
-      {!collapsed && (
-        <button
-          type="button"
-          className="fixed inset-0 z-20 bg-black/40 backdrop-blur-xs md:hidden"
-          onClick={() => setCollapsed(true)}
-          aria-label="关闭侧边栏"
-        />
-      )}
+      <button
+        type="button"
+        className={cn(
+          "fixed inset-0 z-20 bg-black/40 backdrop-blur-xs transition-opacity duration-300 md:hidden",
+          collapsed
+            ? "opacity-0 pointer-events-none"
+            : "opacity-100 pointer-events-auto",
+        )}
+        onClick={() => setCollapsed(true)}
+        aria-label="关闭侧边栏"
+      />
 
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-transparent">
         {/* 顶部 Header */}
         <header className="shrink-0 z-10 border-b border-zinc-200/60 bg-white/70 backdrop-blur-xl dark:border-zinc-800/60 dark:bg-zinc-950/70">
-          <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3 sm:px-6">
+          <div className="flex w-full items-center justify-between px-4 py-3 sm:px-6">
             <div className="flex items-center gap-3">
               {collapsed && (
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className="text-zinc-600 dark:text-zinc-300"
+                  className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition-colors"
                   onClick={() => setCollapsed(false)}
-                  aria-label="打开侧边栏"
+                  aria-label="展开侧边栏"
+                  title="展开侧边栏 (⌘B)"
                 >
                   <PanelLeftOpen className="size-4" />
                 </Button>

@@ -190,13 +190,19 @@ export function ModelSelector({
 
   // 自定义模型输入（允许在选定供应商下自由指定任意模型名）
   const [customModelInput, setCustomModelInput] = useState<string>(
-    catalog.find((p) => p.id === value.provider)?.models.some((m) => m.id === value.model)
+    catalog
+      .find((p) => p.id === value.provider)
+      ?.models.some((m) => m.id === value.model)
       ? ""
       : value.model || "",
   );
   const isCustomSelected =
     !!value.model &&
-    !(catalog.find((p) => p.id === value.provider)?.models.some((m) => m.id === value.model) ?? false);
+    !(
+      catalog
+        .find((p) => p.id === value.provider)
+        ?.models.some((m) => m.id === value.model) ?? false
+    );
 
   // 尝试从后端获取动态模型清单 /api/models
   useEffect(() => {

@@ -2,31 +2,33 @@
 // 失败时返回 null，由调用方回退到本地 deriveTitle。
 
 export interface FetchTitleInput {
-	message: string;
-	answer: string;
-	provider?: string | null;
-	model?: string | null;
+  message: string;
+  answer: string;
+  provider?: string | null;
+  model?: string | null;
 }
 
-export async function fetchTitle(input: FetchTitleInput): Promise<string | null> {
-	try {
-		const res = await fetch("/api/chat/title", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				message: input.message ?? "",
-				answer: input.answer ?? "",
-				provider: input.provider ?? null,
-				model: input.model ?? null,
-			}),
-		});
-		if (!res.ok) {
-			return null;
-		}
-		const data = (await res.json()) as { title?: string | null };
-		const title = data?.title?.trim();
-		return title ? title : null;
-	} catch {
-		return null;
-	}
+export async function fetchTitle(
+  input: FetchTitleInput,
+): Promise<string | null> {
+  try {
+    const res = await fetch("/api/chat/title", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: input.message ?? "",
+        answer: input.answer ?? "",
+        provider: input.provider ?? null,
+        model: input.model ?? null,
+      }),
+    });
+    if (!res.ok) {
+      return null;
+    }
+    const data = (await res.json()) as { title?: string | null };
+    const title = data?.title?.trim();
+    return title ? title : null;
+  } catch {
+    return null;
+  }
 }
