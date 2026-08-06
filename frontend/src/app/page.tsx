@@ -26,6 +26,7 @@ import { useSpringAiStream } from "@/hooks/useSpringAiStream";
 
 const STORAGE_KEY = "ai-copilot-sessions";
 const ACTIVE_KEY = "ai-copilot-active";
+const MODEL_STORAGE_KEY = "ai-copilot-selected-model";
 
 let idCounter = 0;
 const nextId = () => `msg-${Date.now()}-${++idCounter}`;
@@ -93,6 +94,25 @@ function loadSessions(): ChatSession[] {
   }
 }
 
+/** 从 localStorage 读取上次使用的模型配置 */
+function loadSavedModel(): SelectedModel {
+  if (typeof window === "undefined") {
+    return { provider: "deepseek", model: "deepseek-chat" };
+  }
+  try {
+    const raw = localStorage.getItem(MODEL_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as SelectedModel;
+      if (parsed?.provider && parsed?.model) {
+        return parsed;
+      }
+    }
+  } catch {
+    // 忽略解析错误
+  }
+  return { provider: "deepseek", model: "deepseek-chat" };
+}
+
 export default function Home() {
   const { content, loading, error, send, stop } = useSpringAiStream({
     endpoint: "/api/chat/stream",
@@ -134,8 +154,11 @@ export default function Home() {
     localStorage.setItem(ACTIVE_KEY, id);
   }, []);
 
-  // 初始化：恢复会话或新建首个会话
+  // 初始化：恢复会话或新建首个会话 & 恢复上次选择的模型
   useEffect(() => {
+    const savedModel = loadSavedModel();
+    setModel(savedModel);
+
     const restored = loadSessions();
     const activeRaw =
       typeof window !== "undefined" ? localStorage.getItem(ACTIVE_KEY) : null;
@@ -149,6 +172,13 @@ export default function Home() {
       createSession();
     }
   }, [createSession]);
+
+  // 模型选择持久化
+  useEffect(() => {
+    if (typeof window !== "undefined" && model?.provider && model?.model) {
+      localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(model));
+    }
+  }, [model]);
 
   // 会话持久化
   useEffect(() => {
