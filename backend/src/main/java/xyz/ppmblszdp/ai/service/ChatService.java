@@ -197,6 +197,13 @@ public class ChatService {
 								resolved.provider().providerId(), resolved.model().id(), req.conversationId());
 						recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(), req.message(), fullContent.toString());
 					})
+					.doOnCancel(() -> {
+						log.info("流式请求被客户端取消/中断 → 供应商={}, 模型={}, 会话={}, 已生成文本长度={}",
+								resolved.provider().providerId(), resolved.model().id(), req.conversationId(), fullContent.length());
+						if (fullContent.length() > 0) {
+							recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(), req.message(), fullContent.toString());
+						}
+					})
 					.doOnError(err -> log.warn("流式请求异常 → 供应商={}, 模型={}, 会话={}: {}",
 							resolved.provider().providerId(), resolved.model().id(), req.conversationId(), err.getMessage()));
 		}
@@ -264,6 +271,8 @@ public class ChatService {
 				.map(resp -> extractText(resp))
 				.filter(text -> text != null && !text.isEmpty())
 				.doOnComplete(() -> log.info("流式请求结束(旧路径) → 供应商={}, 模型={}",
+						resolved.provider().providerId(), resolved.model().id()))
+				.doOnCancel(() -> log.info("流式请求被客户端取消(旧路径) → 供应商={}, 模型={}",
 						resolved.provider().providerId(), resolved.model().id()))
 				.doOnError(err -> log.warn("流式请求异常(旧路径) → 供应商={}, 模型={}: {}",
 						resolved.provider().providerId(), resolved.model().id(), err.getMessage()));

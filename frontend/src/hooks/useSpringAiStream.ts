@@ -139,10 +139,14 @@ export function useSpringAiStream(
   }, []);
 
   const stop = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setLoading(false);
-  }, []);
+    if (abortRef.current) {
+      const currentContent = contentRef.current;
+      abortRef.current.abort();
+      abortRef.current = null;
+      setLoading(false);
+      onFinish?.(currentContent);
+    }
+  }, [onFinish]);
 
   const send = useCallback(
     (input: string, extraBody?: Record<string, unknown>) => {

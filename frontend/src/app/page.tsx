@@ -154,6 +154,12 @@ export default function Home() {
       const question = liveUserTextRef.current;
       liveUserTextRef.current = "";
 
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === liveId ? { ...m, content: finalContent } : m,
+        ),
+      );
+
       setSessions((prev) =>
         prev.map((s) => {
           if (s.id !== activeId) return s;
