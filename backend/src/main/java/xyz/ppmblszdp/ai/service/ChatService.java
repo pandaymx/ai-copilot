@@ -57,6 +57,7 @@ public class ChatService {
 	private final ContextAssembler contextAssembler;
 	private final ObjectProvider<ChatMemory> sessionChatMemory;
 	private final ObjectProvider<LongTermMemoryConfig.LongTermMemoryAdvisorFactory> longTermFactory;
+	private final ObjectProvider<LongTermMemoryConfig.LongTermMemoryWriter> longTermWriter;
 	private final ObjectProvider<ChatRateLimiter.RateLimiter> rateLimiter;
 	private final SessionService sessionService;
 	private final boolean memoryEnabled;
@@ -66,6 +67,7 @@ public class ChatService {
 			ContextAssembler contextAssembler,
 			ObjectProvider<ChatMemory> sessionChatMemory,
 			ObjectProvider<LongTermMemoryConfig.LongTermMemoryAdvisorFactory> longTermFactory,
+			ObjectProvider<LongTermMemoryConfig.LongTermMemoryWriter> longTermWriter,
 			ObjectProvider<ChatRateLimiter.RateLimiter> rateLimiter,
 			SessionService sessionService,
 			xyz.ppmblszdp.ai.config.AiProviderProperties properties) {
@@ -73,6 +75,7 @@ public class ChatService {
 		this.contextAssembler = contextAssembler;
 		this.sessionChatMemory = sessionChatMemory;
 		this.longTermFactory = longTermFactory;
+		this.longTermWriter = longTermWriter;
 		this.rateLimiter = rateLimiter;
 		this.sessionService = sessionService;
 		this.memoryEnabled = properties.resolveMemory().isEnabled();
@@ -113,13 +116,17 @@ public class ChatService {
 					.options(options.mutate())
 					.call();
 			return Mono.fromCallable(() -> spec.chatResponse())
-					.map(resp -> new ChatResponseDto(
-							extractText(resp),
-							resolved.provider().providerId(),
-							resolved.model().id(),
-							req.conversationId(),
-							null,
-							null))
+					.map(resp -> {
+						String replyText = extractText(resp);
+						recordLongTermMemoryAsync(req.resolveUserId(), req.message(), replyText);
+						return new ChatResponseDto(
+								replyText,
+								resolved.provider().providerId(),
+								resolved.model().id(),
+								req.conversationId(),
+								null,
+								null);
+					})
 					.subscribeOn(Schedulers.boundedElastic());
 		}
 		return callWithoutMemory(resolved, request, options);
@@ -148,6 +155,7 @@ public class ChatService {
 			ChatRequest req = ensureConversation(request);
 			ChatClient client = resolved.chatClient();
 			MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(memory).build();
+			StringBuilder fullContent = new StringBuilder();
 			return client.prompt()
 					.system(sp -> sp.text(resolveSystemPrompt(req)))
 					.user(req.message())
@@ -161,8 +169,12 @@ public class ChatService {
 					.timeout(STREAM_TIMEOUT)
 					.map(resp -> extractText(resp))
 					.filter(text -> text != null && !text.isEmpty())
-					.doOnComplete(() -> log.info("流式请求结束 → 供应商={}, 模型={}, 会话={}",
-							resolved.provider().providerId(), resolved.model().id(), req.conversationId()))
+					.doOnNext(fullContent::append)
+					.doOnComplete(() -> {
+						log.info("流式请求结束 → 供应商={}, 模型={}, 会话={}",
+								resolved.provider().providerId(), resolved.model().id(), req.conversationId());
+						recordLongTermMemoryAsync(req.resolveUserId(), req.message(), fullContent.toString());
+					})
 					.doOnError(err -> log.warn("流式请求异常 → 供应商={}, 模型={}, 会话={}: {}",
 							resolved.provider().providerId(), resolved.model().id(), req.conversationId(), err.getMessage()));
 		}
@@ -237,6 +249,20 @@ public class ChatService {
 		return (request.systemPrompt() != null && !request.systemPrompt().isBlank())
 				? request.systemPrompt()
 				: contextAssembler.defaultSystemPrompt();
+	}
+
+	private void recordLongTermMemoryAsync(String userId, String userMessage, String assistantReply) {
+		if (!memoryEnabled || userId == null || userId.isBlank() || userMessage == null || userMessage.isBlank()) {
+			return;
+		}
+		LongTermMemoryConfig.LongTermMemoryWriter writer = longTermWriter.getIfAvailable();
+		if (writer == null) {
+			return;
+		}
+		String content = "【用户提问】: " + userMessage + "\n【AI回复】: " + (assistantReply != null ? assistantReply : "");
+		Mono.fromRunnable(() -> writer.write(userId, content))
+				.subscribeOn(Schedulers.boundedElastic())
+				.subscribe();
 	}
 
 	private void applyLongTermAdvisor(

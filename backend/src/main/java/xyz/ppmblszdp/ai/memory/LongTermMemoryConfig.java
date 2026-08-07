@@ -16,6 +16,7 @@ import org.springframework.context.annotation.Configuration;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -74,10 +75,37 @@ public class LongTermMemoryConfig {
 		};
 	}
 
+	@Bean
+	public LongTermMemoryWriter longTermMemoryWriter(ObjectProvider<VectorStore> vectorStore) {
+		VectorStore vs = vectorStore.getIfAvailable();
+		if (vs == null) {
+			return (userId, content) -> {};
+		}
+		VectorStore safeVs = new SafeVectorStore(vs);
+		return (userId, content) -> {
+			if (userId == null || userId.isBlank() || content == null || content.isBlank()) {
+				return;
+			}
+			try {
+				Document doc = withUserId(new Document(content), userId);
+				safeVs.add(List.of(doc));
+				log.debug("已写入长期记忆向量库 → userId={}, textLength={}", userId, content.length());
+			} catch (Exception e) {
+				log.warn("写入长期记忆向量库异常: {}", e.getMessage());
+			}
+		};
+	}
+
 	/** 按 userId 动态构造带过滤的长期记忆 Advisor（每次请求独立，避免并发串线）。 */
 	@FunctionalInterface
 	public interface LongTermMemoryAdvisorFactory {
 		Advisor forUser(String userId);
+	}
+
+	/** 写入长期记忆的执行器（包含以 userId 为维度的向量存储写入）。 */
+	@FunctionalInterface
+	public interface LongTermMemoryWriter {
+		void write(String userId, String content);
 	}
 
 	/** 写入长期记忆的辅助方法：所有文档必须带 {@code userId} metadata。 */
