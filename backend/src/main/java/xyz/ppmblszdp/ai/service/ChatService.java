@@ -119,7 +119,8 @@ public class ChatService {
 							resolved.model().id(),
 							req.conversationId(),
 							null,
-							null));
+							null))
+					.subscribeOn(Schedulers.boundedElastic());
 		}
 		return callWithoutMemory(resolved, request, options);
 	}
@@ -212,7 +213,8 @@ public class ChatService {
 		return Mono.fromCallable(() -> resolved.chatModel().call(prompt))
 				.map(resp -> new ChatResponseDto(
 						extractText(resp), resolved.provider().providerId(), resolved.model().id(),
-						request.conversationId(), null, null));
+						request.conversationId(), null, null))
+				.subscribeOn(Schedulers.boundedElastic());
 	}
 
 	private Flux<String> streamWithoutMemory(ResolvedModel resolved, ChatRequest request, ChatOptions options) {

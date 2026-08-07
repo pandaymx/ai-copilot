@@ -14,6 +14,7 @@ import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
 
@@ -115,7 +116,8 @@ public class TitleService {
 					log.warn("标题生成失败 → 供应商={}, 模型={}: {}",
 							resolved.provider().providerId(), resolved.model().id(), ex.getMessage());
 					return Mono.just(null);
-				});
+				})
+				.subscribeOn(Schedulers.boundedElastic());
 	}
 
 	/** 去除思考链、惯用前缀、口语语气词、Markdown 符号并做长度硬截断。 */
