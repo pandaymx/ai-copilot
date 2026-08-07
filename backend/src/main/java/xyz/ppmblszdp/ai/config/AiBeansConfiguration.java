@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import xyz.ppmblszdp.ai.context.ContextAssembler;
 import xyz.ppmblszdp.ai.context.HeuristicTokenEstimator;
+import xyz.ppmblszdp.ai.context.JTokkitTokenEstimator;
 import xyz.ppmblszdp.ai.context.TokenEstimator;
 import xyz.ppmblszdp.ai.factory.AnthropicCompatibleChatModelFactory;
 import xyz.ppmblszdp.ai.factory.ChatModelFactory;
@@ -85,8 +86,8 @@ public class AiBeansConfiguration {
 
 	@Bean
 	public TokenEstimator tokenEstimator() {
-		// 安全系数 1.1：保守偏大，宁可少发也不超窗
-		return new HeuristicTokenEstimator(1.1d);
+		// 优先使用 JTokkit (o200k_base) 精确 Tokenizer，异常或缺失时自动降级至启发式估算 (1.1x 安全系数)
+		return new JTokkitTokenEstimator(new HeuristicTokenEstimator(1.1d));
 	}
 
 	@Bean
