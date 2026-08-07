@@ -2,15 +2,14 @@ import { type NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const BACKEND_BASE_URL =
-  process.env.BACKEND_URL || "http://localhost:8084/api/:path*";
+const BACKEND_BASE_URL = process.env.BACKEND_URL || "http://localhost:8080";
 
-function getTargetUrl(pathSegments: string[]): string {
-  const cleanBase = BACKEND_BASE_URL.replace(/\/api\/:path\*/, "").replace(
-    /\/$/,
-    "",
-  );
-  return `${cleanBase}/api/${pathSegments.join("/")}`;
+function getTargetUrl(pathSegments: string[], search: string): string {
+  const cleanBase = BACKEND_BASE_URL.replace(/\/api\/:path\*/, "")
+    .replace(/\/api$/, "")
+    .replace(/\/$/, "");
+  const target = `${cleanBase}/api/${pathSegments.join("/")}`;
+  return search ? `${target}${search}` : target;
 }
 
 export async function POST(
@@ -18,7 +17,7 @@ export async function POST(
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   const { path } = await params;
-  const targetUrl = getTargetUrl(path);
+  const targetUrl = getTargetUrl(path, req.nextUrl.search);
 
   try {
     const bodyText = await req.text();
@@ -71,7 +70,7 @@ export async function GET(
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   const { path } = await params;
-  const targetUrl = getTargetUrl(path);
+  const targetUrl = getTargetUrl(path, req.nextUrl.search);
 
   try {
     const backendRes = await fetch(targetUrl, {

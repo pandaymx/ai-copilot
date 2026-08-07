@@ -4,15 +4,6 @@ const nextConfig: NextConfig = {
   output: "standalone",
   /* config options here */
   reactCompiler: true,
-  async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination:
-          process.env.BACKEND_URL || "http://localhost:8084/api/:path*",
-      },
-    ];
-  },
 };
 
 export default nextConfig;
