@@ -1,0 +1,53 @@
+# ==========================================
+# Root .gitignore for AI-Copilot
+# ==========================================
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment & Local secret files
+.env
+.env.local
+.env*.local
+!.env.example
+
+# Temporary & Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+logs/
+tmp/
+*.tmp
+
+# Node / Next.js Build & Dependencies
+node_modules/
+.next/
+out/
+dist/
+coverage/
+*.tsbuildinfo
+.vercel/
+
+# Java / Gradle Build Artifacts
+.gradle/
+build/
+bin/
+target/
