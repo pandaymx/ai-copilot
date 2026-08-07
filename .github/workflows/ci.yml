@@ -10,6 +10,30 @@ jobs:
   backend-ci:
     name: Backend CI (Build & Test & Docker)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_DB: ai_copilot
+          POSTGRES_USER: ai
+          POSTGRES_PASSWORD: ai
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ai -d ai_copilot"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+      redis:
+        image: redis:latest
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -25,6 +49,14 @@ jobs:
         run: chmod +x backend/gradlew
 
       - name: Run Backend Unit Tests & Compile
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: ai_copilot
+          POSTGRES_USER: ai
+          POSTGRES_PASSWORD: ai
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
         run: |
           cd backend
           ./gradlew test --no-daemon
