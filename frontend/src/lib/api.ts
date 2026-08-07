@@ -27,6 +27,7 @@ export async function fetchSessionDetailApi(
         id: string;
         role: "user" | "assistant" | "system";
         content: string;
+        media?: { mimeType: string; data: string }[];
       }[];
     };
     return {
@@ -42,6 +43,18 @@ export async function fetchSessionDetailApi(
           id: m.id,
           role: m.role as "user" | "assistant",
           content: m.content,
+          attachments:
+            m.media && m.media.length > 0
+              ? m.media.map((att, idx) => ({
+                  id: `att-${m.id}-${idx}`,
+                  name: `图片附件 ${idx + 1}`,
+                  type: "image" as const,
+                  mimeType: att.mimeType,
+                  url: att.data.startsWith("data:")
+                    ? att.data
+                    : `data:${att.mimeType};base64,${att.data}`,
+                }))
+              : undefined,
         })),
     };
   } catch {

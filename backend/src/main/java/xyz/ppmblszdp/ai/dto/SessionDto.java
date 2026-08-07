@@ -19,8 +19,13 @@ public record SessionDto(
 	public record MessageItem(
 			String id,
 			String role,
-			String content
-	) {}
+			String content,
+			List<MediaDto> media
+	) {
+		public MessageItem(String id, String role, String content) {
+			this(id, role, content, null);
+		}
+	}
 
 	public record RenameRequest(
 			String title

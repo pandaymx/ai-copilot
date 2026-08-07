@@ -7,6 +7,7 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
+import xyz.ppmblszdp.ai.dto.MediaDto;
 import xyz.ppmblszdp.ai.dto.SessionDto;
 import xyz.ppmblszdp.ai.repository.SessionRepository;
 
@@ -55,8 +56,9 @@ public class SessionService {
 						case ASSISTANT -> "assistant";
 						default -> "user";
 					};
+					List<MediaDto> mediaDtos = extractMediaDtos(m);
 					String msgId = "db-msg-" + id + "-" + (++index);
-					messageItems.add(new SessionDto.MessageItem(msgId, role, m.getText()));
+					messageItems.add(new SessionDto.MessageItem(msgId, role, m.getText(), mediaDtos));
 				}
 			} catch (Exception ex) {
 				log.warn("从 ChatMemory 读取会话 '{}' 消息失败: {}", id, ex.getMessage());
@@ -109,5 +111,34 @@ public class SessionService {
 				log.warn("清除会话 '{}' ChatMemory 失败: {}", id, ex.getMessage());
 			}
 		}
+	}
+
+	private List<MediaDto> extractMediaDtos(Message m) {
+		if (!(m instanceof org.springframework.ai.chat.messages.UserMessage userMsg)) {
+			return null;
+		}
+		List<org.springframework.ai.content.Media> mediaList = userMsg.getMedia();
+		if (mediaList == null || mediaList.isEmpty()) {
+			return null;
+		}
+		List<MediaDto> dtos = new ArrayList<>();
+		for (org.springframework.ai.content.Media media : mediaList) {
+			try {
+				String mimeType = (media.getMimeType() != null) ? media.getMimeType().toString() : "image/png";
+				String data = null;
+				Object rawData = media.getData();
+				if (rawData instanceof byte[] bytes) {
+					data = "data:" + mimeType + ";base64," + java.util.Base64.getEncoder().encodeToString(bytes);
+				} else if (rawData instanceof String str) {
+					data = str.startsWith("data:") ? str : "data:" + mimeType + ";base64," + str;
+				}
+				if (data != null) {
+					dtos.add(new MediaDto(mimeType, data));
+				}
+			} catch (Exception e) {
+				log.warn("无法从 UserMessage 提取 Media: {}", e.getMessage());
+			}
+		}
+		return dtos.isEmpty() ? null : dtos;
 	}
 }
