@@ -25,7 +25,11 @@ export class ChatMessageErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("ChatMessageErrorBoundary caught an error:", error, errorInfo);
+    console.error(
+      "ChatMessageErrorBoundary caught an error:",
+      error,
+      errorInfo,
+    );
   }
 
   public handleReset = () => {
@@ -42,7 +46,9 @@ export class ChatMessageErrorBoundary extends Component<Props, State> {
         <div className="my-2 flex items-center justify-between rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-600 dark:text-rose-400">
           <div className="flex items-center gap-2">
             <AlertTriangle className="size-4 shrink-0 text-rose-500" />
-            <span>消息组件渲染异常: {this.state.error?.message || "未知渲染错误"}</span>
+            <span>
+              消息组件渲染异常: {this.state.error?.message || "未知渲染错误"}
+            </span>
           </div>
           <Button
             type="button"

@@ -180,7 +180,9 @@ export function MessageBubble({
                 {message.content}
               </p>
             ) : message.content ? (
-              <Markdown content={message.content} />
+              <ChatMessageErrorBoundary>
+                <Markdown content={message.content} />
+              </ChatMessageErrorBoundary>
             ) : streaming ? (
               <BreathingCursor />
             ) : null}
