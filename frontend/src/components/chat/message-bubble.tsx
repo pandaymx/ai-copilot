@@ -16,6 +16,7 @@ import {
 import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import { ChatMessageErrorBoundary } from "./error-boundary";
 import { Markdown } from "./markdown";
 
 export interface AttachmentItem {
