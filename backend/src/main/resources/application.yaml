@@ -194,6 +194,11 @@ app:
       enabled: ${AI_MEMORY_ENABLED:true}        # 记忆路径总开关；有数据库/Redis 时持久化到 spring_ai_chat_memory 表
       hot-cache-size: ${AI_MEMORY_HOT_CACHE_SIZE:20}   # Redis 热缓存保留最近 N 条；同时作为记忆检索条数上限
       long-term-top-k: ${AI_MEMORY_LONGTERM_TOP_K:5}    # 长期记忆向量检索 Top-K
+      long-term-dedup-enabled: ${AI_MEMORY_LONGTERM_DEDUP:true}   # 落库前向量去重
+      long-term-similarity-threshold: ${AI_MEMORY_LONGTERM_THRESHOLD:0.85} # 相似度判重阈值
+      long-term-min-content-length: ${AI_MEMORY_LONGTERM_MIN_LEN:15} # 写入/抽取最小字符限制（前置硬规则）
+      long-term-summarize-enabled: ${AI_MEMORY_LONGTERM_SUMMARIZE:true} # 开启双重触发摘要抽取
+      long-term-summarize-turn-interval: ${AI_MEMORY_LONGTERM_INTERVAL:5} # 摘要抽取对话轮次间隔
       conversation-ttl-days: ${AI_MEMORY_TTL_DAYS:14}  # 会话热缓存在 Redis 的 TTL（天），防止冷数据常驻
       rate-limit:
         enabled: ${AI_MEMORY_RATELIMIT_ENABLED:false}  # Redis 限流开关（默认关闭，避免无 Redis 时阻断）

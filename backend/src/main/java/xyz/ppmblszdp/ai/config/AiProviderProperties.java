@@ -100,22 +100,32 @@ public record AiProviderProperties(
 	/**
 	 * 记忆子系统配置。
 	 *
-	 * @param enabled            记忆路径总开关；false 时 ChatService 退化为旧 history 模式
-	 * @param hotCacheSize       Redis 热缓存保留最近 N 条；同时作为会话记忆 RETRIEVE_SIZE 上限
-	 * @param longTermTopK       长期记忆向量检索 Top-K
-	 * @param conversationTtlDays 会话热缓存在 Redis 的 TTL（天），防止冷数据常驻
-	 * @param rateLimit          基于 Redis 的对话限流配置
+	 * @param enabled                        记忆路径总开关；false 时 ChatService 退化为旧 history 模式
+	 * @param hotCacheSize                   Redis 热缓存保留最近 N 条；同时作为会话记忆 RETRIEVE_SIZE 上限
+	 * @param longTermTopK                   长期记忆向量检索 Top-K
+	 * @param longTermDedupEnabled           长期记忆落库前是否执行相似度去重
+	 * @param longTermSimilarityThreshold    长期记忆去重判定相似度阈值（0~1]
+	 * @param longTermMinContentLength       写入/抽取的最小字符长度（前置硬规则）
+	 * @param longTermSummarizeEnabled       是否开启会话周期性与会话结束摘要抽取
+	 * @param longTermSummarizeTurnInterval 会话轮次间隔触发值
+	 * @param conversationTtlDays             会话热缓存在 Redis 的 TTL（天），防止冷数据常驻
+	 * @param rateLimit                      基于 Redis 的对话限流配置
 	 */
 	public record MemoryConfig(
 			@Nullable Boolean enabled,
 			@Nullable Integer hotCacheSize,
 			@Name("long-term-top-k") @Nullable Integer longTermTopK,
+			@Name("long-term-dedup-enabled") @Nullable Boolean longTermDedupEnabled,
+			@Name("long-term-similarity-threshold") @Nullable Double longTermSimilarityThreshold,
+			@Name("long-term-min-content-length") @Nullable Integer longTermMinContentLength,
+			@Name("long-term-summarize-enabled") @Nullable Boolean longTermSummarizeEnabled,
+			@Name("long-term-summarize-turn-interval") @Nullable Integer longTermSummarizeTurnInterval,
 			@Nullable Integer conversationTtlDays,
 			@Nullable RateLimitConfig rateLimit
 	) {
 
 		public static MemoryConfig defaults() {
-			return new MemoryConfig(false, 20, 5, 14, null);
+			return new MemoryConfig(false, 20, 5, true, 0.85d, 15, true, 5, 14, null);
 		}
 
 		public boolean isEnabled() {
@@ -128,6 +138,28 @@ public record AiProviderProperties(
 
 		public int resolveLongTermTopK() {
 			return (longTermTopK != null && longTermTopK > 0) ? longTermTopK : 5;
+		}
+
+		public boolean isLongTermDedupEnabled() {
+			return longTermDedupEnabled == null || longTermDedupEnabled;
+		}
+
+		public double resolveLongTermSimilarityThreshold() {
+			return (longTermSimilarityThreshold != null && longTermSimilarityThreshold > 0 && longTermSimilarityThreshold <= 1.0d)
+					? longTermSimilarityThreshold
+					: 0.85d;
+		}
+
+		public int resolveLongTermMinContentLength() {
+			return (longTermMinContentLength != null && longTermMinContentLength > 0) ? longTermMinContentLength : 15;
+		}
+
+		public boolean isLongTermSummarizeEnabled() {
+			return longTermSummarizeEnabled == null || longTermSummarizeEnabled;
+		}
+
+		public int resolveLongTermSummarizeTurnInterval() {
+			return (longTermSummarizeTurnInterval != null && longTermSummarizeTurnInterval > 0) ? longTermSummarizeTurnInterval : 5;
 		}
 
 		public int resolveConversationTtlDays() {

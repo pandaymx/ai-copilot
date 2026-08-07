@@ -25,6 +25,7 @@ import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
 import xyz.ppmblszdp.ai.memory.ChatRateLimiter;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig;
+import xyz.ppmblszdp.ai.memory.LongTermMemoryProcessor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
 
@@ -58,6 +59,7 @@ public class ChatService {
 	private final ObjectProvider<ChatMemory> sessionChatMemory;
 	private final ObjectProvider<LongTermMemoryConfig.LongTermMemoryAdvisorFactory> longTermFactory;
 	private final ObjectProvider<LongTermMemoryConfig.LongTermMemoryWriter> longTermWriter;
+	private final ObjectProvider<LongTermMemoryProcessor> longTermProcessor;
 	private final ObjectProvider<ChatRateLimiter.RateLimiter> rateLimiter;
 	private final SessionService sessionService;
 	private final boolean memoryEnabled;
@@ -68,6 +70,7 @@ public class ChatService {
 			ObjectProvider<ChatMemory> sessionChatMemory,
 			ObjectProvider<LongTermMemoryConfig.LongTermMemoryAdvisorFactory> longTermFactory,
 			ObjectProvider<LongTermMemoryConfig.LongTermMemoryWriter> longTermWriter,
+			ObjectProvider<LongTermMemoryProcessor> longTermProcessor,
 			ObjectProvider<ChatRateLimiter.RateLimiter> rateLimiter,
 			SessionService sessionService,
 			xyz.ppmblszdp.ai.config.AiProviderProperties properties) {
@@ -76,6 +79,7 @@ public class ChatService {
 		this.sessionChatMemory = sessionChatMemory;
 		this.longTermFactory = longTermFactory;
 		this.longTermWriter = longTermWriter;
+		this.longTermProcessor = longTermProcessor;
 		this.rateLimiter = rateLimiter;
 		this.sessionService = sessionService;
 		this.memoryEnabled = properties.resolveMemory().isEnabled();
@@ -118,7 +122,7 @@ public class ChatService {
 			return Mono.fromCallable(() -> spec.chatResponse())
 					.map(resp -> {
 						String replyText = extractText(resp);
-						recordLongTermMemoryAsync(req.resolveUserId(), req.message(), replyText);
+						recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(), req.message(), replyText);
 						return new ChatResponseDto(
 								replyText,
 								resolved.provider().providerId(),
@@ -173,7 +177,7 @@ public class ChatService {
 					.doOnComplete(() -> {
 						log.info("流式请求结束 → 供应商={}, 模型={}, 会话={}",
 								resolved.provider().providerId(), resolved.model().id(), req.conversationId());
-						recordLongTermMemoryAsync(req.resolveUserId(), req.message(), fullContent.toString());
+						recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(), req.message(), fullContent.toString());
 					})
 					.doOnError(err -> log.warn("流式请求异常 → 供应商={}, 模型={}, 会话={}: {}",
 							resolved.provider().providerId(), resolved.model().id(), req.conversationId(), err.getMessage()));
@@ -251,8 +255,15 @@ public class ChatService {
 				: contextAssembler.defaultSystemPrompt();
 	}
 
-	private void recordLongTermMemoryAsync(String userId, String userMessage, String assistantReply) {
+	private void recordLongTermMemoryAsync(String userId, String conversationId, String userMessage, String assistantReply) {
 		if (!memoryEnabled || userId == null || userId.isBlank() || userMessage == null || userMessage.isBlank()) {
+			return;
+		}
+		LongTermMemoryProcessor processor = longTermProcessor.getIfAvailable();
+		if (processor != null) {
+			Mono.fromRunnable(() -> processor.processTurn(userId, conversationId, userMessage, assistantReply))
+					.subscribeOn(Schedulers.boundedElastic())
+					.subscribe();
 			return;
 		}
 		LongTermMemoryConfig.LongTermMemoryWriter writer = longTermWriter.getIfAvailable();

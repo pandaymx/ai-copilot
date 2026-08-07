@@ -14,9 +14,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
+import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -76,20 +76,24 @@ public class LongTermMemoryConfig {
 	}
 
 	@Bean
-	public LongTermMemoryWriter longTermMemoryWriter(ObjectProvider<VectorStore> vectorStore) {
+	public LongTermMemoryProcessor longTermMemoryProcessor(
+			ObjectProvider<VectorStore> vectorStore,
+			ObjectProvider<ProviderRegistry> providerRegistry,
+			AiProviderProperties properties) {
 		VectorStore vs = vectorStore.getIfAvailable();
-		if (vs == null) {
-			return (userId, content) -> {};
-		}
-		VectorStore safeVs = new SafeVectorStore(vs);
+		ProviderRegistry registry = providerRegistry.getIfAvailable();
+		log.info("长期记忆核心处理器 (LongTermMemoryProcessor) 装配完成");
+		return new LongTermMemoryProcessor(vs, registry, properties);
+	}
+
+	@Bean
+	public LongTermMemoryWriter longTermMemoryWriter(LongTermMemoryProcessor processor) {
 		return (userId, content) -> {
 			if (userId == null || userId.isBlank() || content == null || content.isBlank()) {
 				return;
 			}
 			try {
-				Document doc = withUserId(new Document(content), userId);
-				safeVs.add(List.of(doc));
-				log.debug("已写入长期记忆向量库 → userId={}, textLength={}", userId, content.length());
+				processor.dedupAndUpsert(userId, content);
 			} catch (Exception e) {
 				log.warn("写入长期记忆向量库异常: {}", e.getMessage());
 			}
