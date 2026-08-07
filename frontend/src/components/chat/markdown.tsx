@@ -3,10 +3,57 @@
 import { Check, Copy, Terminal } from "lucide-react";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { PrismLight as SyntaxHighlighter } from "react-syntax-highlighter";
+import bash from "react-syntax-highlighter/dist/esm/languages/prism/bash";
+import c from "react-syntax-highlighter/dist/esm/languages/prism/c";
+import cpp from "react-syntax-highlighter/dist/esm/languages/prism/cpp";
+import css from "react-syntax-highlighter/dist/esm/languages/prism/css";
+import docker from "react-syntax-highlighter/dist/esm/languages/prism/docker";
+import go from "react-syntax-highlighter/dist/esm/languages/prism/go";
+import java from "react-syntax-highlighter/dist/esm/languages/prism/java";
+import javascript from "react-syntax-highlighter/dist/esm/languages/prism/javascript";
+import json from "react-syntax-highlighter/dist/esm/languages/prism/json";
+import jsx from "react-syntax-highlighter/dist/esm/languages/prism/jsx";
+import markdown from "react-syntax-highlighter/dist/esm/languages/prism/markdown";
+import python from "react-syntax-highlighter/dist/esm/languages/prism/python";
+import rust from "react-syntax-highlighter/dist/esm/languages/prism/rust";
+import sql from "react-syntax-highlighter/dist/esm/languages/prism/sql";
+import tsx from "react-syntax-highlighter/dist/esm/languages/prism/tsx";
+import typescript from "react-syntax-highlighter/dist/esm/languages/prism/typescript";
+import xml from "react-syntax-highlighter/dist/esm/languages/prism/xml";
+import yaml from "react-syntax-highlighter/dist/esm/languages/prism/yaml";
+import oneDark from "react-syntax-highlighter/dist/esm/styles/prism/one-dark";
+
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
+
+// 注册常用编程语言语法
+SyntaxHighlighter.registerLanguage("javascript", javascript);
+SyntaxHighlighter.registerLanguage("js", javascript);
+SyntaxHighlighter.registerLanguage("typescript", typescript);
+SyntaxHighlighter.registerLanguage("ts", typescript);
+SyntaxHighlighter.registerLanguage("jsx", jsx);
+SyntaxHighlighter.registerLanguage("tsx", tsx);
+SyntaxHighlighter.registerLanguage("java", java);
+SyntaxHighlighter.registerLanguage("python", python);
+SyntaxHighlighter.registerLanguage("py", python);
+SyntaxHighlighter.registerLanguage("bash", bash);
+SyntaxHighlighter.registerLanguage("sh", bash);
+SyntaxHighlighter.registerLanguage("json", json);
+SyntaxHighlighter.registerLanguage("yaml", yaml);
+SyntaxHighlighter.registerLanguage("yml", yaml);
+SyntaxHighlighter.registerLanguage("css", css);
+SyntaxHighlighter.registerLanguage("sql", sql);
+SyntaxHighlighter.registerLanguage("markdown", markdown);
+SyntaxHighlighter.registerLanguage("md", markdown);
+SyntaxHighlighter.registerLanguage("c", c);
+SyntaxHighlighter.registerLanguage("cpp", cpp);
+SyntaxHighlighter.registerLanguage("go", go);
+SyntaxHighlighter.registerLanguage("rust", rust);
+SyntaxHighlighter.registerLanguage("xml", xml);
+SyntaxHighlighter.registerLanguage("html", xml);
+SyntaxHighlighter.registerLanguage("docker", docker);
+SyntaxHighlighter.registerLanguage("dockerfile", docker);
 
 /** Mac 风格代码块：红黄绿小圆点 + 语言 Badge + 一键复制 */
 function CodeBlock({
@@ -18,7 +65,7 @@ function CodeBlock({
 }) {
   const [copied, setCopied] = useState(false);
   const match = /language-(\w+)/.exec(className ?? "");
-  const language = match?.[1] ?? "code";
+  const language = match?.[1] ?? "text";
   const code = String(children).replace(/\n$/, "");
 
   const handleCopy = async () => {
