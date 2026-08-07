@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# AI-Copilot Rootless One-Click Launcher
+# AI-Copilot Rootless One-Click Launcher & Docker Containerization Helper
 # Supports: Infrastructure (Postgres, Redis, Ollama) + Backend + Frontend
 # ==============================================================================
 
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPOSE_FILE="$SCRIPT_DIR/backend/compose.yaml"
+COMPOSE_FILE="$SCRIPT_DIR/compose.yaml"
+INFRA_COMPOSE_FILE="$SCRIPT_DIR/backend/compose.yaml"
 
 # Text styles & Colors
 RED='\033[0;31m'
@@ -42,18 +43,23 @@ detect_compose_engine() {
 
 detect_compose_engine
 
-# Stop Infrastructure
-stop_infra() {
-  if [ -n "$COMPOSE_CMD" ] && [ -f "$COMPOSE_FILE" ]; then
-    log_infra "Stopping infrastructure containers using '$COMPOSE_CMD'..."
-    $COMPOSE_CMD -f "$COMPOSE_FILE" down
-    log_infra "Infrastructure stopped."
+# Stop Infrastructure / Containers
+stop_containers() {
+  if [ -n "$COMPOSE_CMD" ]; then
+    if [ -f "$COMPOSE_FILE" ]; then
+      log_infra "Stopping containers using '$COMPOSE_CMD -f compose.yaml'..."
+      $COMPOSE_CMD -f "$COMPOSE_FILE" down
+    fi
+    if [ -f "$INFRA_COMPOSE_FILE" ]; then
+      $COMPOSE_CMD -f "$INFRA_COMPOSE_FILE" down 2>/dev/null || true
+    fi
+    log_infra "All containers stopped."
   else
     log_warn "No container compose engine found to stop."
   fi
 }
 
-# Check Service Readiness
+# Service Readiness Check
 wait_for_port() {
   local host=$1
   local port=$2
@@ -78,9 +84,14 @@ check_status() {
   echo "=================================================="
   echo "              AI-Copilot Status Check             "
   echo "=================================================="
-  if [ -n "$COMPOSE_CMD" ] && [ -f "$COMPOSE_FILE" ]; then
-    log_infra "Container Status ($COMPOSE_CMD):"
-    $COMPOSE_CMD -f "$COMPOSE_FILE" ps
+  if [ -n "$COMPOSE_CMD" ]; then
+    if [ -f "$COMPOSE_FILE" ]; then
+      log_infra "Full Container Status ($COMPOSE_CMD):"
+      $COMPOSE_CMD -f "$COMPOSE_FILE" ps
+    elif [ -f "$INFRA_COMPOSE_FILE" ]; then
+      log_infra "Infrastructure Container Status ($COMPOSE_CMD):"
+      $COMPOSE_CMD -f "$INFRA_COMPOSE_FILE" ps
+    fi
   else
     log_warn "No container engine detected."
   fi
@@ -98,11 +109,16 @@ check_status() {
   echo "=================================================="
 }
 
-# Start Infrastructure
+# Start Infrastructure Only
 start_infra() {
-  if [ -n "$COMPOSE_CMD" ] && [ -f "$COMPOSE_FILE" ]; then
-    log_infra "Starting infrastructure via '$COMPOSE_CMD'..."
-    $COMPOSE_CMD -f "$COMPOSE_FILE" up -d
+  local target_file="$INFRA_COMPOSE_FILE"
+  if [ -f "$COMPOSE_FILE" ]; then
+    target_file="$COMPOSE_FILE"
+  fi
+
+  if [ -n "$COMPOSE_CMD" ] && [ -f "$target_file" ]; then
+    log_infra "Starting infrastructure services via '$COMPOSE_CMD'..."
+    $COMPOSE_CMD -f "$target_file" up -d postgres redis ollama 2>/dev/null || $COMPOSE_CMD -f "$target_file" up -d
     wait_for_port "localhost" "5432" "PostgreSQL"
     wait_for_port "localhost" "6379" "Redis"
     wait_for_port "localhost" "11434" "Ollama" 5
@@ -111,14 +127,29 @@ start_infra() {
   fi
 }
 
+# Start Full Dockerized App (Containers for Infra + Backend + Frontend)
+start_docker_all() {
+  if [ -z "$COMPOSE_CMD" ]; then
+    log_error "No container compose engine found (docker compose / podman compose required)."
+    exit 1
+  fi
+  log_info "Building and starting all full-stack services via $COMPOSE_CMD..."
+  $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build
+  check_status
+}
+
 # Handle CLI Flags
 case "$1" in
   --down|down|stop|--stop)
-    stop_infra
+    stop_containers
     exit 0
     ;;
   --infra-only|infra)
     start_infra
+    exit 0
+    ;;
+  --docker|docker)
+    start_docker_all
     exit 0
     ;;
   --status|status|ps)
@@ -129,16 +160,17 @@ case "$1" in
     echo "Usage: ./start.sh [OPTION]"
     echo ""
     echo "Options:"
-    echo "  (no args)     Start Infrastructure + Backend + Frontend simultaneously"
-    echo "  infra         Start Infrastructure containers only"
-    echo "  stop | down   Stop Infrastructure containers"
-    echo "  status | ps   Check status of containers and ports"
+    echo "  (no args)     Start Infra in container + Backend & Frontend natively"
+    echo "  docker        Start EVERYTHING in Docker containers (Infra + Backend + Frontend)"
+    echo "  infra         Start Infrastructure containers only (PostgreSQL, Redis, Ollama)"
+    echo "  stop | down   Stop all containers"
+    echo "  status | ps   Check status of containers and listening ports"
     echo "  --help, -h    Show this help message"
     exit 0
     ;;
 esac
 
-# 2. Main Full-Stack Launch Process
+# 2. Main Full-Stack Hybrid Launch Process
 BACKEND_PID=""
 FRONTEND_PID=""
 

@@ -2,42 +2,56 @@
 
 AI-Copilot 是一个结合 Java (Spring AI) 与 TypeScript (Next.js) 的高性能 AI 助手平台。
 
-## 🚀 快速启动 (One-Click Launch)
+## 🚀 快速启动 (Quick Start)
 
-项目在根目录提供了一个**免 Root 极简拉起脚本**，能够自动检测环境中的容器引擎（`docker compose` 或 `podman compose`），并并行启动前端、后端与基础设施。
+项目在根目录提供了免 Root 的极简编排工具，支持**本地混合开发**与**全容器化部署**两种模式。
 
-### 方式一：直接运行根脚本 (推荐)
+---
+
+### 模式一：本地开发模式 (推荐开发调试)
+
+基础设施 (PostgreSQL + Redis + Ollama) 运行在容器中，后端与前端在宿主机原生运行：
 
 ```bash
-# 启动全栈服务 (基础设施 + 后端 + 前端)
 ./start.sh
-
-# 仅启动基础设施 (PostgreSQL + Redis + Ollama)
-./start.sh infra
-
-# 检查服务与端口就绪状态
-./start.sh status
-
-# 停止基础设施容器
-./start.sh stop
-```
-
-### 方式二：使用 `Task` 工具
-
-若系统中安装了 [`task`](https://taskfile.dev) (Go Task)，亦可运行：
-
-```bash
-task        # 启动全栈
-task infra  # 启动基础设施
-task status # 查看服务状态
-task stop   # 停止基础设施
+# 或使用 Task: task dev
 ```
 
 ---
 
-## 🛠️ 项目结构
+### 模式二：全 Docker 容器化部署
 
-- **`backend/`**: Java 21 + Spring Boot 3 + Spring AI 后端
-- **`frontend/`**: Next.js 16 + React 19 + TailwindCSS + Shadcn/ui 前端
-- **`start.sh`**: 根目录无根编排脚本
-- **`Taskfile.yml`**: Task 编排配置文件
+前端、后端与基础设施全量打包为 Docker 镜像并于容器中独立运行：
+
+```bash
+./start.sh docker
+# 或使用 Task: task docker:up
+```
+
+---
+
+### 实用指令集
+
+```bash
+# 仅启动基础设施 (PostgreSQL + Redis + Ollama)
+./start.sh infra
+# 或 task infra
+
+# 检查所有服务与端口健康就绪状态
+./start.sh status
+# 或 task status
+
+# 停止并清理所有容器
+./start.sh stop
+# 或 task stop
+```
+
+---
+
+## 🛠️ 项目架构
+
+- **`backend/`**: Java 25 + Spring Boot 3 + Spring AI 后端 (包含多阶段 `Dockerfile`)
+- **`frontend/`**: Next.js 16 + React 19 + TailwindCSS 前端 (包含 Standalone 极简 `Dockerfile`)
+- **`compose.yaml`**: 根目录全服务容器编排定义
+- **`start.sh`**: 根目录免 Root 自动化拉起与控制脚本
+- **`Taskfile.yml`**: Task 工具链任务定义

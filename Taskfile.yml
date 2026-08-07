@@ -1,21 +1,32 @@
 version: '3'
 
 vars:
-  COMPOSE_FILE: backend/compose.yaml
+  COMPOSE_FILE: compose.yaml
 
 tasks:
   default:
-    desc: "Start infrastructure, backend, and frontend simultaneously (Rootless)"
+    desc: "Start infrastructure in containers + backend & frontend natively (Rootless)"
     cmds:
       - ./start.sh
 
   dev:
-    desc: "Alias for default: launch full stack"
+    desc: "Alias for default: launch hybrid dev environment"
     cmds:
       - ./start.sh
 
+  docker:up:
+    desc: "Build & launch EVERYTHING in Docker containers (Infra + Backend + Frontend)"
+    aliases: [docker]
+    cmds:
+      - ./start.sh docker
+
+  docker:down:
+    desc: "Stop and remove all Docker containers"
+    cmds:
+      - ./start.sh stop
+
   infra:
-    desc: "Start infrastructure containers (PostgreSQL, Redis, Ollama)"
+    desc: "Start infrastructure containers only (PostgreSQL, Redis, Ollama)"
     cmds:
       - ./start.sh infra
 
