@@ -1,0 +1,44 @@
+version: '3'
+
+vars:
+  COMPOSE_FILE: backend/compose.yaml
+
+tasks:
+  default:
+    desc: "Start infrastructure, backend, and frontend simultaneously (Rootless)"
+    cmds:
+      - ./start.sh
+
+  dev:
+    desc: "Alias for default: launch full stack"
+    cmds:
+      - ./start.sh
+
+  infra:
+    desc: "Start infrastructure containers (PostgreSQL, Redis, Ollama)"
+    cmds:
+      - ./start.sh infra
+
+  infra:down:
+    desc: "Stop infrastructure containers"
+    aliases: [stop, down]
+    cmds:
+      - ./start.sh stop
+
+  backend:
+    desc: "Start Spring Boot backend standalone"
+    dir: backend
+    cmds:
+      - ./gradlew bootRun
+
+  frontend:
+    desc: "Start Next.js frontend standalone"
+    dir: frontend
+    cmds:
+      - bun dev || npm run dev
+
+  status:
+    desc: "Check health status of infrastructure containers and listening ports"
+    aliases: [ps]
+    cmds:
+      - ./start.sh status
