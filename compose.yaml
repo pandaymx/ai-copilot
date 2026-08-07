@@ -1,6 +1,7 @@
 services:
   postgres:
     image: 'pgvector/pgvector:pg18'
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ai_copilot}
       POSTGRES_USER: ${POSTGRES_USER:-ai}
@@ -17,6 +18,7 @@ services:
 
   redis:
     image: 'redis:latest'
+    restart: unless-stopped
     ports:
       - '6379:6379'
     volumes:
@@ -29,15 +31,22 @@ services:
 
   ollama:
     image: 'ollama/ollama:latest'
+    restart: unless-stopped
     ports:
       - '11434:11434'
     volumes:
       - ollama-data:/root/.ollama
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:11434/ || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
       - '8084:8084'
     environment:
@@ -58,17 +67,31 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8084/actuator/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
       - '3000:3000'
     environment:
       BACKEND_URL: http://backend:8084/api
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 volumes:
   postgres-data:

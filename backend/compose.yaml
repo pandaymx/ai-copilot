@@ -1,13 +1,20 @@
 services:
   ollama:
     image: 'ollama/ollama:latest'
+    restart: unless-stopped
     ports:
       - '11434:11434'
     volumes:
       - ollama-data:/root/.ollama
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:11434/ || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   postgres:
     image: 'pgvector/pgvector:pg18'
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ai_copilot}
       POSTGRES_USER: ${POSTGRES_USER:-ai}
@@ -24,6 +31,7 @@ services:
 
   redis:
     image: 'redis:latest'
+    restart: unless-stopped
     ports:
       - '6379:6379'
     volumes:
