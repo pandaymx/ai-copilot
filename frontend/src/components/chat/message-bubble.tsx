@@ -8,7 +8,6 @@ import {
   ChevronRight,
   Copy,
   FileText,
-  Paperclip,
   RotateCcw,
   ThumbsDown,
   ThumbsUp,

@@ -8,7 +8,8 @@ const BACKEND_BASE_URL = process.env.BACKEND_URL || "http://localhost:8084";
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+  "Access-Control-Allow-Headers":
+    "Content-Type, Authorization, X-Requested-With",
 };
 
 // 代理层内存滑动窗口限流：每个 IP 允许 60 次/分钟
@@ -19,7 +20,9 @@ const ipRequestLogs = new Map<string, number[]>();
 function isRateLimited(clientIp: string): boolean {
   const now = Date.now();
   const timestamps = ipRequestLogs.get(clientIp) || [];
-  const validTimestamps = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+  const validTimestamps = timestamps.filter(
+    (t) => now - t < RATE_LIMIT_WINDOW_MS,
+  );
 
   if (validTimestamps.length >= MAX_REQUESTS_PER_WINDOW) {
     return true;
@@ -73,7 +76,10 @@ export async function POST(
   const clientIp = getClientIp(req);
   if (isRateLimited(clientIp)) {
     return NextResponse.json(
-      { error: true, message: "请求过于频繁，请稍后再试 (429 Rate Limit Exceeded)" },
+      {
+        error: true,
+        message: "请求过于频繁，请稍后再试 (429 Rate Limit Exceeded)",
+      },
       {
         status: 429,
         headers: {
@@ -142,7 +148,10 @@ export async function GET(
   const clientIp = getClientIp(req);
   if (isRateLimited(clientIp)) {
     return NextResponse.json(
-      { error: true, message: "请求过于频繁，请稍后再试 (429 Rate Limit Exceeded)" },
+      {
+        error: true,
+        message: "请求过于频繁，请稍后再试 (429 Rate Limit Exceeded)",
+      },
       {
         status: 429,
         headers: {
@@ -163,7 +172,10 @@ export async function GET(
       },
     });
     const data = await backendRes.json();
-    return NextResponse.json(data, { status: backendRes.status, headers: CORS_HEADERS });
+    return NextResponse.json(data, {
+      status: backendRes.status,
+      headers: CORS_HEADERS,
+    });
   } catch (err) {
     return NextResponse.json(
       { error: true, message: (err as Error).message },

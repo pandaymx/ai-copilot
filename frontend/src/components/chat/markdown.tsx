@@ -15,12 +15,12 @@ import javascript from "react-syntax-highlighter/dist/esm/languages/prism/javasc
 import json from "react-syntax-highlighter/dist/esm/languages/prism/json";
 import jsx from "react-syntax-highlighter/dist/esm/languages/prism/jsx";
 import markdown from "react-syntax-highlighter/dist/esm/languages/prism/markdown";
+import xml from "react-syntax-highlighter/dist/esm/languages/prism/markup";
 import python from "react-syntax-highlighter/dist/esm/languages/prism/python";
 import rust from "react-syntax-highlighter/dist/esm/languages/prism/rust";
 import sql from "react-syntax-highlighter/dist/esm/languages/prism/sql";
 import tsx from "react-syntax-highlighter/dist/esm/languages/prism/tsx";
 import typescript from "react-syntax-highlighter/dist/esm/languages/prism/typescript";
-import xml from "react-syntax-highlighter/dist/esm/languages/prism/markup";
 import yaml from "react-syntax-highlighter/dist/esm/languages/prism/yaml";
 import oneDark from "react-syntax-highlighter/dist/esm/styles/prism/one-dark";
 

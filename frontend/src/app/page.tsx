@@ -448,7 +448,8 @@ export default function Home() {
       .filter((m) => m.content.trim() !== "")
       .map((m) => ({ role: m.role, content: m.content }));
 
-    const userMsgText = text || (currentAttachments.length > 0 ? "[图片附件]" : "");
+    const userMsgText =
+      text || (currentAttachments.length > 0 ? "[图片附件]" : "");
 
     const next: ChatMessage[] = [
       ...historySource,
@@ -456,7 +457,8 @@ export default function Home() {
         id: nextId(),
         role: "user",
         content: userMsgText,
-        attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
+        attachments:
+          currentAttachments.length > 0 ? currentAttachments : undefined,
       },
       { id: liveId, role: "assistant", content: "" },
     ];
@@ -650,7 +652,11 @@ export default function Home() {
                     {att.type === "image" ? (
                       <div className="relative size-9 overflow-hidden rounded-lg">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={att.url} alt={att.name} className="size-full object-cover" />
+                        <img
+                          src={att.url}
+                          alt={att.name}
+                          className="size-full object-cover"
+                        />
                       </div>
                     ) : (
                       <FileText className="size-4 text-indigo-500 shrink-0" />
