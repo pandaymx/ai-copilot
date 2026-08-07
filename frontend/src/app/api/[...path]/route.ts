@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const BACKEND_BASE_URL = process.env.BACKEND_URL || "http://localhost:8080";
+const BACKEND_BASE_URL = process.env.BACKEND_URL || "http://localhost:8084";
 
 function getTargetUrl(pathSegments: string[], search: string): string {
   const cleanBase = BACKEND_BASE_URL.replace(/\/api\/:path\*/, "")

@@ -27,7 +27,7 @@ RUN chown -R appuser:appgroup /app
 
 USER appuser
 
-EXPOSE 8080
+EXPOSE 8084
 
 ENV JAVA_OPTS="-Xms256m -Xmx512m"
 

@@ -98,7 +98,7 @@ check_status() {
 
   echo ""
   log_info "Port Availability Check:"
-  for port_info in "5432:PostgreSQL" "6379:Redis" "11434:Ollama" "8080:Backend" "3000:Frontend"; do
+  for port_info in "5432:PostgreSQL" "6379:Redis" "11434:Ollama" "8084:Backend" "3000:Frontend"; do
     IFS=":" read -r port name <<< "$port_info"
     if (nc -z localhost "$port" 2>/dev/null || (exec 3<>/dev/tcp/localhost/"$port") 2>/dev/null); then
       echo -e "  Port $port ($name): ${GREEN}RUNNING / LISTENING${NC}"
