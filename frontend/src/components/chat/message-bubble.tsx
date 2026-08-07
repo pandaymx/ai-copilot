@@ -7,6 +7,8 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  FileText,
+  Paperclip,
   RotateCcw,
   ThumbsDown,
   ThumbsUp,
@@ -17,11 +19,21 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { Markdown } from "./markdown";
 
+export interface AttachmentItem {
+  id: string;
+  name: string;
+  type: "image" | "file";
+  mimeType: string;
+  url: string;
+  size?: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   thinking?: string;
+  attachments?: AttachmentItem[];
 }
 
 interface MessageBubbleProps {
@@ -120,6 +132,36 @@ export function MessageBubble({
                 {message.thinking}
               </div>
             )}
+          </div>
+        )}
+
+        {/* 多模态附件渲染 */}
+        {message.attachments && message.attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-1 max-w-full">
+            {message.attachments.map((att) => (
+              <div
+                key={att.id}
+                className="group/att relative overflow-hidden rounded-xl border border-zinc-200/80 bg-white/80 dark:border-zinc-800/80 dark:bg-zinc-900/80 p-1 shadow-xs"
+              >
+                {att.type === "image" ? (
+                  <div className="relative size-24 overflow-hidden rounded-lg">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={att.url}
+                      alt={att.name}
+                      className="size-full object-cover transition-transform duration-300 group-hover/att:scale-105"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs">
+                    <FileText className="size-4 shrink-0 text-indigo-500" />
+                    <span className="max-w-[140px] truncate font-medium text-zinc-700 dark:text-zinc-300">
+                      {att.name}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
 

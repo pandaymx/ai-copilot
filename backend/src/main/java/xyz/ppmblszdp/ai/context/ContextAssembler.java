@@ -4,6 +4,7 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.content.Media;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.dto.ChatMessageDto;
 
@@ -52,6 +53,11 @@ public class ContextAssembler {
 	 */
 	public List<Message> assemble(String message, List<ChatMessageDto> history,
 			String requestSystem, String providerSystem, int maxContextTokens) {
+		return assemble(message, history, requestSystem, providerSystem, maxContextTokens, List.of());
+	}
+
+	public List<Message> assemble(String message, List<ChatMessageDto> history,
+			String requestSystem, String providerSystem, int maxContextTokens, List<Media> mediaList) {
 		String system = resolveSystem(requestSystem, providerSystem);
 		int systemTokens = (system != null) ? estimator.estimate(system) : 0;
 
@@ -76,8 +82,12 @@ public class ContextAssembler {
 		for (ChatMessageDto dto : kept) {
 			result.add(toMessage(dto));
 		}
-		// 当前用户消息一定在末尾（去重后追加，确保一定送达）
-		result.add(new UserMessage(message));
+		// 当前用户消息一定在末尾（去重后追加，支持多模态 Media）
+		if (mediaList != null && !mediaList.isEmpty()) {
+			result.add(UserMessage.builder().text(message).media(mediaList).build());
+		} else {
+			result.add(new UserMessage(message));
+		}
 		return result;
 	}
 

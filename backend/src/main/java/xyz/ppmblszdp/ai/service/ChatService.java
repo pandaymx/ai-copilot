@@ -20,9 +20,13 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
+import org.springframework.ai.content.Media;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.util.MimeTypeUtils;
 import xyz.ppmblszdp.ai.context.ContextAssembler;
 import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
+import xyz.ppmblszdp.ai.dto.MediaDto;
 import xyz.ppmblszdp.ai.memory.ChatRateLimiter;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryProcessor;
@@ -30,7 +34,9 @@ import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
 
 import java.time.Duration;
+import java.util.Base64;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 聊天业务服务。
@@ -110,9 +116,15 @@ public class ChatService {
 			ChatRequest req = ensureConversation(request);
 			ChatClient client = resolved.chatClient();
 			MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(memory).build();
+			List<Media> mediaList = convertMediaList(req.media());
 			ChatClient.CallResponseSpec spec = client.prompt()
 					.system(sp -> sp.text(resolveSystemPrompt(req)))
-					.user(req.message())
+					.user(u -> {
+						u.text(req.message());
+						if (!mediaList.isEmpty()) {
+							u.media(mediaList.toArray(new Media[0]));
+						}
+					})
 					.advisors(a -> a
 							.param(ChatMemory.CONVERSATION_ID, req.conversationId()))
 					.advisors(memoryAdvisor)
@@ -160,9 +172,15 @@ public class ChatService {
 			ChatClient client = resolved.chatClient();
 			MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(memory).build();
 			StringBuilder fullContent = new StringBuilder();
+			List<Media> mediaList = convertMediaList(req.media());
 			return client.prompt()
 					.system(sp -> sp.text(resolveSystemPrompt(req)))
-					.user(req.message())
+					.user(u -> {
+						u.text(req.message());
+						if (!mediaList.isEmpty()) {
+							u.media(mediaList.toArray(new Media[0]));
+						}
+					})
 					.advisors(a -> a
 							.param(ChatMemory.CONVERSATION_ID, req.conversationId()))
 					.advisors(memoryAdvisor)
@@ -221,9 +239,10 @@ public class ChatService {
 	}
 
 	private Mono<ChatResponseDto> callWithoutMemory(ResolvedModel resolved, ChatRequest request, ChatOptions options) {
+		List<Media> mediaList = convertMediaList(request.media());
 		List<Message> messages = contextAssembler.assemble(
 				request.message(), request.history(), request.systemPrompt(),
-				null, resolved.model().maxContextTokens());
+				null, resolved.model().maxContextTokens(), mediaList);
 		Prompt prompt =
 				new Prompt(messages, options);
 		return Mono.fromCallable(() -> resolved.chatModel().call(prompt))
@@ -234,9 +253,10 @@ public class ChatService {
 	}
 
 	private Flux<String> streamWithoutMemory(ResolvedModel resolved, ChatRequest request, ChatOptions options) {
+		List<Media> mediaList = convertMediaList(request.media());
 		List<Message> messages = contextAssembler.assemble(
 				request.message(), request.history(), request.systemPrompt(),
-				null, resolved.model().maxContextTokens());
+				null, resolved.model().maxContextTokens(), mediaList);
 		Prompt prompt =
 				new Prompt(messages, options);
 		return resolved.chatModel().stream(prompt)
@@ -247,6 +267,42 @@ public class ChatService {
 						resolved.provider().providerId(), resolved.model().id()))
 				.doOnError(err -> log.warn("流式请求异常(旧路径) → 供应商={}, 模型={}: {}",
 						resolved.provider().providerId(), resolved.model().id(), err.getMessage()));
+	}
+
+	private List<Media> convertMediaList(List<MediaDto> dtos) {
+		if (dtos == null || dtos.isEmpty()) {
+			return List.of();
+		}
+		return dtos.stream()
+				.map(this::toMedia)
+				.filter(Objects::nonNull)
+				.toList();
+	}
+
+	private Media toMedia(MediaDto dto) {
+		if (dto == null || dto.data() == null || dto.data().isBlank()) {
+			return null;
+		}
+		try {
+			String dataStr = dto.data().trim();
+			String base64Data = dataStr;
+			String mimeTypeStr = dto.mimeType();
+
+			if (dataStr.contains(",") && dataStr.startsWith("data:")) {
+				String[] parts = dataStr.split(",", 2);
+				base64Data = parts[1];
+				String header = parts[0];
+				if (header.contains(":") && header.contains(";")) {
+					mimeTypeStr = header.substring(header.indexOf(":") + 1, header.indexOf(";"));
+				}
+			}
+
+			byte[] bytes = Base64.getDecoder().decode(base64Data.trim());
+			return new Media(MimeTypeUtils.parseMimeType(mimeTypeStr), new ByteArrayResource(bytes));
+		} catch (Exception e) {
+			log.warn("多模态媒体 (Media) 数据解析异常: {}", e.getMessage());
+			return null;
+		}
 	}
 
 	private String resolveSystemPrompt(ChatRequest request) {

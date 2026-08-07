@@ -20,7 +20,7 @@ import rust from "react-syntax-highlighter/dist/esm/languages/prism/rust";
 import sql from "react-syntax-highlighter/dist/esm/languages/prism/sql";
 import tsx from "react-syntax-highlighter/dist/esm/languages/prism/tsx";
 import typescript from "react-syntax-highlighter/dist/esm/languages/prism/typescript";
-import xml from "react-syntax-highlighter/dist/esm/languages/prism/xml";
+import xml from "react-syntax-highlighter/dist/esm/languages/prism/markup";
 import yaml from "react-syntax-highlighter/dist/esm/languages/prism/yaml";
 import oneDark from "react-syntax-highlighter/dist/esm/styles/prism/one-dark";
 

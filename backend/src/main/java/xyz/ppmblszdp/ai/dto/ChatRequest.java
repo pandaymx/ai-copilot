@@ -29,8 +29,13 @@ public record ChatRequest(
 		String model,
 		String systemPrompt,
 		String conversationId,
-		String userId
+		String userId,
+		List<MediaDto> media
 ) {
+	public List<MediaDto> media() {
+		return media == null ? List.of() : media;
+	}
+
 	public List<ChatMessageDto> history() {
 		return history == null ? List.of() : history;
 	}
@@ -49,7 +54,7 @@ public record ChatRequest(
 
 	/** 返回一个带指定 conversationId 的副本（record 不可变，用于后端生成后回填）。 */
 	public ChatRequest withConversationId(String id) {
-		return new ChatRequest(message, history, provider, model, systemPrompt, id, userId);
+		return new ChatRequest(message, history, provider, model, systemPrompt, id, userId, media);
 	}
 
 	/** 解析当前用户 id；空则回落匿名标识（长期记忆仍按该匿名 id 隔离，不污染他人）。 */

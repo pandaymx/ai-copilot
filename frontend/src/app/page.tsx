@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Code2,
   Cpu,
+  FileText,
   Layers,
   PanelLeftOpen,
   Paperclip,
@@ -12,9 +13,11 @@ import {
   Sparkles,
   Square,
   Wand2,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  type AttachmentItem,
   type ChatMessage,
   MessageBubble,
 } from "@/components/chat/message-bubble";
@@ -199,8 +202,73 @@ export default function Home() {
     model: "deepseek-chat",
   });
 
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const isStreaming = loading;
   const hasError = Boolean(error);
+
+  const processFiles = useCallback(async (files: FileList | File[]) => {
+    const fileList = Array.from(files);
+    if (fileList.length === 0) return;
+
+    const newAttachments: AttachmentItem[] = [];
+    for (const file of fileList) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert(`文件 "${file.name}" 超过 10MB 限制`);
+        continue;
+      }
+
+      if (file.type.startsWith("image/")) {
+        const dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+        newAttachments.push({
+          id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          name: file.name,
+          type: "image",
+          mimeType: file.type || "image/png",
+          url: dataUrl,
+          size: file.size,
+        });
+      } else {
+        const textContent = await file.text();
+        setInput((prev) => {
+          const prefix = prev ? `${prev}\n\n` : "";
+          return `${prefix}📄 [文档附件: ${file.name}]\n\`\`\`\n${textContent}\n\`\`\``;
+        });
+      }
+    }
+
+    if (newAttachments.length > 0) {
+      setAttachments((prev) => [...prev, ...newAttachments].slice(0, 4));
+    }
+  }, []);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      void processFiles(e.target.files);
+      e.target.value = "";
+    }
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (e.clipboardData.files && e.clipboardData.files.length > 0) {
+      const imageFiles = Array.from(e.clipboardData.files).filter((f) =>
+        f.type.startsWith("image/"),
+      );
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        void processFiles(imageFiles);
+      }
+    }
+  };
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -364,10 +432,15 @@ export default function Home() {
 
   const handleSend = (textOverride?: string) => {
     const text = (textOverride ?? input).trim();
-    if (!text || isStreaming) return;
+    if ((!text && attachments.length === 0) || isStreaming) return;
 
     const liveId = nextId();
     liveIdRef.current = liveId;
+
+    const currentAttachments = [...attachments];
+    const mediaPayload = currentAttachments
+      .filter((att) => att.type === "image")
+      .map((att) => ({ mimeType: att.mimeType, data: att.url }));
 
     const isRegenerate = Boolean(textOverride);
     const historySource = isRegenerate ? messages.slice(0, -2) : messages;
@@ -375,9 +448,16 @@ export default function Home() {
       .filter((m) => m.content.trim() !== "")
       .map((m) => ({ role: m.role, content: m.content }));
 
+    const userMsgText = text || (currentAttachments.length > 0 ? "[图片附件]" : "");
+
     const next: ChatMessage[] = [
       ...historySource,
-      { id: nextId(), role: "user", content: text },
+      {
+        id: nextId(),
+        role: "user",
+        content: userMsgText,
+        attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
+      },
       { id: liveId, role: "assistant", content: "" },
     ];
 
@@ -388,7 +468,7 @@ export default function Home() {
       currentConvId = nextSessionId();
       const newSession: ChatSession = {
         id: currentConvId,
-        title: deriveTitle(text),
+        title: deriveTitle(userMsgText),
         updatedAt: Date.now(),
         messages: next,
         isDefaultTitle: true,
@@ -410,12 +490,14 @@ export default function Home() {
 
     setMessages(next);
     setInput("");
-    liveUserTextRef.current = text;
-    send(text, {
+    setAttachments([]);
+    liveUserTextRef.current = userMsgText;
+    send(userMsgText, {
       provider: model.provider,
       model: model.model,
       conversationId: currentConvId,
       history: historyPayload,
+      media: mediaPayload.length > 0 ? mediaPayload : undefined,
     });
   };
 
@@ -547,14 +629,57 @@ export default function Home() {
             onSubmit={handleSubmit}
             className="mx-auto flex w-full max-w-3xl flex-col gap-2 rounded-2xl border border-zinc-200/80 bg-white/90 p-3 shadow-2xl shadow-indigo-500/10 backdrop-blur-xl transition-all duration-200 focus-within:border-indigo-500/60 focus-within:ring-2 focus-within:ring-indigo-500/20 dark:border-zinc-800/80 dark:bg-zinc-900/90 dark:shadow-none"
           >
+            {/* 隐藏的原生文件上传 Input */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              accept="image/*,.txt,.md,.json,.js,.ts,.java,.py"
+              multiple
+              className="hidden"
+            />
+
+            {/* 待发送附件预览栏 */}
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 px-1 pt-1 pb-1.5 border-b border-zinc-100 dark:border-zinc-800/60">
+                {attachments.map((att) => (
+                  <div
+                    key={att.id}
+                    className="group relative flex items-center gap-2 rounded-xl border border-zinc-200/80 bg-zinc-50/80 p-1.5 dark:border-zinc-800/80 dark:bg-zinc-800/60 text-xs shadow-xs"
+                  >
+                    {att.type === "image" ? (
+                      <div className="relative size-9 overflow-hidden rounded-lg">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={att.url} alt={att.name} className="size-full object-cover" />
+                      </div>
+                    ) : (
+                      <FileText className="size-4 text-indigo-500 shrink-0" />
+                    )}
+                    <span className="max-w-[120px] truncate font-medium text-zinc-700 dark:text-zinc-300">
+                      {att.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(att.id)}
+                      className="flex size-4.5 items-center justify-center rounded-full bg-zinc-200/80 text-zinc-500 hover:bg-rose-500 hover:text-white dark:bg-zinc-700 dark:text-zinc-400 dark:hover:bg-rose-600 transition-colors"
+                      title="移除附件"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="flex items-end gap-2">
               <textarea
                 ref={textareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 rows={1}
-                placeholder="给 Spring AI 发发送指令或问题..."
+                placeholder="给 Spring AI 发送指令、问题或拖入/粘贴图片..."
                 className="max-h-36 min-h-9 flex-1 resize-none bg-transparent px-2 py-1 text-sm text-zinc-900 caret-indigo-500 outline-none placeholder:text-zinc-400 dark:text-zinc-100 dark:caret-indigo-400 dark:placeholder:text-zinc-500 leading-relaxed"
               />
               {isStreaming ? (
@@ -571,7 +696,7 @@ export default function Home() {
               ) : (
                 <button
                   type="submit"
-                  disabled={!input.trim()}
+                  disabled={!input.trim() && attachments.length === 0}
                   aria-label="发送"
                   className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-500/25 transition-all duration-200 hover:scale-105 hover:shadow-indigo-500/40 disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none"
                 >
@@ -587,8 +712,10 @@ export default function Home() {
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
                   aria-label="添加文件"
+                  title="上传图片或代码/文本文件"
                 >
                   <Paperclip className="size-4" />
                 </Button>
