@@ -50,8 +50,11 @@ public class ChatMemoryConfig {
 			ObjectProvider<StringRedisTemplate> redisTemplate,
 			AiProviderProperties properties) {
 		ChatMemoryRepository repository = chatMemoryRepositoryProvider.getIfAvailable(InMemoryChatMemoryRepository::new);
+		// 取消硬编码的 20 条盲截断（设为 1000 软上限），将完整会话持久化在 JDBC/Redis 中，
+		// 具体的 Token 预算滑动窗口统一由 ContextAssembler 按模型 maxContextTokens 动态裁切。
 		ChatMemory delegate = MessageWindowChatMemory.builder()
 				.chatMemoryRepository(repository)
+				.maxMessages(1000)
 				.build();
 
 		int hotCacheSize = properties.resolveMemory().resolveHotCacheSize();

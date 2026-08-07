@@ -12,7 +12,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * 上下文组装器：本方案核心算法。
+ * 上下文组装器：本方案核心算法（统一 Token 动态滑动窗口剪裁）。
  *
  * <p>
  * 职责：
@@ -24,7 +24,7 @@ import java.util.List;
  * 需识别并去重，否则用户消息会被发送两遍；</li>
  * <li><b>Token 预算</b>：可用预算 = 上下文窗口 × historyRatio − systemTokens −
  * reserveOutputTokens；</li>
- * <li><b>反向滑动窗口</b>：从最新消息向前累加，超预算即止，O(n) 单趟；</li>
+ * <li><b>反向滑动窗口</b>：从最新消息向前累加 Token，超预算即止，O(n) 单趟；</li>
  * <li><b>轮次成对对齐</b>：以 user/assistant 轮次为单位，避免裁出「有 assistant 无 user」的孤儿消息；</li>
  * <li><b>类型转换</b>：转为 Spring AI 的 {@link Message}
  * 列表（System/User/Assistant）。</li>
@@ -41,7 +41,7 @@ public class ContextAssembler {
 	}
 
 	/**
-	 * 组装消息列表。
+	 * 组装消息列表（针对 DTO 历史路径）。
 	 *
 	 * @param message          当前用户消息（必填）
 	 * @param history          历史消息（可能已含当前消息，需去重）
@@ -78,6 +78,53 @@ public class ContextAssembler {
 		}
 		// 当前用户消息一定在末尾（去重后追加，确保一定送达）
 		result.add(new UserMessage(message));
+		return result;
+	}
+
+	/**
+	 * 对 Spring AI 的 Message 列表（如从 ChatMemory 中读取的历史）进行统一 Token 预算反向滑动窗口裁剪。
+	 *
+	 * @param messages         原始 Message 列表
+	 * @param maxContextTokens 模型最大上下文 Token 数
+	 * @return 动态满足当前模型 Token 预算且按轮次成对对齐的 Message 列表
+	 */
+	public List<Message> trimMessages(List<Message> messages, int maxContextTokens) {
+		if (messages == null || messages.isEmpty()) {
+			return List.of();
+		}
+		// 1) 提取首个 SystemMessage（若存在）
+		SystemMessage systemMsg = null;
+		List<Message> conversationalMsgs = new ArrayList<>();
+		for (Message m : messages) {
+			if (m instanceof SystemMessage sys) {
+				if (systemMsg == null) {
+					systemMsg = sys;
+				}
+			} else {
+				conversationalMsgs.add(m);
+			}
+		}
+
+		int systemTokens = (systemMsg != null && systemMsg.getText() != null)
+				? estimator.estimate(systemMsg.getText())
+				: 0;
+
+		int reserve = properties.resolveContext().resolveReserveOutputTokens();
+		double ratio = properties.resolveContext().resolveHistoryRatio();
+		int budget = (int) (maxContextTokens * ratio) - systemTokens - reserve;
+		if (budget < 0) {
+			budget = 0;
+		}
+
+		// 2) 反向滑动窗口剪裁
+		List<Message> kept = slidingWindowMessages(conversationalMsgs, budget);
+
+		// 3) 组装最终结果
+		List<Message> result = new ArrayList<>();
+		if (systemMsg != null) {
+			result.add(systemMsg);
+		}
+		result.addAll(kept);
 		return result;
 	}
 
@@ -153,8 +200,36 @@ public class ContextAssembler {
 		return kept;
 	}
 
+	private List<Message> slidingWindowMessages(List<Message> messages, int budget) {
+		List<Message> kept = new ArrayList<>();
+		int used = 0;
+		for (int i = messages.size() - 1; i >= 0; i--) {
+			Message msg = messages.get(i);
+			if (msg == null || msg.getText() == null) {
+				continue;
+			}
+			int cost = estimator.estimate(msg.getText());
+			boolean pairOk = true;
+			if (i > 0) {
+				Message prev = messages.get(i - 1);
+				if (prev != null && prev.getText() != null && isPairedMessage(msg, prev)) {
+					int pairCost = cost + estimator.estimate(prev.getText());
+					if (used + pairCost > budget) {
+						pairOk = false;
+					}
+				}
+			}
+			if (used + cost > budget || !pairOk) {
+				break;
+			}
+			used += cost;
+			kept.add(msg);
+		}
+		Collections.reverse(kept);
+		return kept;
+	}
+
 	private boolean isPaired(String role, String prevRole) {
-		// user 与 assistant 为完整一轮；system 已被排除
 		if ("user".equalsIgnoreCase(role) && "assistant".equalsIgnoreCase(prevRole)) {
 			return true;
 		}
@@ -162,6 +237,11 @@ public class ContextAssembler {
 			return true;
 		}
 		return false;
+	}
+
+	private boolean isPairedMessage(Message msg, Message prev) {
+		return (msg instanceof UserMessage && prev instanceof AssistantMessage) ||
+				(msg instanceof AssistantMessage && prev instanceof UserMessage);
 	}
 
 	private Message toMessage(ChatMessageDto dto) {
