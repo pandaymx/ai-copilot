@@ -7,6 +7,7 @@ import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.config.ProviderProtocol;
 
 import java.time.Duration;
+import java.util.concurrent.Executors;
 
 /**
  * Anthropic / Claude 兼容协议工厂。
@@ -38,6 +39,7 @@ public class AnthropicCompatibleChatModelFactory implements ChatModelFactory {
 		}
 		return AnthropicChatModel.builder()
 				.options(optsBuilder.build())
+				.dispatcherExecutor(Executors.newVirtualThreadPerTaskExecutor())
 				.build();
 	}
 }

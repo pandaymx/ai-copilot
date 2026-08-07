@@ -19,6 +19,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import xyz.ppmblszdp.ai.context.ContextAssembler;
 import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
@@ -186,7 +187,10 @@ public class ChatService {
 		}
 		String cid = ensureConversation(request).conversationId();
 		if (cid != null && !cid.isBlank()) {
-			sessionService.touchSession(cid, deriveDefaultTitle(request.message()));
+			// 副作用异步化：将 JDBC 数据库更新下沉至 boundedElastic 调度器，避免阻塞 WebFlux 事件循环并缩短首包延迟 (TTFB)
+			Mono.fromRunnable(() -> sessionService.touchSession(cid, deriveDefaultTitle(request.message())))
+					.subscribeOn(Schedulers.boundedElastic())
+					.subscribe();
 		}
 		return cid;
 	}

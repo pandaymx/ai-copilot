@@ -7,6 +7,7 @@ import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.config.ProviderProtocol;
 
 import java.time.Duration;
+import java.util.concurrent.Executors;
 
 /**
  * OpenAI 兼容协议工厂。
@@ -42,6 +43,7 @@ public class OpenAiCompatibleChatModelFactory implements ChatModelFactory {
 		}
 		return OpenAiChatModel.builder()
 				.options(optsBuilder.build())
+				.httpClientBuilderCustomizer(b -> b.dispatcherExecutorService(Executors.newVirtualThreadPerTaskExecutor()))
 				.build();
 	}
 }

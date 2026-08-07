@@ -3,7 +3,6 @@ package xyz.ppmblszdp.ai.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -93,9 +92,8 @@ public class TitleService {
 			return Mono.just(null);
 		}
 
-		ChatClient client = resolved.chatClient();
-		String userPrompt = "【用户问题】：\n" + question + "\n\n【AI 回答要点】：\n" + content;
 		ChatOptions options = buildOptions(resolved);
+		String userPrompt = "【用户问题】：\n" + question + (content.isBlank() ? "" : "\n\n【AI 回答要点】：\n" + content);
 
 		return Mono.fromCallable(() -> {
 					Prompt prompt = new Prompt(
@@ -103,7 +101,7 @@ public class TitleService {
 									new SystemMessage(SYSTEM_PROMPT),
 									new UserMessage(userPrompt)),
 							options);
-					ChatResponse resp = client.prompt(prompt).call().chatResponse();
+					ChatResponse resp = resolved.chatModel().call(prompt);
 					if (resp == null || resp.getResult() == null
 							|| resp.getResult().getOutput() == null) {
 						return null;
@@ -146,14 +144,12 @@ public class TitleService {
 		// 逐层去除 Markdown 强调与包裹符
 		for (int i = 0; i < 3; i++) {
 			String prev = t;
-			t = MARKDOWN_PATTERN.matcher(t).replaceFirst("").replaceAll("$", "");
-			t = MARKDOWN_PATTERN.matcher(t).replaceFirst("").trim();
+			t = MARKDOWN_PATTERN.matcher(t).replaceAll("").trim();
 			if (t.equals(prev)) {
 				break;
 			}
 		}
-		t = WRAP_PATTERN.matcher(t).replaceFirst("").replaceAll("$", "");
-		t = t.trim();
+		t = WRAP_PATTERN.matcher(t).replaceAll("").trim();
 
 		// 再次清洗语气头（防止前缀清洗后暴露）
 		t = FILLER_PREFIX_PATTERN.matcher(t).replaceFirst("").trim();

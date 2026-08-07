@@ -67,11 +67,11 @@ function defaultParseChunk(data: string): string | null {
     const parsed = JSON.parse(data);
     if (typeof parsed === "string") return parsed;
 
-    if (parsed?.type === "conversation") {
+    if (parsed?.type === "conversation" || parsed?.type === "done") {
       return null;
     }
 
-    if (parsed?.error) {
+    if (parsed?.type === "error" || parsed?.error) {
       const msg = parsed.message || parsed.code || "后端响应错误";
       return `\n\n⚠️ [服务异常]: ${msg}`;
     }
