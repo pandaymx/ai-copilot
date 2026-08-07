@@ -4,13 +4,31 @@ export const dynamic = "force-dynamic";
 
 const BACKEND_BASE_URL = process.env.BACKEND_URL || "http://localhost:8084";
 
-// 代理层基础 CORS 响应头
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers":
-    "Content-Type, Authorization, X-Requested-With",
-};
+function getCorsHeaders(req?: NextRequest): Record<string, string> {
+  const allowedOriginEnv =
+    process.env.CORS_ALLOWED_ORIGINS || process.env.CORS_ALLOWED_ORIGIN;
+  const requestOrigin = req?.headers.get("origin");
+
+  let allowOrigin = "*";
+  if (allowedOriginEnv && allowedOriginEnv !== "*") {
+    const allowedList = allowedOriginEnv.split(",").map((o) => o.trim());
+    if (requestOrigin && allowedList.includes(requestOrigin)) {
+      allowOrigin = requestOrigin;
+    } else {
+      allowOrigin = allowedList[0] || "*";
+    }
+  } else if (requestOrigin) {
+    allowOrigin = requestOrigin;
+  }
+
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers":
+      "Content-Type, Authorization, X-Requested-With",
+    Vary: "Origin",
+  };
+}
 
 // 代理层内存滑动窗口限流：每个 IP 允许 60 次/分钟
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
@@ -59,11 +77,12 @@ function getTargetUrl(pathSegments: string[], search: string): string {
   return search ? `${target}${search}` : target;
 }
 
-export async function OPTIONS() {
+export async function OPTIONS(req: NextRequest) {
+  const cors = getCorsHeaders(req);
   return new NextResponse(null, {
     status: 204,
     headers: {
-      ...CORS_HEADERS,
+      ...cors,
       "Access-Control-Max-Age": "86400",
     },
   });
@@ -73,6 +92,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
+  const cors = getCorsHeaders(req);
   const clientIp = getClientIp(req);
   if (isRateLimited(clientIp)) {
     return NextResponse.json(
@@ -83,7 +103,7 @@ export async function POST(
       {
         status: 429,
         headers: {
-          ...CORS_HEADERS,
+          ...cors,
           "Retry-After": "60",
         },
       },
@@ -115,7 +135,7 @@ export async function POST(
       return new Response(readable, {
         status: backendRes.status,
         headers: {
-          ...CORS_HEADERS,
+          ...cors,
           "Content-Type": "text/event-stream; charset=utf-8",
           "Cache-Control": "no-cache, no-transform",
           "X-Accel-Buffering": "no",
@@ -128,7 +148,7 @@ export async function POST(
     return new Response(backendRes.body, {
       status: backendRes.status,
       headers: {
-        ...CORS_HEADERS,
+        ...cors,
         "Content-Type":
           backendRes.headers.get("content-type") || "application/json",
       },
@@ -136,7 +156,7 @@ export async function POST(
   } catch (err) {
     return NextResponse.json(
       { error: true, message: (err as Error).message },
-      { status: 500, headers: CORS_HEADERS },
+      { status: 500, headers: cors },
     );
   }
 }
@@ -145,6 +165,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
+  const cors = getCorsHeaders(req);
   const clientIp = getClientIp(req);
   if (isRateLimited(clientIp)) {
     return NextResponse.json(
@@ -155,7 +176,7 @@ export async function GET(
       {
         status: 429,
         headers: {
-          ...CORS_HEADERS,
+          ...cors,
           "Retry-After": "60",
         },
       },
@@ -174,12 +195,12 @@ export async function GET(
     const data = await backendRes.json();
     return NextResponse.json(data, {
       status: backendRes.status,
-      headers: CORS_HEADERS,
+      headers: cors,
     });
   } catch (err) {
     return NextResponse.json(
       { error: true, message: (err as Error).message },
-      { status: 500, headers: CORS_HEADERS },
+      { status: 500, headers: cors },
     );
   }
 }

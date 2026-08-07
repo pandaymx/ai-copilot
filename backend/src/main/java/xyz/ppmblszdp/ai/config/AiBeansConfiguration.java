@@ -10,6 +10,9 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.reactive.CorsWebFilter;
+
 import xyz.ppmblszdp.ai.context.ContextAssembler;
 import xyz.ppmblszdp.ai.context.HeuristicTokenEstimator;
 import xyz.ppmblszdp.ai.context.JTokkitTokenEstimator;
@@ -25,6 +28,7 @@ import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.SecondClassProviderRegistrar;
 import xyz.ppmblszdp.ai.spi.CustomChatModelSupplier;
+import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -32,28 +36,41 @@ import java.util.Map;
 /**
  * 统一抽象层的 Bean 装配。
  *
- * <p>注意本类刻意不直接 new 出 ChatModel：一等公民 ChatModel 由官方 starter 自动装配，
+ * <p>
+ * 注意本类刻意不直接 new 出 ChatModel：一等公民 ChatModel 由官方 starter 自动装配，
  * 二等公民 ChatModel 由其对应的 {@link ChatModelFactory} 在注册阶段构造。此处只负责把
  * 两个 Registrar 的产出合成一个不可变 {@link ProviderRegistry}。
  */
 @Configuration
-@EnableConfigurationProperties(AiProviderProperties.class)
+@EnableConfigurationProperties({AiProviderProperties.class, CorsProperties.class})
 public class AiBeansConfiguration {
 
 	@Bean
-	public org.springframework.web.cors.reactive.CorsWebFilter corsWebFilter() {
-		org.springframework.web.cors.CorsConfiguration corsConfig = new org.springframework.web.cors.CorsConfiguration();
-		corsConfig.addAllowedOriginPattern("*");
+	public CorsWebFilter corsWebFilter(CorsProperties corsProperties) {
+		CorsConfiguration corsConfig = new CorsConfiguration();
+		String allowedOriginsStr = corsProperties.resolveAllowedOrigins();
+		if (allowedOriginsStr != null && !allowedOriginsStr.isBlank()) {
+			String[] origins = allowedOriginsStr.split(",");
+			for (String origin : origins) {
+				String trimmed = origin.trim();
+				if (trimmed.equals("*") || trimmed.contains("*")) {
+					corsConfig.addAllowedOriginPattern(trimmed);
+				} else {
+					corsConfig.addAllowedOrigin(trimmed);
+				}
+			}
+		} else {
+			corsConfig.addAllowedOriginPattern("*");
+		}
 		corsConfig.addAllowedMethod("*");
 		corsConfig.addAllowedHeader("*");
-		corsConfig.setAllowCredentials(false);
+		corsConfig.setAllowCredentials(corsProperties.isAllowCredentials());
 		corsConfig.setMaxAge(3600L);
 
-		org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource source =
-				new org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource();
+		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 		source.registerCorsConfiguration("/**", corsConfig);
 
-		return new org.springframework.web.cors.reactive.CorsWebFilter(source);
+		return new CorsWebFilter(source);
 	}
 
 	@Bean
@@ -123,9 +140,11 @@ public class AiBeansConfiguration {
 		ProviderRegistry.Builder builder = ProviderRegistry.builder();
 		all.values().forEach(builder::register);
 		String defProvider = (properties.defaultProvider() != null && !properties.defaultProvider().isBlank())
-				? properties.defaultProvider() : null;
+				? properties.defaultProvider()
+				: null;
 		String defModel = (properties.defaultModel() != null && !properties.defaultModel().isBlank())
-				? properties.defaultModel() : null;
+				? properties.defaultModel()
+				: null;
 		builder.defaultProviderId(defProvider).defaultModelId(defModel);
 		ProviderRegistry registry = builder.build();
 		logRegistry(registry);

@@ -85,6 +85,10 @@ management:
 # 这里仅补充展示元数据、上下文预算，并完整描述二等公民。
 # =====================================================================
 app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:*}  # 生产环境收敛为具体域名列表，如 http://localhost:3000,https://app.yourdomain.com
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}
+
   ai:
     default-provider: ${AI_DEFAULT_PROVIDER:deepseek}
     default-model: ${AI_DEFAULT_MODEL:deepseek-chat}
