@@ -20,6 +20,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AttachmentItem,
   type ChatMessage,
+  LiveMessageBubble,
   MessageBubble,
 } from "@/components/chat/message-bubble";
 import {
@@ -134,7 +135,7 @@ function loadSavedModel(): SelectedModel {
 }
 
 export default function Home() {
-  const { content, thinking, usage, loading, error, send, stop } =
+  const { loading, error, send, stop, streamStore } =
     useSpringAiStream({
       endpoint: "/api/chat/stream",
       onConversationId: (serverConvId) => {
@@ -410,7 +411,7 @@ export default function Home() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: 副作用触发滚动
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, content, thinking]);
+  }, [messages]);
 
   // 自适应文本框高度
   // biome-ignore lint/correctness/useExhaustiveDependencies: 高度随 input 重新计算
@@ -461,7 +462,8 @@ export default function Home() {
     );
   }
 
-  const handleSend = (textOverride?: string) => {
+  const handleSend = useCallback(
+    (textOverride?: string) => {
     const text = (textOverride ?? input).trim();
     if ((!text && attachments.length === 0) || isStreaming) return;
 
@@ -548,7 +550,17 @@ export default function Home() {
       history: historyPayload,
       media: mediaPayload.length > 0 ? mediaPayload : undefined,
     });
-  };
+  }, [attachments, input, isStreaming, messages, model.model, model.provider, send, activeId]);
+
+  const handleRegenerate = useCallback(() => {
+    setMessages((prev) => {
+      const targetUserMsg = prev[prev.length - 2];
+      if (targetUserMsg && targetUserMsg.role === "user") {
+        setTimeout(() => handleSend(targetUserMsg.content), 0);
+      }
+      return prev;
+    });
+  }, [handleSend]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -670,25 +682,26 @@ export default function Home() {
             <EmptyState onPickPrompt={handlePickPrompt} />
           ) : (
             <div className="mx-auto w-full max-w-3xl py-4">
-              {messages.map((m) => {
+              {messages.map((m, index) => {
                 const isLive = m.id === liveIdRef.current && isStreaming;
-                const messageToRender = isLive
-                  ? {
-                      ...m,
-                      content: content || m.content,
-                      thinking: thinking || m.thinking,
-                      usage: usage ?? m.usage,
-                    }
-                  : m;
+                if (isLive) {
+                  return (
+                    <LiveMessageBubble
+                      key={m.id}
+                      message={m}
+                      streamStore={streamStore}
+                      conversationId={activeId || undefined}
+                    />
+                  );
+                }
+                const isLastAssistant =
+                  m.role === "assistant" && index === messages.length - 1;
                 return (
                   <MessageBubble
                     key={m.id}
-                    message={messageToRender}
+                    message={m}
                     conversationId={activeId || undefined}
-                    streaming={isLive}
-                    onRegenerate={() =>
-                      handleSend(messages[messages.length - 2]?.content)
-                    }
+                    onRegenerate={isLastAssistant ? handleRegenerate : undefined}
                   />
                 );
               })}

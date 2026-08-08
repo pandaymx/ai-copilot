@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Copy, Terminal } from "lucide-react";
-import { useState } from "react";
+import { memo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { PrismLight as SyntaxHighlighter } from "react-syntax-highlighter";
 import bash from "react-syntax-highlighter/dist/esm/languages/prism/bash";
@@ -151,7 +151,7 @@ function CodeBlock({
 }
 
 /** Markdown 渲染组件 */
-export function Markdown({ content }: { content: string }) {
+export const Markdown = memo(function Markdown({ content }: { content: string }) {
   return (
     <div
       className={cn(
@@ -198,4 +198,4 @@ export function Markdown({ content }: { content: string }) {
       </ReactMarkdown>
     </div>
   );
-}
+});

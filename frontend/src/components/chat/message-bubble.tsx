@@ -13,7 +13,8 @@ import {
   ThumbsUp,
   User,
 } from "lucide-react";
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
+import { type StreamStore, useStreamData } from "@/hooks/useSpringAiStream";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { ChatMessageErrorBoundary } from "./error-boundary";
@@ -301,8 +302,45 @@ export const MessageBubble = memo(
   (prev, next) =>
     prev.message === next.message &&
     prev.streaming === next.streaming &&
-    prev.conversationId === next.conversationId,
+    prev.conversationId === next.conversationId &&
+    prev.onRegenerate === next.onRegenerate,
 );
+
+interface LiveMessageBubbleProps {
+  message: ChatMessage;
+  streamStore: StreamStore;
+  conversationId?: string;
+}
+
+export function LiveMessageBubble({
+  message,
+  streamStore,
+  conversationId,
+}: LiveMessageBubbleProps) {
+  const { content, thinking, usage } = useStreamData(streamStore);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    containerRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [content, thinking]);
+
+  const liveMessage: ChatMessage = {
+    ...message,
+    content: content || message.content,
+    thinking: thinking || message.thinking,
+    usage: usage ?? message.usage,
+  };
+
+  return (
+    <div ref={containerRef}>
+      <MessageBubbleBase
+        message={liveMessage}
+        streaming={true}
+        conversationId={conversationId}
+      />
+    </div>
+  );
+}
 
 /** 生成中优雅动画指示器 */
 function BreathingCursor() {

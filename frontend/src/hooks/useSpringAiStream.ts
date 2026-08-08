@@ -1,11 +1,19 @@
 "use client";
 
 import { fetchEventSource } from "@microsoft/fetch-event-source";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 export interface SpringAiStreamMessage {
   role: "user" | "assistant" | "system";
   content: string;
+}
+
+export function useStreamData(store: StreamStore): StreamData {
+  return useSyncExternalStore(
+    store.subscribe,
+    store.getSnapshot,
+    store.getSnapshot,
+  );
 }
 
 export interface UseSpringAiStreamOptions {
@@ -70,6 +78,49 @@ export interface UseSpringAiStreamResult {
   stop: () => void;
   /** 清空已接收内容与历史。 */
   reset: () => void;
+  /** 高频流数据 Store，供 LiveMessage 订阅以隔离全屏重渲染 */
+  streamStore: StreamStore;
+}
+
+export interface StreamData {
+  content: string;
+  thinking: string;
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    estimatedCostRmb?: number;
+  } | null;
+}
+
+export class StreamStore {
+  private data: StreamData = { content: "", thinking: "", usage: null };
+  private listeners = new Set<() => void>();
+
+  getSnapshot = (): StreamData => {
+    return this.data;
+  };
+
+  subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  };
+
+  update(content: string, thinking: string, usage: StreamData["usage"]) {
+    this.data = { content, thinking, usage };
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+
+  reset() {
+    this.data = { content: "", thinking: "", usage: null };
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
 }
 
 const DEFAULT_ENDPOINT = "/api/chat/stream";
@@ -150,6 +201,7 @@ export function useSpringAiStream(
   const [error, setError] = useState<Error | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
+  const streamStoreRef = useRef(new StreamStore());
   const contentRef = useRef("");
   const thinkingRef = useRef("");
   const usageRef = useRef<{
@@ -165,6 +217,11 @@ export function useSpringAiStream(
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
+    streamStoreRef.current.update(
+      contentRef.current,
+      thinkingRef.current,
+      usageRef.current,
+    );
     setStreamData({
       content: contentRef.current,
       thinking: thinkingRef.current,
@@ -175,6 +232,11 @@ export function useSpringAiStream(
     if (rafRef.current !== null) return;
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
+      streamStoreRef.current.update(
+        contentRef.current,
+        thinkingRef.current,
+        usageRef.current,
+      );
       setStreamData({
         content: contentRef.current,
         thinking: thinkingRef.current,
@@ -201,6 +263,7 @@ export function useSpringAiStream(
     contentRef.current = "";
     thinkingRef.current = "";
     usageRef.current = null;
+    streamStoreRef.current.reset();
     setStreamData({ content: "", thinking: "" });
     setUsage(null);
     setLoading(false);
@@ -236,6 +299,7 @@ export function useSpringAiStream(
       contentRef.current = "";
       thinkingRef.current = "";
       usageRef.current = null;
+      streamStoreRef.current.reset();
       setStreamData({ content: "", thinking: "" });
       setUsage(null);
       setError(null);
@@ -333,5 +397,6 @@ export function useSpringAiStream(
     send,
     stop,
     reset,
+    streamStore: streamStoreRef.current,
   };
 }
