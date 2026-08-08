@@ -27,6 +27,15 @@ export interface UseSpringAiStreamOptions {
   parseChunk?: (data: string) => string | null;
   /** 在收到后端返回的会话 ID 时回调 */
   onConversationId?: (conversationId: string) => void;
+  /** 收到 Reasoning/Thinking 思考过程增量时的回调 */
+  onReasoning?: (reasoningDelta: string) => void;
+  /** 收到 Token 用量统计时的回调 */
+  onUsage?: (usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    estimatedCostRmb?: number;
+  }) => void;
   /** 在请求前对消息历史做处理（如裁剪）。 */
   onBeforeSend?: (history: SpringAiStreamMessage[]) => SpringAiStreamMessage[];
   /** 流完整结束后回调（成功完成或异常均触发），参数为最终累计文本。 */
@@ -36,6 +45,15 @@ export interface UseSpringAiStreamOptions {
 export interface UseSpringAiStreamResult {
   /** 当前已累计的助手回复文本。 */
   content: string;
+  /** 当前累计的思考过程文本。 */
+  thinking: string;
+  /** 当前统计的 Usage 信息。 */
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    estimatedCostRmb?: number;
+  } | null;
   /** 是否正在流式接收。 */
   loading: boolean;
   /** 最近一次错误信息。 */
@@ -111,16 +129,26 @@ export function useSpringAiStream(
     buildBody = defaultBuildBody,
     parseChunk = defaultParseChunk,
     onConversationId,
+    onReasoning,
+    onUsage,
     onBeforeSend,
     onFinish,
   } = options;
 
   const [content, setContent] = useState("");
+  const [thinking, setThinking] = useState("");
+  const [usage, setUsage] = useState<{
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    estimatedCostRmb?: number;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const contentRef = useRef("");
+  const thinkingRef = useRef("");
   const historyRef = useRef<SpringAiStreamMessage[]>([]);
 
   useEffect(() => {
@@ -133,7 +161,10 @@ export function useSpringAiStream(
     abortRef.current?.abort();
     abortRef.current = null;
     contentRef.current = "";
+    thinkingRef.current = "";
     setContent("");
+    setThinking("");
+    setUsage(null);
     setLoading(false);
     setError(null);
   }, []);
@@ -166,7 +197,10 @@ export function useSpringAiStream(
         : historyRef.current;
 
       contentRef.current = "";
+      thinkingRef.current = "";
       setContent("");
+      setThinking("");
+      setUsage(null);
       setError(null);
       setLoading(true);
 
@@ -182,16 +216,24 @@ export function useSpringAiStream(
             body: JSON.stringify(buildBody(message, payload, extraBody)),
 
             signal: controller.signal,
-            // 用户切换标签页时保持连接，避免流被浏览器挂起或重连异常。
             openWhenHidden: true,
-            // 多行 data 字段（SSE 允许用多行 data: 拼接）合并为单个 data 字符串，
-            // 再交由 parseChunk 处理，保留内部空白。
             onmessage(ev) {
               if (!ev.data) return;
               try {
                 const parsed = JSON.parse(ev.data);
                 if (parsed?.type === "conversation" && parsed.conversationId) {
                   onConversationId?.(parsed.conversationId);
+                  return;
+                }
+                if (parsed?.type === "reasoning" && parsed.reasoning) {
+                  thinkingRef.current += parsed.reasoning;
+                  setThinking(thinkingRef.current);
+                  onReasoning?.(parsed.reasoning);
+                  return;
+                }
+                if (parsed?.type === "usage" && parsed.usage) {
+                  setUsage(parsed.usage);
+                  onUsage?.(parsed.usage);
                   return;
                 }
               } catch {
@@ -205,9 +247,6 @@ export function useSpringAiStream(
               }
             },
             onerror(err) {
-              // 显式抛出以终止 fetch-event-source 的自动重连：
-              // 对 HTTP 4xx/5xx 及网络错误不应无限重试，否则会重复触发流。
-              // 注意：返回（不抛出）才会触发库的重试逻辑；这里一律抛出停止重试。
               throw err instanceof Error ? err : new Error(String(err));
             },
           });
@@ -233,11 +272,13 @@ export function useSpringAiStream(
       buildBody,
       parseChunk,
       onConversationId,
+      onReasoning,
+      onUsage,
       onBeforeSend,
       onFinish,
       loading,
     ],
   );
 
-  return { content, loading, error, send, stop, reset };
+  return { content, thinking, usage, loading, error, send, stop, reset };
 }

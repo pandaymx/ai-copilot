@@ -33,6 +33,12 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   thinking?: string;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    estimatedCostRmb?: number;
+  };
   attachments?: AttachmentItem[];
 }
 
@@ -97,15 +103,29 @@ export function MessageBubble({
           isUser ? "items-end max-w-[85%]" : "items-start w-full min-w-0",
         )}
       >
-        {/* AI 助手 Badge */}
+        {/* AI 助手 Badge 及 Token 用量展示 */}
         {!isUser && (
-          <div className="flex items-center gap-2 px-1 text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+          <div className="flex flex-wrap items-center gap-2 px-1 text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
             <span className="font-semibold text-zinc-800 dark:text-zinc-200">
               AI Copilot
             </span>
             <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-800/50">
               Spring AI Core
             </span>
+            {message.usage && message.usage.totalTokens > 0 && (
+              <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50">
+                <span>
+                  Tokens: {message.usage.totalTokens} (Prompt:{" "}
+                  {message.usage.promptTokens} / Completion:{" "}
+                  {message.usage.completionTokens})
+                </span>
+                {message.usage.estimatedCostRmb !== undefined && (
+                  <span className="font-semibold text-emerald-800 dark:text-emerald-200">
+                    · 约 ¥{message.usage.estimatedCostRmb.toFixed(4)}
+                  </span>
+                )}
+              </span>
+            )}
           </div>
         )}
 

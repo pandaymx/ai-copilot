@@ -24,6 +24,7 @@ import org.springframework.ai.content.Media;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.util.MimeTypeUtils;
 import xyz.ppmblszdp.ai.context.ContextAssembler;
+import xyz.ppmblszdp.ai.dto.ChatChunkDto;
 import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
 import xyz.ppmblszdp.ai.dto.MediaDto;
@@ -34,8 +35,10 @@ import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -148,16 +151,14 @@ public class ChatService {
 		return callWithoutMemory(resolved, request, options);
 	}
 
-	/** 流式：增量文本 Flux。 */
-	public Flux<String> streamChat(ChatRequest request) {
+	/** 流式：结构化 ChatChunkDto Flux（包含思考过程 reasoning 与 token 用量）。 */
+	public Flux<ChatChunkDto> streamChatChunks(ChatRequest request) {
 		ResolvedModel resolved = registry.resolve(request.provider(), request.model());
 		ChatRateLimiter.RateLimiter limiter = rateLimiter.getIfAvailable();
 		if (limiter != null && !limiter.tryAcquire(request.resolveUserId())) {
 			log.warn("流式请求被限流 → 用户={}", request.resolveUserId());
-			return Flux.just("请求过于频繁，请稍后再试。");
+			return Flux.just(ChatChunkDto.error("RATE_LIMIT", "请求过于频繁，请稍后再试。"));
 		}
-		log.info("流式请求开始 → 供应商={}, 模型={}, 记忆路径={}",
-				resolved.provider().providerId(), resolved.model().id(), useMemory(request));
 
 		boolean memoryPath = useMemory(request);
 		ChatOptions options = buildChatOptions(resolved);
@@ -165,14 +166,14 @@ public class ChatService {
 		if (memoryPath) {
 			ChatMemory memory = sessionChatMemory.getIfAvailable();
 			if (memory == null) {
-				log.warn("记忆路径已选但 ChatMemory 不可用，降级为单轮");
-				return streamWithoutMemory(resolved, request, options);
+				return streamChunksWithoutMemory(resolved, request, options);
 			}
 			ChatRequest req = ensureConversation(request);
 			ChatClient client = resolved.chatClient();
 			MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(memory).build();
 			StringBuilder fullContent = new StringBuilder();
 			List<Media> mediaList = convertMediaList(req.media());
+
 			return client.prompt()
 					.system(sp -> sp.text(resolveSystemPrompt(req)))
 					.user(u -> {
@@ -181,33 +182,92 @@ public class ChatService {
 							u.media(mediaList.toArray(new Media[0]));
 						}
 					})
-					.advisors(a -> a
-							.param(ChatMemory.CONVERSATION_ID, req.conversationId()))
+					.advisors(a -> a.param(ChatMemory.CONVERSATION_ID, req.conversationId()))
 					.advisors(memoryAdvisor)
 					.advisors(a -> applyLongTermAdvisor(a, req))
 					.options(options.mutate())
 					.stream()
 					.chatResponse()
 					.timeout(STREAM_TIMEOUT)
-					.map(resp -> extractText(resp))
-					.filter(text -> text != null && !text.isEmpty())
-					.doOnNext(fullContent::append)
-					.doOnComplete(() -> {
-						log.info("流式请求结束 → 供应商={}, 模型={}, 会话={}",
-								resolved.provider().providerId(), resolved.model().id(), req.conversationId());
-						recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(), req.message(), fullContent.toString());
-					})
+					.concatMap(resp -> processChatResponseToChunks(resp, fullContent))
+					.doOnComplete(() -> recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(), req.message(), fullContent.toString()))
 					.doOnCancel(() -> {
-						log.info("流式请求被客户端取消/中断 → 供应商={}, 模型={}, 会话={}, 已生成文本长度={}",
-								resolved.provider().providerId(), resolved.model().id(), req.conversationId(), fullContent.length());
 						if (fullContent.length() > 0) {
 							recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(), req.message(), fullContent.toString());
 						}
-					})
-					.doOnError(err -> log.warn("流式请求异常 → 供应商={}, 模型={}, 会话={}: {}",
-							resolved.provider().providerId(), resolved.model().id(), req.conversationId(), err.getMessage()));
+					});
 		}
-		return streamWithoutMemory(resolved, request, options);
+		return streamChunksWithoutMemory(resolved, request, options);
+	}
+
+	public Flux<String> streamChat(ChatRequest request) {
+		return streamChatChunks(request)
+				.filter(c -> "content".equals(c.type()) && c.content() != null)
+				.map(ChatChunkDto::content);
+	}
+
+	private Flux<ChatChunkDto> streamChunksWithoutMemory(ResolvedModel resolved, ChatRequest request, ChatOptions options) {
+		List<Media> mediaList = convertMediaList(request.media());
+		List<Message> messages = contextAssembler.assemble(
+				request.message(), request.history(), request.systemPrompt(),
+				null, resolved.model().maxContextTokens(), mediaList);
+		Prompt prompt = new Prompt(messages, options);
+		StringBuilder fullContent = new StringBuilder();
+
+		return resolved.chatModel().stream(prompt)
+				.timeout(STREAM_TIMEOUT)
+				.concatMap(resp -> processChatResponseToChunks(resp, fullContent));
+	}
+
+	private Flux<ChatChunkDto> processChatResponseToChunks(ChatResponse resp, StringBuilder fullContent) {
+		if (resp == null) return Flux.empty();
+		List<ChatChunkDto> chunks = new ArrayList<>();
+
+		// 1. 提取推理/思考文本 (DeepSeek R1 / Qwen Reasoning / Spring AI Output)
+		String reasoning = extractReasoning(resp);
+		if (reasoning != null && !reasoning.isEmpty()) {
+			chunks.add(ChatChunkDto.reasoning(reasoning));
+		}
+
+		// 2. 提取正文增量内容
+		String text = extractText(resp);
+		if (text != null && !text.isEmpty()) {
+			fullContent.append(text);
+			chunks.add(ChatChunkDto.content(text));
+		}
+
+		// 3. 提取 Usage (Prompt / Completion / Total Tokens 及预估费用)
+		ChatChunkDto.UsageDto usageDto = extractUsageDto(resp);
+		if (usageDto != null) {
+			chunks.add(ChatChunkDto.usage(usageDto));
+		}
+
+		return Flux.fromIterable(chunks);
+	}
+
+	private String extractReasoning(ChatResponse resp) {
+		if (resp == null || resp.getResult() == null || resp.getResult().getOutput() == null) return null;
+		Map<String, Object> metadata = resp.getResult().getOutput().getMetadata();
+		if (metadata != null) {
+			Object r = metadata.get("reasoning_content");
+			if (r == null) r = metadata.get("reasoning");
+			if (r == null) r = metadata.get("thinking");
+			if (r instanceof String s && !s.isEmpty()) return s;
+		}
+		return null;
+	}
+
+	private ChatChunkDto.UsageDto extractUsageDto(ChatResponse resp) {
+		if (resp == null || resp.getMetadata() == null || resp.getMetadata().getUsage() == null) return null;
+		var u = resp.getMetadata().getUsage();
+		int prompt = u.getPromptTokens() != null ? u.getPromptTokens().intValue() : 0;
+		int completion = u.getCompletionTokens() != null ? u.getCompletionTokens().intValue() : 0;
+		int total = u.getTotalTokens() != null ? u.getTotalTokens().intValue() : (prompt + completion);
+		if (total == 0) return null;
+
+		// 预估费用：按 DeepSeek/OpenAI 通用均价 0.002元/千 Token 估算 RMB
+		double cost = (prompt * 0.001 + completion * 0.002) / 1000.0 * 7.2;
+		return new ChatChunkDto.UsageDto(prompt, completion, total, Math.round(cost * 10000.0) / 10000.0);
 	}
 
 	private boolean useMemory(ChatRequest request) {

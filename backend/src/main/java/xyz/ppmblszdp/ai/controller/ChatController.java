@@ -53,14 +53,13 @@ public class ChatController {
 
 	@PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	public Flux<ServerSentEvent<ChatChunkDto>> stream(@RequestBody ChatRequest request) {
-		// 记忆路径：先把后端最终使用的 conversationId 以元数据帧透传给前端，便于多轮串联
 		String conversationId = chatService.resolveConversationId(request);
 		boolean emitConversation = conversationId != null && !conversationId.isBlank();
 		Flux<ServerSentEvent<ChatChunkDto>> head = emitConversation
 				? Flux.just(ServerSentEvent.builder(ChatChunkDto.conversation(conversationId)).build())
 				: Flux.empty();
-		return head.concatWith(chatService.streamChat(request)
-						.map(chunk -> ServerSentEvent.builder(ChatChunkDto.content(chunk)).build()))
+		return head.concatWith(chatService.streamChatChunks(request)
+						.map(chunk -> ServerSentEvent.builder(chunk).build()))
 				.concatWithValues(ServerSentEvent.builder(ChatChunkDto.done()).build())
 				.onErrorResume(AiException.class, ex ->
 						Flux.just(ServerSentEvent.builder(ChatChunkDto.error(ex.getErrorCode(), ex.getMessage())).build()))

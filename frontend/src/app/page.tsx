@@ -145,8 +145,22 @@ export default function Home() {
         }
       }
     },
-    // 流完整结束后（成功/异常均触发）：同步会话列表，并对默认标题会话异步生成 AI 标题。
-    // 此处 finalContent 为闭包内最終累计文本，避免 useEffect 监听 content 的闭包/重复触发问题。
+    onReasoning: (delta) => {
+      const liveId = liveIdRef.current;
+      if (!liveId) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === liveId ? { ...m, thinking: (m.thinking || "") + delta } : m,
+        ),
+      );
+    },
+    onUsage: (u) => {
+      const liveId = liveIdRef.current;
+      if (!liveId) return;
+      setMessages((prev) =>
+        prev.map((m) => (m.id === liveId ? { ...m, usage: u } : m)),
+      );
+    },
     onFinish: (finalContent) => {
       const liveId = liveIdRef.current;
       if (!liveId || !activeId) return;
