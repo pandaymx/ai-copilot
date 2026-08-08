@@ -2,16 +2,12 @@ package xyz.ppmblszdp.ai.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.deepseek.DeepSeekChatOptions;
-import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
-import org.springframework.ai.ollama.api.OllamaChatOptions;
-import org.springframework.ai.openai.OpenAiChatOptions;
+import xyz.ppmblszdp.ai.factory.ChatOptionsFactory;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -173,26 +169,7 @@ public class TitleService {
 
 	/** 标题生成的采样温度设置为 0.5，赋予模型适度总结与改写能力，防止贪婪原样抄写 Prompt。 */
 	private ChatOptions buildOptions(ResolvedModel resolved) {
-		String modelName = resolved.model().modelName();
-		String providerId = resolved.provider().providerId().toLowerCase();
-		double temp = 0.5;
-
-		if (providerId.contains("deepseek")) {
-			return DeepSeekChatOptions.builder().model(modelName).temperature(temp).build();
-		}
-		if (providerId.contains("openai")) {
-			return OpenAiChatOptions.builder().model(modelName).temperature(temp).build();
-		}
-		if (providerId.contains("google") || providerId.contains("gemini")) {
-			return GoogleGenAiChatOptions.builder().model(modelName).temperature(temp).build();
-		}
-		if (providerId.contains("anthropic") || providerId.contains("claude")) {
-			return AnthropicChatOptions.builder().model(modelName).temperature(temp).build();
-		}
-		if (providerId.contains("ollama")) {
-			return OllamaChatOptions.builder().model(modelName).temperature(temp).build();
-		}
-		return OpenAiChatOptions.builder().model(modelName).temperature(temp).build();
+		return ChatOptionsFactory.forProvider(resolved, 0.5);
 	}
 
 	private static final String SYSTEM_PROMPT = """
