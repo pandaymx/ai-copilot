@@ -4,11 +4,11 @@ import { Brain, Check, Download, FileJson, FileText, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "@/components/chat/message-bubble";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import {
   type ExportFormat,
   exportConversation,
 } from "@/lib/export-conversation";
+import { cn } from "@/lib/utils";
 
 interface ExportDialogProps {
   open: boolean;
@@ -37,8 +37,7 @@ const FORMAT_OPTIONS: {
     label: "纯文本",
     desc: ".txt · 无格式，通用兼容",
     icon: FileText,
-    color:
-      "from-zinc-500 to-zinc-600 ring-zinc-400/30 dark:ring-zinc-500/40",
+    color: "from-zinc-500 to-zinc-600 ring-zinc-400/30 dark:ring-zinc-500/40",
   },
   {
     id: "json",
@@ -227,7 +226,6 @@ export function ExportDialog({
                     className="sr-only"
                   />
                   <div
-                    onClick={() => setIncludeThinking((v) => !v)}
                     className={cn(
                       "relative h-5 w-9 cursor-pointer rounded-full transition-colors duration-200",
                       includeThinking

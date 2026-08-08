@@ -8,18 +8,14 @@ import xyz.ppmblszdp.ai.dto.ChatFeedbackRequest;
 import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
 import xyz.ppmblszdp.ai.dto.TitleRequest;
-import xyz.ppmblszdp.ai.dto.TitleResponse;
 import xyz.ppmblszdp.ai.service.ChatService;
 import xyz.ppmblszdp.ai.service.FeedbackService;
 import xyz.ppmblszdp.ai.service.SessionService;
 import xyz.ppmblszdp.ai.service.TitleService;
 
-import java.util.Map;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;

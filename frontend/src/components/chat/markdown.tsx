@@ -151,7 +151,11 @@ function CodeBlock({
 }
 
 /** Markdown 渲染组件 */
-export const Markdown = memo(function Markdown({ content }: { content: string }) {
+export const Markdown = memo(function Markdown({
+  content,
+}: {
+  content: string;
+}) {
   return (
     <div
       className={cn(

@@ -21,8 +21,22 @@ public record ChatChunkDto(
 		String reasoning,
 		UsageDto usage,
 		String code,
-		String message
+		String message,
+		String provider,
+		String model,
+		Boolean isFallback
 ) {
+	public ChatChunkDto(
+			String type,
+			String conversationId,
+			String content,
+			String reasoning,
+			UsageDto usage,
+			String code,
+			String message
+	) {
+		this(type, conversationId, content, reasoning, usage, code, message, null, null, null);
+	}
 	public record UsageDto(
 			int promptTokens,
 			int completionTokens,
@@ -31,7 +45,11 @@ public record ChatChunkDto(
 	) {}
 
 	public static ChatChunkDto conversation(String conversationId) {
-		return new ChatChunkDto("conversation", conversationId, null, null, null, null, null);
+		return new ChatChunkDto("conversation", conversationId, null, null, null, null, null, null, null, null);
+	}
+
+	public static ChatChunkDto conversation(String conversationId, String provider, String model, Boolean isFallback) {
+		return new ChatChunkDto("conversation", conversationId, null, null, null, null, null, provider, model, isFallback);
 	}
 
 	public static ChatChunkDto content(String content) {

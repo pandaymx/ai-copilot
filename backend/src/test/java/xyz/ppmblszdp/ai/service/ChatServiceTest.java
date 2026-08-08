@@ -95,6 +95,7 @@ class ChatServiceTest {
 				longTermProcessor,
 				rateLimiter,
 				safeGuardAdvisor,
+				new xyz.ppmblszdp.ai.registry.ModelHealthTracker(),
 				sessionService,
 				properties);
 	}
@@ -197,6 +198,9 @@ class ChatServiceTest {
 				.when(processor).processTurn(any(), any(), any(), any());
 		when(longTermProcessor.getIfAvailable()).thenReturn(processor);
 
+		@SuppressWarnings("unchecked")
+		ObjectProvider<xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor> mockSafeGuardAdvisor = mock(ObjectProvider.class);
+
 		ChatService enabledChatService = new ChatService(
 				registry,
 				contextAssembler,
@@ -205,7 +209,8 @@ class ChatServiceTest {
 				longTermWriter,
 				longTermProcessor,
 				rateLimiter,
-				mock(ObjectProvider.class),
+				mockSafeGuardAdvisor,
+				new xyz.ppmblszdp.ai.registry.ModelHealthTracker(),
 				sessionService,
 				properties);
 

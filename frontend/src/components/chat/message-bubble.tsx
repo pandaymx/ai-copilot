@@ -14,8 +14,8 @@ import {
   User,
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
-import { type StreamStore, useStreamData } from "@/hooks/useSpringAiStream";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { type StreamStore, useStreamData } from "@/hooks/useSpringAiStream";
 import { cn } from "@/lib/utils";
 import { ChatMessageErrorBoundary } from "./error-boundary";
 import { Markdown } from "./markdown";
@@ -320,6 +320,7 @@ export function LiveMessageBubble({
   const { content, thinking, usage } = useStreamData(streamStore);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll into view on streaming content update
   useEffect(() => {
     containerRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [content, thinking]);

@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ExportDialog } from "@/components/chat/export-dialog";
 import {
   type AttachmentItem,
   type ChatMessage,
@@ -27,7 +28,6 @@ import {
   ModelSelector,
   type SelectedModel,
 } from "@/components/chat/model-selector";
-import { ExportDialog } from "@/components/chat/export-dialog";
 import { type ChatSession, Sidebar } from "@/components/chat/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -135,31 +135,43 @@ function loadSavedModel(): SelectedModel {
 }
 
 export default function Home() {
-  const { loading, error, send, stop, streamStore } =
-    useSpringAiStream({
-      endpoint: "/api/chat/stream",
-      onConversationId: (serverConvId) => {
-        if (serverConvId && activeId && serverConvId !== activeId) {
-          setActiveId(serverConvId);
-          setSessions((prev) =>
-            prev.map((s) =>
-              s.id === activeId ? { ...s, id: serverConvId } : s,
-            ),
-          );
-          if (typeof window !== "undefined") {
-            localStorage.setItem(ACTIVE_KEY, serverConvId);
-          }
+  const { loading, error, send, stop, streamStore } = useSpringAiStream({
+    endpoint: "/api/chat/stream",
+    onConversationId: (serverConvId) => {
+      if (serverConvId && activeId && serverConvId !== activeId) {
+        setActiveId(serverConvId);
+        setSessions((prev) =>
+          prev.map((s) => (s.id === activeId ? { ...s, id: serverConvId } : s)),
+        );
+        if (typeof window !== "undefined") {
+          localStorage.setItem(ACTIVE_KEY, serverConvId);
         }
-      },
-      onFinish: (finalContent, finalThinking, finalUsage) => {
-        const liveId = liveIdRef.current;
-        if (!liveId || !activeId) return;
-        liveIdRef.current = null;
-        const question = liveUserTextRef.current;
-        liveUserTextRef.current = "";
+      }
+    },
+    onFinish: (finalContent, finalThinking, finalUsage) => {
+      const liveId = liveIdRef.current;
+      if (!liveId || !activeId) return;
+      liveIdRef.current = null;
+      const question = liveUserTextRef.current;
+      liveUserTextRef.current = "";
 
-        setMessages((prev) =>
-          prev.map((m) =>
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === liveId
+            ? {
+                ...m,
+                content: finalContent,
+                thinking: finalThinking || m.thinking,
+                usage: finalUsage ?? m.usage,
+              }
+            : m,
+        ),
+      );
+
+      setSessions((prev) =>
+        prev.map((s) => {
+          if (s.id !== activeId) return s;
+          const updatedMessages = (s.messages ?? []).map((m) =>
             m.id === liveId
               ? {
                   ...m,
@@ -168,53 +180,38 @@ export default function Home() {
                   usage: finalUsage ?? m.usage,
                 }
               : m,
-          ),
-        );
+          );
+          return { ...s, messages: updatedMessages, updatedAt: Date.now() };
+        }),
+      );
 
+      // 仅当标题仍为自动生成（未被用户重命名、也未被 AI 改写）时才更新标题
+      const target = sessionsRef.current.find((s) => s.id === activeId);
+      if (!target || target.isDefaultTitle !== true) return;
+
+      void (async () => {
+        const aiTitle = await fetchTitle({
+          message: question,
+          answer: finalContent,
+          provider: model.provider,
+          model: model.model,
+          conversationId: activeId,
+        });
         setSessions((prev) =>
           prev.map((s) => {
-            if (s.id !== activeId) return s;
-            const updatedMessages = (s.messages ?? []).map((m) =>
-              m.id === liveId
-                ? {
-                    ...m,
-                    content: finalContent,
-                    thinking: finalThinking || m.thinking,
-                    usage: finalUsage ?? m.usage,
-                  }
-                : m,
-            );
-            return { ...s, messages: updatedMessages, updatedAt: Date.now() };
+            if (s.id !== activeId || s.isDefaultTitle !== true) return s;
+            const title = aiTitle ?? deriveTitle(finalContent);
+            return {
+              ...s,
+              title,
+              isDefaultTitle: false,
+              updatedAt: Date.now(),
+            };
           }),
         );
-
-        // 仅当标题仍为自动生成（未被用户重命名、也未被 AI 改写）时才更新标题
-        const target = sessionsRef.current.find((s) => s.id === activeId);
-        if (!target || target.isDefaultTitle !== true) return;
-
-        void (async () => {
-          const aiTitle = await fetchTitle({
-            message: question,
-            answer: finalContent,
-            provider: model.provider,
-            model: model.model,
-            conversationId: activeId,
-          });
-          setSessions((prev) =>
-            prev.map((s) => {
-              if (s.id !== activeId || s.isDefaultTitle !== true) return s;
-              const title = aiTitle ?? deriveTitle(finalContent);
-              return {
-                ...s,
-                title,
-                isDefaultTitle: false,
-                updatedAt: Date.now(),
-              };
-            }),
-          );
-        })();
-      },
-    });
+      })();
+    },
+  });
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState<boolean>(true);
@@ -464,93 +461,105 @@ export default function Home() {
 
   const handleSend = useCallback(
     (textOverride?: string) => {
-    const text = (textOverride ?? input).trim();
-    if ((!text && attachments.length === 0) || isStreaming) return;
+      const text = (textOverride ?? input).trim();
+      if ((!text && attachments.length === 0) || isStreaming) return;
 
-    const liveId = nextId();
-    liveIdRef.current = liveId;
+      const liveId = nextId();
+      liveIdRef.current = liveId;
 
-    const currentAttachments = [...attachments];
-    const mediaPayload = currentAttachments
-      .filter((att) => att.type === "image")
-      .map((att) => ({ mimeType: att.mimeType, data: att.url }));
+      const currentAttachments = [...attachments];
+      const mediaPayload = currentAttachments
+        .filter((att) => att.type === "image")
+        .map((att) => ({ mimeType: att.mimeType, data: att.url }));
 
-    // 将非图片文件的文本内容拼接为上下文前缀，确保后端能收到文件内容
-    const fileAttachments = currentAttachments.filter(
-      (att) => att.type === "file" && att.textContent,
-    );
-    const fileContextPrefix = fileAttachments
-      .map(
-        (att) =>
-          `【附加上下文文件 ${att.name}】\n\`\`\`\n${att.textContent}\n\`\`\``,
-      )
-      .join("\n\n");
-
-    const isRegenerate = Boolean(textOverride);
-    const historySource = isRegenerate ? messages.slice(0, -2) : messages;
-    const historyPayload = historySource
-      .filter((m) => m.content.trim() !== "")
-      .map((m) => ({ role: m.role, content: m.content }));
-
-    // 界面显示的消息文本（不含文件内容，保持 UI 简洁）
-    const userMsgText = text || (currentAttachments.length > 0 ? "[附件]" : "");
-
-    // 实际发送给后端的消息文本（包含文件上下文）
-    const sendText = fileContextPrefix
-      ? `${fileContextPrefix}\n\n${text}`
-      : userMsgText;
-
-    const next: ChatMessage[] = [
-      ...historySource,
-      {
-        id: nextId(),
-        role: "user",
-        content: userMsgText,
-        attachments:
-          currentAttachments.length > 0 ? currentAttachments : undefined,
-      },
-      { id: liveId, role: "assistant", content: "" },
-    ];
-
-    let currentConvId = activeId;
-
-    if (!currentConvId) {
-      // 处于根目录草稿状态时，发起对话才创建并保存会话
-      currentConvId = nextSessionId();
-      const newSession: ChatSession = {
-        id: currentConvId,
-        title: deriveTitle(userMsgText),
-        updatedAt: Date.now(),
-        messages: next,
-        isDefaultTitle: true,
-      };
-      setActiveId(currentConvId);
-      setSessions((prev) => [newSession, ...prev]);
-      if (typeof window !== "undefined") {
-        localStorage.setItem(ACTIVE_KEY, currentConvId);
-      }
-    } else {
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === currentConvId
-            ? { ...s, messages: next, updatedAt: Date.now() }
-            : s,
-        ),
+      // 将非图片文件的文本内容拼接为上下文前缀，确保后端能收到文件内容
+      const fileAttachments = currentAttachments.filter(
+        (att) => att.type === "file" && att.textContent,
       );
-    }
+      const fileContextPrefix = fileAttachments
+        .map(
+          (att) =>
+            `【附加上下文文件 ${att.name}】\n\`\`\`\n${att.textContent}\n\`\`\``,
+        )
+        .join("\n\n");
 
-    setMessages(next);
-    setInput("");
-    setAttachments([]);
-    liveUserTextRef.current = userMsgText;
-    send(sendText, {
-      provider: model.provider,
-      model: model.model,
-      conversationId: currentConvId,
-      history: historyPayload,
-      media: mediaPayload.length > 0 ? mediaPayload : undefined,
-    });
-  }, [attachments, input, isStreaming, messages, model.model, model.provider, send, activeId]);
+      const isRegenerate = Boolean(textOverride);
+      const historySource = isRegenerate ? messages.slice(0, -2) : messages;
+      const historyPayload = historySource
+        .filter((m) => m.content.trim() !== "")
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      // 界面显示的消息文本（不含文件内容，保持 UI 简洁）
+      const userMsgText =
+        text || (currentAttachments.length > 0 ? "[附件]" : "");
+
+      // 实际发送给后端的消息文本（包含文件上下文）
+      const sendText = fileContextPrefix
+        ? `${fileContextPrefix}\n\n${text}`
+        : userMsgText;
+
+      const next: ChatMessage[] = [
+        ...historySource,
+        {
+          id: nextId(),
+          role: "user",
+          content: userMsgText,
+          attachments:
+            currentAttachments.length > 0 ? currentAttachments : undefined,
+        },
+        { id: liveId, role: "assistant", content: "" },
+      ];
+
+      let currentConvId = activeId;
+
+      if (!currentConvId) {
+        // 处于根目录草稿状态时，发起对话才创建并保存会话
+        currentConvId = nextSessionId();
+        const newSession: ChatSession = {
+          id: currentConvId,
+          title: deriveTitle(userMsgText),
+          updatedAt: Date.now(),
+          messages: next,
+          isDefaultTitle: true,
+        };
+        setActiveId(currentConvId);
+        setSessions((prev) => [newSession, ...prev]);
+        if (typeof window !== "undefined") {
+          localStorage.setItem(ACTIVE_KEY, currentConvId);
+        }
+      } else {
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === currentConvId
+              ? { ...s, messages: next, updatedAt: Date.now() }
+              : s,
+          ),
+        );
+      }
+
+      setMessages(next);
+      setInput("");
+      setAttachments([]);
+      liveUserTextRef.current = userMsgText;
+      send(sendText, {
+        provider: model.provider,
+        model: model.model,
+        conversationId: currentConvId,
+        history: historyPayload,
+        media: mediaPayload.length > 0 ? mediaPayload : undefined,
+      });
+    },
+    [
+      attachments,
+      input,
+      isStreaming,
+      messages,
+      model.model,
+      model.provider,
+      send,
+      activeId,
+    ],
+  );
 
   const handleRegenerate = useCallback(() => {
     setMessages((prev) => {
@@ -701,7 +710,9 @@ export default function Home() {
                     key={m.id}
                     message={m}
                     conversationId={activeId || undefined}
-                    onRegenerate={isLastAssistant ? handleRegenerate : undefined}
+                    onRegenerate={
+                      isLastAssistant ? handleRegenerate : undefined
+                    }
                   />
                 );
               })}

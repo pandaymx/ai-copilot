@@ -31,7 +31,21 @@ public record ModelCatalogResponse(
 			List<String> tags,
 			int maxContextTokens,
 			BigDecimal inputPricePerK,
-			BigDecimal outputPricePerK
+			BigDecimal outputPricePerK,
+			String status,
+			boolean healthy
 	) {
+		public ModelEntry(
+				String id,
+				String displayName,
+				String description,
+				String badge,
+				List<String> tags,
+				int maxContextTokens,
+				BigDecimal inputPricePerK,
+				BigDecimal outputPricePerK
+		) {
+			this(id, displayName, description, badge, tags, maxContextTokens, inputPricePerK, outputPricePerK, "UP", true);
+		}
 	}
 }

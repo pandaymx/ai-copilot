@@ -1,17 +1,18 @@
 "use client";
 
 import {
+  AlertTriangle,
   Bot,
   Brain,
   Check,
   ChevronDown,
   ChevronRight,
   Cpu,
-  Layers,
+  RefreshCw,
   Sparkles,
   Zap,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 export interface BackendModelEntry {
@@ -21,6 +22,8 @@ export interface BackendModelEntry {
   badge?: string;
   tags?: string[];
   maxContextTokens?: number;
+  status?: "UP" | "DOWN" | "HALF_OPEN";
+  healthy?: boolean;
 }
 
 export interface BackendProviderEntry {
@@ -58,6 +61,8 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         badge: "推荐",
         tags: ["chat"],
         maxContextTokens: 32768,
+        status: "UP",
+        healthy: true,
       },
     ],
   },
@@ -75,6 +80,8 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         badge: "全能",
         tags: ["multimodal"],
         maxContextTokens: 128000,
+        status: "UP",
+        healthy: true,
       },
     ],
   },
@@ -92,6 +99,8 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         badge: "极速",
         tags: ["multimodal"],
         maxContextTokens: 1048576,
+        status: "UP",
+        healthy: true,
       },
       {
         id: "gemini-3.5-flash",
@@ -99,6 +108,8 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         description: "Google 稳定版轻量多模态模型",
         tags: ["multimodal"],
         maxContextTokens: 1048576,
+        status: "UP",
+        healthy: true,
       },
       {
         id: "gemini-3.1-pro-preview",
@@ -107,6 +118,8 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         badge: "预览",
         tags: ["multimodal"],
         maxContextTokens: 2097152,
+        status: "UP",
+        healthy: true,
       },
     ],
   },
@@ -124,6 +137,8 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         badge: "强力",
         tags: ["chat"],
         maxContextTokens: 200000,
+        status: "UP",
+        healthy: true,
       },
     ],
   },
@@ -141,6 +156,8 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         badge: "本地",
         tags: ["local"],
         maxContextTokens: 8192,
+        status: "UP",
+        healthy: true,
       },
     ],
   },
@@ -204,6 +221,34 @@ export function ModelSelector({
         ?.models.some((m) => m.id === value.model) ?? false
     );
 
+  // 轻量获取健康诊断
+  const fetchHealth = useCallback(() => {
+    fetch("/api/models/health")
+      .then((res) => (res.ok ? res.json() : null))
+      .then(
+        (data: { models?: Record<string, "UP" | "DOWN" | "HALF_OPEN"> }) => {
+          if (!data?.models) return;
+          setCatalog((prevCatalog) =>
+            prevCatalog.map((provider) => ({
+              ...provider,
+              models: provider.models.map((model) => {
+                const key = `${provider.id}:${model.id}`;
+                const status = data.models?.[key] ?? model.status ?? "UP";
+                return {
+                  ...model,
+                  status,
+                  healthy: status !== "DOWN",
+                };
+              }),
+            })),
+          );
+        },
+      )
+      .catch(() => {
+        // 捕获请求异常
+      });
+  }, []);
+
   // 尝试从后端获取动态模型清单 /api/models
   useEffect(() => {
     if (initialProviders && initialProviders.length > 0) return;
@@ -226,15 +271,28 @@ export function ModelSelector({
     };
   }, [initialProviders]);
 
+  // 低频轮询 + 下拉框打开/页面 Focus 时静默刷新健康数据
+  useEffect(() => {
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 45_000);
+    const handleFocus = () => fetchHealth();
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [fetchHealth]);
+
   // 当外部选中的 provider 变化或 open 展开时校准 activeProviderId
   useEffect(() => {
     if (open) {
+      fetchHealth();
       const match = catalog.find((p) => p.id === value.provider);
       if (match) {
         setActiveProviderId(match.id);
       }
     }
-  }, [open, value.provider, catalog]);
+  }, [open, value.provider, catalog, fetchHealth]);
 
   // 点击外部关闭
   useEffect(() => {
@@ -250,95 +308,109 @@ export function ModelSelector({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // 匹配当前选中的 供应商 与 模型 对象
-  const currentProvider =
-    catalog.find((p) => p.id === value.provider) ??
-    catalog.find((p) => p.models.some((m) => m.id === value.model)) ??
-    catalog[0];
-
-  const currentModel =
-    currentProvider?.models.find((m) => m.id === value.model) ??
-    currentProvider?.models[0];
-
-  const currentMeta = getProviderIconAndAccent(
-    currentProvider?.id ?? "deepseek",
-  );
-  const CurrentIcon = currentMeta.icon;
-
-  // 二级结构的 当前激活供应商 对象
   const activeProviderObj =
     catalog.find((p) => p.id === activeProviderId) ?? catalog[0];
 
+  // 查找当前主界面选中的 Provider 与 Model 信息
+  const currentProviderObj = catalog.find((p) => p.id === value.provider);
+  const currentModelObj = currentProviderObj?.models.find(
+    (m) => m.id === value.model,
+  );
+  const isCurrentModelDown =
+    currentModelObj?.status === "DOWN" || currentModelObj?.healthy === false;
+
+  const activeProviderAccent = getProviderIconAndAccent(
+    value.provider || "deepseek",
+  );
+  const TriggerIcon = activeProviderAccent.icon;
+
   return (
     <div className="relative inline-block text-left" ref={containerRef}>
-      {/* 按钮触发器：第一级供应商/第二级模型 */}
+      {/* 选中的模型在当前属于 DOWN 时展现防熔断警告提示 */}
+      {isCurrentModelDown && (
+        <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:bg-amber-500/15 dark:text-amber-300 shadow-2xs backdrop-blur-md">
+          <AlertTriangle className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <span>
+            选中的模型（{currentModelObj?.displayName ?? value.model}
+            ）响应受阻，发送请求将自动降级回复
+          </span>
+        </div>
+      )}
+
+      {/* 选择器触发展开按钮 */}
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
+        aria-label="选择 AI 模型"
         className={cn(
-          "group flex items-center gap-2 rounded-xl border border-zinc-200/80 bg-white/80 px-2.5 py-1.5 text-xs font-medium text-zinc-700 shadow-xs backdrop-blur transition-all duration-200 hover:border-indigo-500/40 hover:bg-white hover:shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900/60 dark:text-zinc-200 dark:hover:border-indigo-500/50 dark:hover:bg-zinc-900",
-          open &&
-            "border-indigo-500 ring-2 ring-indigo-500/20 dark:border-indigo-500",
+          "group inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold shadow-xs backdrop-blur-md transition-all duration-200",
+          open
+            ? "border-indigo-500/80 bg-white/90 ring-2 ring-indigo-500/20 dark:border-indigo-500/80 dark:bg-zinc-900/90"
+            : isCurrentModelDown
+              ? "border-amber-500/60 bg-amber-500/10 text-amber-800 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-300"
+              : "border-zinc-200/80 bg-white/80 text-zinc-800 hover:border-zinc-300 hover:bg-white dark:border-zinc-800/80 dark:bg-zinc-900/80 dark:text-zinc-200 dark:hover:border-zinc-700",
         )}
       >
         <span
           className={cn(
-            "flex size-5 items-center justify-center rounded-lg bg-gradient-to-br text-white shadow-xs",
-            currentMeta.accent,
+            "flex size-5 items-center justify-center rounded-lg bg-gradient-to-tr text-white shadow-xs transition-transform duration-200 group-hover:scale-105",
+            activeProviderAccent.accent,
           )}
         >
-          <CurrentIcon className="size-3" />
+          <TriggerIcon className="size-3" />
         </span>
-        <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-          {currentModel?.displayName || value.model}
-        </span>
-        <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
-          ({currentProvider?.displayName || value.provider})
-        </span>
-        {currentModel?.badge && (
-          <span className="rounded bg-indigo-500/10 text-indigo-600 dark:bg-indigo-400/15 dark:text-indigo-400 px-1.5 py-0.5 text-[10px] font-medium">
-            {currentModel.badge}
+        <div className="flex items-center gap-1.5">
+          <span className="font-bold">
+            {currentProviderObj?.displayName ?? value.provider}
           </span>
-        )}
+          <span className="text-zinc-400 dark:text-zinc-500">/</span>
+          <span className="font-medium text-zinc-600 dark:text-zinc-300">
+            {isCustomSelected
+              ? `自定义 (${value.model})`
+              : currentModelObj?.displayName || value.model}
+          </span>
+          {/* 健康指示灯 */}
+          {isCurrentModelDown ? (
+            <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+              <span className="size-2 rounded-full bg-amber-500 animate-pulse" />
+              <span>降级中</span>
+            </span>
+          ) : (
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+          )}
+        </div>
         <ChevronDown
           className={cn(
             "size-3.5 text-zinc-400 transition-transform duration-200",
-            open && "rotate-180 text-zinc-700 dark:text-zinc-200",
+            open && "rotate-180 text-indigo-500 dark:text-indigo-400",
           )}
         />
       </button>
 
-      {/* 二级联动下拉选择面板 */}
+      {/* 下拉弹出面板 */}
       {open && (
-        <div className="absolute left-0 bottom-full mb-2 z-50 w-[480px] rounded-2xl border border-zinc-200/90 bg-white/95 p-3 shadow-2xl shadow-indigo-500/10 backdrop-blur-2xl transition-all dark:border-zinc-800/90 dark:bg-zinc-950/95 dark:shadow-none animate-in fade-in slide-in-from-bottom-2 duration-150 sm:w-[540px]">
-          {/* 面板头部说明 */}
-          <div className="flex items-center justify-between border-b border-zinc-100 pb-2.5 dark:border-zinc-800/60 px-1">
-            <div className="flex items-center gap-2">
-              <div className="flex size-5 items-center justify-center rounded-md bg-indigo-500/10 text-indigo-600 dark:bg-indigo-400/10 dark:text-indigo-400">
-                <Layers className="size-3.5" />
-              </div>
-              <span className="text-xs font-bold tracking-tight text-zinc-800 dark:text-zinc-200">
-                AI 模型选择器
-              </span>
-            </div>
-            <span className="text-[10px] font-medium text-zinc-400 dark:text-zinc-500">
-              双级架构 (1. 供应商 → 2. 具体模型)
-            </span>
-          </div>
-
-          {/* 双级分栏联动主体 */}
-          <div className="mt-2.5 grid grid-cols-12 gap-2.5 h-[340px]">
-            {/* 左栏：一级结构 (供应商列表) */}
-            <div className="col-span-5 min-h-0 h-full space-y-1 border-r border-zinc-100 pr-2 dark:border-zinc-800/60 overflow-y-auto overscroll-contain">
-              <div className="px-2 py-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
-                1. 供应商 ({catalog.length})
+        <div className="absolute left-0 bottom-full mb-2 z-50 w-[540px] max-w-[90vw] overflow-hidden rounded-2xl border border-zinc-200/80 bg-white/95 p-2 shadow-2xl shadow-indigo-500/10 backdrop-blur-xl dark:border-zinc-800/80 dark:bg-zinc-900/95 dark:shadow-none animate-in zoom-in-95 fade-in duration-150">
+          <div className="grid grid-cols-12 gap-2 h-80">
+            {/* 左栏：一级结构 (供应商 Provider 列表) */}
+            <div className="col-span-5 border-r border-zinc-100 pr-1.5 space-y-1 overflow-y-auto dark:border-zinc-800/60">
+              <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
+                <span>1. AI 供应商</span>
+                <button
+                  type="button"
+                  onClick={fetchHealth}
+                  className="text-zinc-400 hover:text-indigo-600 transition-colors"
+                  title="刷新健康诊断"
+                >
+                  <RefreshCw className="size-3" />
+                </button>
               </div>
               {catalog.map((p) => {
                 const isActive = p.id === activeProviderId;
-                const isCurrentlySelectedProvider =
-                  p.id === currentProvider?.id;
-                const meta = getProviderIconAndAccent(p.id);
-                const Icon = meta.icon;
+                const pAccent = getProviderIconAndAccent(p.id);
+                const Icon = pAccent.icon;
+                const hasDownModel = p.models?.some(
+                  (m) => m.status === "DOWN" || m.healthy === false,
+                );
 
                 return (
                   <button
@@ -346,36 +418,34 @@ export function ModelSelector({
                     type="button"
                     onClick={() => setActiveProviderId(p.id)}
                     className={cn(
-                      "group flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left text-xs font-medium transition-all duration-150",
+                      "flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left text-xs transition-all duration-150",
                       isActive
-                        ? "bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/20"
-                        : "hover:bg-zinc-100 dark:hover:bg-zinc-900 text-zinc-700 dark:text-zinc-300",
+                        ? "bg-gradient-to-r from-indigo-600 to-purple-600 font-semibold text-white shadow-md shadow-indigo-500/20"
+                        : "text-zinc-700 hover:bg-zinc-100/80 dark:text-zinc-300 dark:hover:bg-zinc-800/60",
                     )}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span
                         className={cn(
-                          "flex size-6 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-white shadow-xs transition-transform group-hover:scale-105",
-                          meta.accent,
+                          "flex size-6 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-white shadow-xs",
+                          pAccent.accent,
                         )}
                       >
                         <Icon className="size-3.5" />
                       </span>
-                      <span className="truncate font-semibold text-[12px]">
-                        {p.displayName}
-                      </span>
+                      <span className="truncate">{p.displayName}</span>
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      {isCurrentlySelectedProvider && !isActive && (
-                        <span className="size-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400" />
+                    <div className="flex items-center gap-1.5">
+                      {hasDownModel && (
+                        <span className="size-1.5 rounded-full bg-amber-400 animate-pulse" />
                       )}
                       <span
                         className={cn(
-                          "text-[10px] rounded-full px-1.5 py-0.2 font-mono",
+                          "rounded-md px-1.5 py-0.5 text-[10px] font-mono",
                           isActive
                             ? "bg-white/20 text-white"
-                            : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400",
+                            : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
                         )}
                       >
                         {p.models?.length ?? 0}
@@ -396,7 +466,7 @@ export function ModelSelector({
             <div className="col-span-7 min-h-0 h-full space-y-1.5 overflow-y-auto overscroll-contain pl-1">
               <div className="flex items-center justify-between px-1 py-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
                 <span>
-                  2. 可用模型 ({activeProviderObj?.displayName ?? ""})
+                  2. 选择模型 ({activeProviderObj?.displayName ?? ""})
                 </span>
               </div>
 
@@ -406,6 +476,8 @@ export function ModelSelector({
                   const isSelectedModel =
                     value.provider === activeProviderObj.id &&
                     value.model === m.id;
+                  const isModelDown =
+                    m.status === "DOWN" || m.healthy === false;
 
                   return (
                     <button
@@ -430,15 +502,31 @@ export function ModelSelector({
                           <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100">
                             {m.displayName}
                           </span>
+
+                          {/* 健康在线/降级指示 */}
+                          {isModelDown ? (
+                            <span className="flex items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-500/20">
+                              <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
+                              <span>不可用 (自动降级)</span>
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                              <span className="size-1.5 rounded-full bg-emerald-500" />
+                              <span>在线</span>
+                            </span>
+                          )}
+
                           {m.badge && (
                             <span className="rounded-md bg-indigo-500/10 dark:bg-indigo-400/15 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600 dark:text-indigo-400">
                               {m.badge}
                             </span>
                           )}
                         </div>
+
                         <p className="text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400 line-clamp-2">
                           {m.description}
                         </p>
+
                         {m.maxContextTokens && (
                           <div className="pt-0.5">
                             <span className="inline-flex items-center rounded-md bg-zinc-100 px-1.5 py-0.2 font-mono text-[9px] text-zinc-500 dark:bg-zinc-800/80 dark:text-zinc-400">
@@ -482,30 +570,25 @@ export function ModelSelector({
                         setOpen(false);
                       }
                     }}
-                    placeholder="输入模型名，如 gpt-4o-mini"
-                    className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-[11px] text-zinc-800 outline-none transition-colors placeholder:text-zinc-400 focus:border-indigo-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                    placeholder="输入模型 ID (如 gpt-4o-mini)"
+                    className="flex-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs text-zinc-900 placeholder:text-zinc-400 focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
                   />
                   <button
                     type="button"
-                    disabled={!customModelInput.trim()}
                     onClick={() => {
-                      if (!customModelInput.trim()) return;
-                      onChange({
-                        provider: activeProviderObj.id,
-                        model: customModelInput.trim(),
-                      });
-                      setOpen(false);
+                      if (customModelInput.trim()) {
+                        onChange({
+                          provider: activeProviderObj.id,
+                          model: customModelInput.trim(),
+                        });
+                        setOpen(false);
+                      }
                     }}
-                    className="shrink-0 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700 dark:bg-indigo-500 transition-colors"
                   >
-                    使用
+                    应用
                   </button>
                 </div>
-                {isCustomSelected && (
-                  <p className="mt-1.5 text-[10px] text-emerald-600 dark:text-emerald-400">
-                    当前为自定义模型：{value.model}
-                  </p>
-                )}
               </div>
             </div>
           </div>

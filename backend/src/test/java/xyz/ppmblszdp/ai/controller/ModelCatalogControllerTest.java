@@ -44,7 +44,7 @@ class ModelCatalogControllerTest {
 				.defaultModelId("gpt-4o")
 				.build();
 
-		controller = new ModelCatalogController(registry);
+		controller = new ModelCatalogController(registry, new xyz.ppmblszdp.ai.registry.ModelHealthTracker());
 	}
 
 	@Test

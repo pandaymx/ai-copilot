@@ -16,6 +16,17 @@ public record ChatResponseDto(
 		String model,
 		String conversationId,
 		Object usage,
-		String finishReason
+		String finishReason,
+		Boolean isFallback
 ) {
+	public ChatResponseDto(
+			String content,
+			String provider,
+			String model,
+			String conversationId,
+			Object usage,
+			String finishReason
+	) {
+		this(content, provider, model, conversationId, usage, finishReason, false);
+	}
 }

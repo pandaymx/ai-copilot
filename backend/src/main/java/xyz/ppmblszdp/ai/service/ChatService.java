@@ -31,6 +31,7 @@ import xyz.ppmblszdp.ai.memory.ChatRateLimiter;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryProcessor;
 import xyz.ppmblszdp.ai.registry.ModelDescriptor;
+import xyz.ppmblszdp.ai.registry.ModelHealthTracker;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
 import xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor;
@@ -78,6 +79,7 @@ public class ChatService {
 	private final ObjectProvider<LongTermMemoryProcessor> longTermProcessor;
 	private final ObjectProvider<ChatRateLimiter.RateLimiter> rateLimiter;
 	private final ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor;
+	private final ModelHealthTracker healthTracker;
 	private final SessionService sessionService;
 	private final AiProviderProperties properties;
 	private final boolean memoryEnabled;
@@ -91,6 +93,7 @@ public class ChatService {
 			ObjectProvider<LongTermMemoryProcessor> longTermProcessor,
 			ObjectProvider<ChatRateLimiter.RateLimiter> rateLimiter,
 			ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor,
+			ModelHealthTracker healthTracker,
 			SessionService sessionService,
 			AiProviderProperties properties) {
 		this.registry = registry;
@@ -101,6 +104,7 @@ public class ChatService {
 		this.longTermProcessor = longTermProcessor;
 		this.rateLimiter = rateLimiter;
 		this.safeGuardAdvisor = safeGuardAdvisor;
+		this.healthTracker = healthTracker;
 		this.sessionService = sessionService;
 		this.properties = properties;
 		this.memoryEnabled = properties.resolveMemory().isEnabled();
@@ -151,17 +155,20 @@ public class ChatService {
 					.map(resp -> {
 						String replyText = extractText(resp);
 						recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(), req.message(), replyText);
+						healthTracker.recordSuccess(resolved.provider().providerId(), resolved.model().id());
 						return new ChatResponseDto(
 								replyText,
 								resolved.provider().providerId(),
 								resolved.model().id(),
 								req.conversationId(),
 								null,
-								null);
+								null,
+								false);
 					})
 					.onErrorResume(ex -> {
 						log.warn("主供应商请求失败 (记忆路径) → 供应商={}, 模型={}: {}",
 								resolved.provider().providerId(), resolved.model().id(), ex.getMessage());
+						healthTracker.recordFailure(resolved.provider().providerId(), resolved.model().id(), ex);
 						return callWithFallback(resolved, request, ex);
 					})
 					.subscribeOn(Schedulers.boundedElastic());
@@ -192,6 +199,8 @@ public class ChatService {
 			StringBuilder fullContent = new StringBuilder();
 			List<Media> mediaList = convertMediaList(req.media());
 
+			boolean[] hasEmittedFirstChunk = new boolean[] { false };
+
 			return client.prompt()
 					.system(sp -> sp.text(resolveSystemPrompt(req)))
 					.user(u -> {
@@ -208,7 +217,21 @@ public class ChatService {
 					.stream()
 					.chatResponse()
 					.timeout(STREAM_TIMEOUT)
-					.concatMap(resp -> processChatResponseToChunks(resp, fullContent, resolved))
+					.concatMap(resp -> {
+						boolean isFirst = !hasEmittedFirstChunk[0];
+						hasEmittedFirstChunk[0] = true;
+						healthTracker.recordSuccess(resolved.provider().providerId(), resolved.model().id());
+						Flux<ChatChunkDto> chunkFlux = processChatResponseToChunks(resp, fullContent, resolved);
+						if (isFirst) {
+							ChatChunkDto initChunk = ChatChunkDto.conversation(
+									req.conversationId(),
+									resolved.provider().providerId(),
+									resolved.model().id(),
+									false);
+							return Flux.concat(Flux.just(initChunk), chunkFlux);
+						}
+						return chunkFlux;
+					})
 					.doOnComplete(() -> recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(),
 							req.message(), fullContent.toString()))
 					.doOnCancel(() -> {
@@ -218,15 +241,23 @@ public class ChatService {
 						}
 					})
 					.onErrorResume(ex -> {
-						log.warn("流式主供应商请求失败 (记忆路径) → 供应商={}, 模型={}: {}",
-								resolved.provider().providerId(), resolved.model().id(), ex.getMessage());
+						log.warn("流式主供应商请求失败 (记忆路径) → 供应商={}, 模型={}, 首帧下发状态={}: {}",
+								resolved.provider().providerId(), resolved.model().id(), hasEmittedFirstChunk[0],
+								ex.getMessage());
+						healthTracker.recordFailure(resolved.provider().providerId(), resolved.model().id(), ex);
+
+						// 首帧后 (Mid-stream)：如果已经输出了部分内容，不透明重试，直接抛出 error Chunk 停止
+						if (hasEmittedFirstChunk[0]) {
+							return Flux.just(ChatChunkDto.error("STREAM_INTERRUPTED", "连接异常断开，回复受阻。"));
+						}
+
+						// 首帧前 (Pre-flight)：在输出之前发生异常，可以透明无感切 Fallback 模型
 						ResolvedModel fallbackResolved = registry.resolveFallback(
 								resolved.provider().providerId(),
 								properties.fallbackProvider(),
-								properties.fallbackModel()
-						);
+								properties.fallbackModel());
 						if (fallbackResolved != null) {
-							log.warn("流式主供应商 [{}] 失败，降级切换至备用供应商 [{}]",
+							log.warn("流式主供应商 [{}] 首帧前失败，透明降级切换至备用供应商 [{}]",
 									resolved.provider().providerId(), fallbackResolved.provider().providerId());
 							ChatOptions fallbackOpts = ChatOptionsFactory.forProvider(fallbackResolved, 0.2);
 							return streamChunksWithoutMemory(fallbackResolved, request, fallbackOpts);
@@ -392,12 +423,12 @@ public class ChatService {
 				.subscribeOn(Schedulers.boundedElastic());
 	}
 
-	private Mono<ChatResponseDto> callWithFallback(ResolvedModel primaryResolved, ChatRequest request, Throwable error) {
+	private Mono<ChatResponseDto> callWithFallback(ResolvedModel primaryResolved, ChatRequest request,
+			Throwable error) {
 		ResolvedModel fallbackResolved = registry.resolveFallback(
 				primaryResolved.provider().providerId(),
 				properties.fallbackProvider(),
-				properties.fallbackModel()
-		);
+				properties.fallbackModel());
 		if (fallbackResolved != null) {
 			log.warn("主供应商 [{}] 调用失败 ({})，无缝降级切换至备用供应商 [{}], 模型 [{}]",
 					primaryResolved.provider().providerId(), error.getMessage(),

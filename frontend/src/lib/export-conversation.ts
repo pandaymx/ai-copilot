@@ -12,7 +12,10 @@ export interface ExportOptions {
 // 格式化函数
 // ─────────────────────────────────────────────
 
-function buildMarkdown(messages: ChatMessage[], includeThinking: boolean): string {
+function buildMarkdown(
+  messages: ChatMessage[],
+  includeThinking: boolean,
+): string {
   const lines: string[] = [
     "# AI Copilot — 对话导出",
     "",
@@ -64,7 +67,10 @@ function buildMarkdown(messages: ChatMessage[], includeThinking: boolean): strin
   return lines.join("\n");
 }
 
-function buildPlainText(messages: ChatMessage[], includeThinking: boolean): string {
+function buildPlainText(
+  messages: ChatMessage[],
+  includeThinking: boolean,
+): string {
   const lines: string[] = [
     "AI Copilot — 对话导出",
     `导出时间：${new Date().toLocaleString("zh-CN")}`,

@@ -1,7 +1,13 @@
 "use client";
 
 import { fetchEventSource } from "@microsoft/fetch-event-source";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 export interface SpringAiStreamMessage {
   role: "user" | "assistant" | "system";
