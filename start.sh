@@ -8,7 +8,6 @@ set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$SCRIPT_DIR/compose.yaml"
-INFRA_COMPOSE_FILE="$SCRIPT_DIR/backend/compose.yaml"
 
 # Text styles & Colors
 RED='\033[0;31m'
@@ -60,17 +59,12 @@ detect_compose_engine
 
 # Stop Infrastructure / Containers
 stop_containers() {
-  if [ -n "$COMPOSE_CMD" ]; then
-    if [ -f "$COMPOSE_FILE" ]; then
-      log_infra "Stopping containers using '$COMPOSE_CMD -f compose.yaml'..."
-      $COMPOSE_CMD -f "$COMPOSE_FILE" down
-    fi
-    if [ -f "$INFRA_COMPOSE_FILE" ]; then
-      $COMPOSE_CMD -f "$INFRA_COMPOSE_FILE" down 2>/dev/null || true
-    fi
+  if [ -n "$COMPOSE_CMD" ] && [ -f "$COMPOSE_FILE" ]; then
+    log_infra "Stopping containers using '$COMPOSE_CMD -f compose.yaml'..."
+    $COMPOSE_CMD -f "$COMPOSE_FILE" down
     log_infra "All containers stopped."
   else
-    log_warn "No container compose engine found to stop."
+    log_warn "No container compose engine or compose.yaml found to stop."
   fi
 }
 
@@ -99,16 +93,11 @@ check_status() {
   echo "=================================================="
   echo "              AI-Copilot Status Check             "
   echo "=================================================="
-  if [ -n "$COMPOSE_CMD" ]; then
-    if [ -f "$COMPOSE_FILE" ]; then
-      log_infra "Full Container Status ($COMPOSE_CMD):"
-      $COMPOSE_CMD -f "$COMPOSE_FILE" ps
-    elif [ -f "$INFRA_COMPOSE_FILE" ]; then
-      log_infra "Infrastructure Container Status ($COMPOSE_CMD):"
-      $COMPOSE_CMD -f "$INFRA_COMPOSE_FILE" ps
-    fi
+  if [ -n "$COMPOSE_CMD" ] && [ -f "$COMPOSE_FILE" ]; then
+    log_infra "Container Status ($COMPOSE_CMD):"
+    $COMPOSE_CMD -f "$COMPOSE_FILE" ps
   else
-    log_warn "No container engine detected."
+    log_warn "No container engine or compose.yaml detected."
   fi
 
   echo ""
@@ -126,19 +115,14 @@ check_status() {
 
 # Start Infrastructure Only
 start_infra() {
-  local target_file="$INFRA_COMPOSE_FILE"
-  if [ -f "$COMPOSE_FILE" ]; then
-    target_file="$COMPOSE_FILE"
-  fi
-
-  if [ -n "$COMPOSE_CMD" ] && [ -f "$target_file" ]; then
-    log_infra "Starting infrastructure services via '$COMPOSE_CMD'..."
-    $COMPOSE_CMD -f "$target_file" up -d postgres redis ollama 2>/dev/null || $COMPOSE_CMD -f "$target_file" up -d
+  if [ -n "$COMPOSE_CMD" ] && [ -f "$COMPOSE_FILE" ]; then
+    log_infra "Starting infrastructure services (PostgreSQL, Redis, Ollama) via '$COMPOSE_CMD'..."
+    $COMPOSE_CMD -f "$COMPOSE_FILE" up -d postgres redis ollama
     wait_for_port "localhost" "5432" "PostgreSQL"
     wait_for_port "localhost" "6379" "Redis"
     wait_for_port "localhost" "11434" "Ollama" 5
   else
-    log_warn "Container engine not found. Skipping infrastructure auto-boot."
+    log_warn "Container engine or compose.yaml not found. Skipping infrastructure auto-boot."
   fi
 }
 
