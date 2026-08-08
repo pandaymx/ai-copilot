@@ -2,6 +2,7 @@ package xyz.ppmblszdp.ai.service;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -18,7 +19,6 @@ import xyz.ppmblszdp.ai.registry.ModelDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
-
 import xyz.ppmblszdp.ai.memory.LongTermMemoryProcessor;
 
 import java.util.List;
@@ -38,11 +38,11 @@ class ChatServiceTest {
 
 	private ProviderRegistry registry;
 	private ContextAssembler contextAssembler;
-	private ObjectProvider sessionChatMemory;
-	private ObjectProvider longTermFactory;
-	private ObjectProvider longTermWriter;
-	private ObjectProvider longTermProcessor;
-	private ObjectProvider rateLimiter;
+	private ObjectProvider<ChatMemory> sessionChatMemory;
+	private ObjectProvider<xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryAdvisorFactory> longTermFactory;
+	private ObjectProvider<xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryWriter> longTermWriter;
+	private ObjectProvider<LongTermMemoryProcessor> longTermProcessor;
+	private ObjectProvider<xyz.ppmblszdp.ai.memory.ChatRateLimiter.RateLimiter> rateLimiter;
 	private SessionService sessionService;
 	private AiProviderProperties properties;
 
@@ -54,6 +54,7 @@ class ChatServiceTest {
 	void setUp() {
 		registry = mock(ProviderRegistry.class);
 		contextAssembler = mock(ContextAssembler.class);
+		when(contextAssembler.defaultSystemPrompt()).thenReturn("You are a helpful assistant.");
 		sessionChatMemory = mock(ObjectProvider.class);
 		longTermFactory = mock(ObjectProvider.class);
 		longTermWriter = mock(ObjectProvider.class);
@@ -67,6 +68,7 @@ class ChatServiceTest {
 		when(properties.resolveMemory()).thenReturn(memoryConfig);
 
 		chatModel = mock(ChatModel.class);
+		when(chatModel.getOptions()).thenReturn(org.springframework.ai.openai.OpenAiChatOptions.builder().build());
 
 		ModelDescriptor modelDescriptor = ModelDescriptor.builder()
 				.id("gpt-4o")
@@ -91,8 +93,7 @@ class ChatServiceTest {
 				longTermProcessor,
 				rateLimiter,
 				sessionService,
-				properties
-		);
+				properties);
 	}
 
 	@Test
@@ -126,7 +127,52 @@ class ChatServiceTest {
 		StepVerifier.create(resultMono)
 				.assertNext(dto -> {
 					assertNotNull(dto);
-					assertEquals("上游供应商响应超时，请稍后再试。", dto.content());
+					assertEquals("上游供应商响应超时/异常，请稍后再试。", dto.content());
+					assertEquals("openai", dto.provider());
+					assertEquals("gpt-4o", dto.model());
+				})
+				.verifyComplete();
+	}
+
+	@Test
+	void testChatFallbackToSecondaryProviderWhenPrimaryFails() {
+		ChatModel primaryModel = mock(ChatModel.class);
+		ChatModel fallbackModel = mock(ChatModel.class);
+		when(primaryModel.getOptions()).thenReturn(org.springframework.ai.openai.OpenAiChatOptions.builder().build());
+		when(fallbackModel.getOptions()).thenReturn(org.springframework.ai.openai.OpenAiChatOptions.builder().build());
+
+		ProviderDescriptor primaryProvider = ProviderDescriptor.builder()
+				.providerId("deepseek")
+				.chatModel(primaryModel)
+				.build();
+		ModelDescriptor primaryModelDesc = ModelDescriptor.builder().id("deepseek-chat").modelName("deepseek-chat")
+				.build();
+		ResolvedModel primaryResolved = new ResolvedModel(primaryModel, primaryProvider, primaryModelDesc);
+
+		ProviderDescriptor fallbackProviderDesc = ProviderDescriptor.builder()
+				.providerId("openai")
+				.chatModel(fallbackModel)
+				.build();
+		ModelDescriptor fallbackModelDesc = ModelDescriptor.builder().id("gpt-4o").modelName("gpt-4o").build();
+		ResolvedModel fallbackResolved = new ResolvedModel(fallbackModel, fallbackProviderDesc, fallbackModelDesc);
+
+		when(registry.resolve("deepseek", "deepseek-chat")).thenReturn(primaryResolved);
+		when(registry.resolveFallback("deepseek", "openai", null)).thenReturn(fallbackResolved);
+		when(properties.fallbackProvider()).thenReturn("openai");
+
+		when(primaryModel.call(any(Prompt.class))).thenThrow(new RuntimeException("DeepSeek 429 Too Many Requests"));
+
+		ChatResponse fallbackResp = new ChatResponse(
+				List.of(new Generation(new AssistantMessage("Fallback success!"))));
+		when(fallbackModel.call(any(Prompt.class))).thenReturn(fallbackResp);
+
+		ChatRequest request = new ChatRequest("Hi", null, "deepseek", "deepseek-chat", null, null, null, null);
+		Mono<ChatResponseDto> resultMono = chatService.chat(request);
+
+		StepVerifier.create(resultMono)
+				.assertNext(dto -> {
+					assertNotNull(dto);
+					assertEquals("Fallback success!", dto.content());
 					assertEquals("openai", dto.provider());
 					assertEquals("gpt-4o", dto.model());
 				})
@@ -138,6 +184,10 @@ class ChatServiceTest {
 		AiProviderProperties.MemoryConfig memoryConfig = mock(AiProviderProperties.MemoryConfig.class);
 		when(memoryConfig.isEnabled()).thenReturn(true);
 		when(properties.resolveMemory()).thenReturn(memoryConfig);
+
+		ChatMemory chatMemory = mock(ChatMemory.class);
+		when(chatMemory.get(any())).thenReturn(List.of());
+		when(sessionChatMemory.getIfAvailable()).thenReturn(chatMemory);
 
 		LongTermMemoryProcessor processor = mock(LongTermMemoryProcessor.class);
 		doThrow(new RuntimeException("pgvector connection refused"))
@@ -153,8 +203,7 @@ class ChatServiceTest {
 				longTermProcessor,
 				rateLimiter,
 				sessionService,
-				properties
-		);
+				properties);
 
 		ChatResponse chatResponse = new ChatResponse(List.of(new Generation(new AssistantMessage("Hello!"))));
 		when(chatModel.call(any(Prompt.class))).thenReturn(chatResponse);

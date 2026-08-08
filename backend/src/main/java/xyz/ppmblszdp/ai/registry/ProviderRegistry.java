@@ -99,6 +99,36 @@ public final class ProviderRegistry {
 	}
 
 	/**
+	 * 解析降级备用模型。
+	 *
+	 * @param currentProviderId 当前使用的供应商 ID（降级供应商必须与当前供应商不同）
+	 * @param fallbackProviderId 明确配置的降级供应商 ID（可选）
+	 * @param fallbackModelId 明确配置的降级模型 ID（可选）
+	 * @return 备用 ResolvedModel，若没有可用的不同备用供应商则返回 null
+	 */
+	public ResolvedModel resolveFallback(String currentProviderId, String fallbackProviderId, String fallbackModelId) {
+		String primaryPid = (currentProviderId == null || currentProviderId.isBlank()) ? defaultProviderId : currentProviderId.trim();
+
+		if (fallbackProviderId != null && !fallbackProviderId.isBlank() && !fallbackProviderId.trim().equalsIgnoreCase(primaryPid)) {
+			try {
+				return resolve(fallbackProviderId.trim(), fallbackModelId);
+			} catch (Exception ex) {
+				// 忽略无效降级配置
+			}
+		}
+
+		if (defaultProviderId != null && !defaultProviderId.equalsIgnoreCase(primaryPid) && providers.containsKey(defaultProviderId)) {
+			try {
+				return resolve(defaultProviderId, fallbackModelId != null ? fallbackModelId : defaultModelId);
+			} catch (Exception ex) {
+				// 忽略
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * 返回 Provider → Models 的 1:N 结构，供 {@code GET /api/models} 下发。
 	 * 仅包含已成功注册的供应商与模型。
 	 */

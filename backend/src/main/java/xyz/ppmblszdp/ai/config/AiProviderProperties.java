@@ -28,6 +28,8 @@ import java.util.Map;
 public record AiProviderProperties(
 		@Nullable String defaultProvider,
 		@Nullable String defaultModel,
+		@Nullable String fallbackProvider,
+		@Nullable String fallbackModel,
 		@Nullable String systemPrompt,
 		@Nullable ContextConfig context,
 		@Nullable MemoryConfig memory,

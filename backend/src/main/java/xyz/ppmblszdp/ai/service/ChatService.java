@@ -21,6 +21,7 @@ import java.time.Duration;
 import org.springframework.ai.content.Media;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.util.MimeTypeUtils;
+import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.context.ContextAssembler;
 import xyz.ppmblszdp.ai.dto.ChatChunkDto;
 import xyz.ppmblszdp.ai.dto.ChatRequest;
@@ -76,6 +77,7 @@ public class ChatService {
 	private final ObjectProvider<LongTermMemoryProcessor> longTermProcessor;
 	private final ObjectProvider<ChatRateLimiter.RateLimiter> rateLimiter;
 	private final SessionService sessionService;
+	private final AiProviderProperties properties;
 	private final boolean memoryEnabled;
 
 	public ChatService(
@@ -87,7 +89,7 @@ public class ChatService {
 			ObjectProvider<LongTermMemoryProcessor> longTermProcessor,
 			ObjectProvider<ChatRateLimiter.RateLimiter> rateLimiter,
 			SessionService sessionService,
-			xyz.ppmblszdp.ai.config.AiProviderProperties properties) {
+			AiProviderProperties properties) {
 		this.registry = registry;
 		this.contextAssembler = contextAssembler;
 		this.sessionChatMemory = sessionChatMemory;
@@ -96,6 +98,7 @@ public class ChatService {
 		this.longTermProcessor = longTermProcessor;
 		this.rateLimiter = rateLimiter;
 		this.sessionService = sessionService;
+		this.properties = properties;
 		this.memoryEnabled = properties.resolveMemory().isEnabled();
 	}
 
@@ -151,17 +154,10 @@ public class ChatService {
 								null,
 								null);
 					})
-					.timeout(CALL_TIMEOUT)
-					.onErrorResume(java.util.concurrent.TimeoutException.class, ex -> {
-						log.warn("非流式请求响应超时 (>{}) → 供应商={}, 模型={}",
-								CALL_TIMEOUT, resolved.provider().providerId(), resolved.model().id());
-						return Mono.just(new ChatResponseDto(
-								"上游供应商响应超时，请稍后再试。",
-								resolved.provider().providerId(),
-								resolved.model().id(),
-								req.conversationId(),
-								null,
-								null));
+					.onErrorResume(ex -> {
+						log.warn("主供应商请求失败 (记忆路径) → 供应商={}, 模型={}: {}",
+								resolved.provider().providerId(), resolved.model().id(), ex.getMessage());
+						return callWithFallback(resolved, request, ex);
 					})
 					.subscribeOn(Schedulers.boundedElastic());
 		}
@@ -214,6 +210,22 @@ public class ChatService {
 							recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(), req.message(),
 									fullContent.toString());
 						}
+					})
+					.onErrorResume(ex -> {
+						log.warn("流式主供应商请求失败 (记忆路径) → 供应商={}, 模型={}: {}",
+								resolved.provider().providerId(), resolved.model().id(), ex.getMessage());
+						ResolvedModel fallbackResolved = registry.resolveFallback(
+								resolved.provider().providerId(),
+								properties.fallbackProvider(),
+								properties.fallbackModel()
+						);
+						if (fallbackResolved != null) {
+							log.warn("流式主供应商 [{}] 失败，降级切换至备用供应商 [{}]",
+									resolved.provider().providerId(), fallbackResolved.provider().providerId());
+							ChatOptions fallbackOpts = ChatOptionsFactory.forProvider(fallbackResolved, 0.2);
+							return streamChunksWithoutMemory(fallbackResolved, request, fallbackOpts);
+						}
+						return Flux.just(ChatChunkDto.error("UPSTREAM_ERROR", "上游供应商响应异常，请稍后再试。"));
 					});
 		}
 		return streamChunksWithoutMemory(resolved, request, options);
@@ -359,18 +371,54 @@ public class ChatService {
 						extractText(resp), resolved.provider().providerId(), resolved.model().id(),
 						request.conversationId(), null, null))
 				.timeout(CALL_TIMEOUT)
-				.onErrorResume(java.util.concurrent.TimeoutException.class, ex -> {
-					log.warn("非流式请求响应超时 (>{}) → 供应商={}, 模型={}",
-							CALL_TIMEOUT, resolved.provider().providerId(), resolved.model().id());
-					return Mono.just(new ChatResponseDto(
-							"上游供应商响应超时，请稍后再试。",
-							resolved.provider().providerId(),
-							resolved.model().id(),
-							request.conversationId(),
-							null,
-							null));
+				.onErrorResume(ex -> {
+					log.warn("主供应商请求失败 (单轮/旧历史) → 供应商={}, 模型={}: {}",
+							resolved.provider().providerId(), resolved.model().id(), ex.getMessage());
+					return callWithFallback(resolved, request, ex);
 				})
 				.subscribeOn(Schedulers.boundedElastic());
+	}
+
+	private Mono<ChatResponseDto> callWithFallback(ResolvedModel primaryResolved, ChatRequest request, Throwable error) {
+		ResolvedModel fallbackResolved = registry.resolveFallback(
+				primaryResolved.provider().providerId(),
+				properties.fallbackProvider(),
+				properties.fallbackModel()
+		);
+		if (fallbackResolved != null) {
+			log.warn("主供应商 [{}] 调用失败 ({})，无缝降级切换至备用供应商 [{}], 模型 [{}]",
+					primaryResolved.provider().providerId(), error.getMessage(),
+					fallbackResolved.provider().providerId(), fallbackResolved.model().id());
+			ChatOptions fallbackOptions = ChatOptionsFactory.forProvider(fallbackResolved, 0.2);
+			List<Media> mediaList = convertMediaList(request.media());
+			List<Message> messages = contextAssembler.assemble(
+					request.message(), request.history(), request.systemPrompt(),
+					null, fallbackResolved.model().maxContextTokens(), mediaList);
+			Prompt prompt = new Prompt(messages, fallbackOptions);
+			return Mono.fromCallable(() -> fallbackResolved.chatModel().call(prompt))
+					.map(resp -> new ChatResponseDto(
+							extractText(resp), fallbackResolved.provider().providerId(), fallbackResolved.model().id(),
+							request.conversationId(), null, null))
+					.timeout(CALL_TIMEOUT)
+					.onErrorResume(fbEx -> {
+						log.warn("备用供应商 [{}] 调用亦失败: {}", fallbackResolved.provider().providerId(), fbEx.getMessage());
+						return Mono.just(new ChatResponseDto(
+								"上游供应商响应超时/异常，请稍后再试。",
+								primaryResolved.provider().providerId(),
+								primaryResolved.model().id(),
+								request.conversationId(),
+								null,
+								null));
+					})
+					.subscribeOn(Schedulers.boundedElastic());
+		}
+		return Mono.just(new ChatResponseDto(
+				"上游供应商响应超时/异常，请稍后再试。",
+				primaryResolved.provider().providerId(),
+				primaryResolved.model().id(),
+				request.conversationId(),
+				null,
+				null));
 	}
 
 	private Flux<String> streamWithoutMemory(ResolvedModel resolved, ChatRequest request, ChatOptions options) {
