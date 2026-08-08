@@ -257,10 +257,16 @@ export default function Home() {
           size: file.size,
         });
       } else {
+        // 非图片文件：读取文本内容，存储为 AttachmentItem
         const textContent = await file.text();
-        setInput((prev) => {
-          const prefix = prev ? `${prev}\n\n` : "";
-          return `${prefix}📄 [文档附件: ${file.name}]\n\`\`\`\n${textContent}\n\`\`\``;
+        newAttachments.push({
+          id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          name: file.name,
+          type: "file",
+          mimeType: file.type || "text/plain",
+          url: "",
+          size: file.size,
+          textContent,
         });
       }
     }
@@ -464,14 +470,30 @@ export default function Home() {
       .filter((att) => att.type === "image")
       .map((att) => ({ mimeType: att.mimeType, data: att.url }));
 
+    // 将非图片文件的文本内容拼接为上下文前缀，确保后端能收到文件内容
+    const fileAttachments = currentAttachments.filter(
+      (att) => att.type === "file" && att.textContent,
+    );
+    const fileContextPrefix = fileAttachments
+      .map(
+        (att) =>
+          `【附加上下文文件 ${att.name}】\n\`\`\`\n${att.textContent}\n\`\`\``,
+      )
+      .join("\n\n");
+
     const isRegenerate = Boolean(textOverride);
     const historySource = isRegenerate ? messages.slice(0, -2) : messages;
     const historyPayload = historySource
       .filter((m) => m.content.trim() !== "")
       .map((m) => ({ role: m.role, content: m.content }));
 
-    const userMsgText =
-      text || (currentAttachments.length > 0 ? "[图片附件]" : "");
+    // 界面显示的消息文本（不含文件内容，保持 UI 简洁）
+    const userMsgText = text || (currentAttachments.length > 0 ? "[附件]" : "");
+
+    // 实际发送给后端的消息文本（包含文件上下文）
+    const sendText = fileContextPrefix
+      ? `${fileContextPrefix}\n\n${text}`
+      : userMsgText;
 
     const next: ChatMessage[] = [
       ...historySource,
@@ -516,7 +538,7 @@ export default function Home() {
     setInput("");
     setAttachments([]);
     liveUserTextRef.current = userMsgText;
-    send(userMsgText, {
+    send(sendText, {
       provider: model.provider,
       model: model.model,
       conversationId: currentConvId,

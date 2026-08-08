@@ -26,6 +26,8 @@ export interface AttachmentItem {
   mimeType: string;
   url: string;
   size?: number;
+  /** 非图片文件的文本内容（readAsText 读取后存储） */
+  textContent?: string;
 }
 
 export interface ChatMessage {
@@ -197,6 +199,11 @@ function MessageBubbleBase({
                     <span className="max-w-[140px] truncate font-medium text-zinc-700 dark:text-zinc-300">
                       {att.name}
                     </span>
+                    {att.textContent && (
+                      <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-300">
+                        已读取
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
