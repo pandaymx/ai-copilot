@@ -69,14 +69,17 @@ export interface UseSpringAiStreamResult {
 const DEFAULT_ENDPOINT = "/api/chat/stream";
 
 /**
- * 判断字符串是否"看起来像不完整 JSON 片段"（如网络分包导致的半截 JSON）。
- * 启发式：以 { 或 [ 开头、且整体并未闭合/可解析时，视为片段而非纯文本。
+ * 判断字符串是否为"由于网络截断导致的未完成结构化 JSON SSE 事件"。
+ * 仅当以 { 或 [ 开头、且包含标准 API 键名模式（如 "type":, "content":, "choices": 等）、但未能成功解析时，
+ * 才判定为半截 JSON；反之，若只是以 { 开头的普通代码或文本（如 { foo: bar }），回退为增量文本返回，防止吞字。
  */
 function looksLikeIncompleteJson(data: string): boolean {
-  const head = data.trimStart()[0];
+  const trimmed = data.trimStart();
+  const head = trimmed[0];
   if (head !== "{" && head !== "[") return false;
-  // 已能完整解析的不会走到这里；开头是括号且已抛错，基本可判定为片段。
-  return true;
+  return /"?(type|content|result|choices|error|reasoning|usage)"?\s*:/i.test(
+    trimmed,
+  );
 }
 
 function defaultParseChunk(data: string): string | null {
