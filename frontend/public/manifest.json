@@ -1,6 +1,6 @@
 {
-  "name": "AI Copilot - 智能助理",
-  "short_name": "AI Copilot",
+  "name": "AI Copilot Pro - 智能助理",
+  "short_name": "AI Copilot Pro",
   "description": "基于 Spring AI 与 Next.js 的高可用个人 AI 助手与智能 Copilot",
   "start_url": "/",
   "display": "standalone",

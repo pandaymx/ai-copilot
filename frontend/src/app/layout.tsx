@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI Copilot - 智能 AI 助手",
+  title: "AI Copilot Pro - 智能 AI 助手",
   description: "基于 Spring AI 与 Next.js 的高可用个人 AI 助手与智能 Copilot",
   manifest: "/manifest.json",
   icons: {
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "AI Copilot",
+    title: "AI Copilot Pro",
   },
 };
 
