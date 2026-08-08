@@ -84,6 +84,8 @@ class ChatServiceTest {
 		ResolvedModel resolved = new ResolvedModel(chatModel, providerDescriptor, modelDescriptor);
 		when(registry.resolve(any(), any())).thenReturn(resolved);
 
+		ObjectProvider<xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor> safeGuardAdvisor = mock(ObjectProvider.class);
+
 		chatService = new ChatService(
 				registry,
 				contextAssembler,
@@ -92,6 +94,7 @@ class ChatServiceTest {
 				longTermWriter,
 				longTermProcessor,
 				rateLimiter,
+				safeGuardAdvisor,
 				sessionService,
 				properties);
 	}
@@ -202,6 +205,7 @@ class ChatServiceTest {
 				longTermWriter,
 				longTermProcessor,
 				rateLimiter,
+				mock(ObjectProvider.class),
 				sessionService,
 				properties);
 

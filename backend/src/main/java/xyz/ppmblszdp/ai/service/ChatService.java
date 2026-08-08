@@ -33,6 +33,7 @@ import xyz.ppmblszdp.ai.memory.LongTermMemoryProcessor;
 import xyz.ppmblszdp.ai.registry.ModelDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
+import xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -76,6 +77,7 @@ public class ChatService {
 	private final ObjectProvider<LongTermMemoryConfig.LongTermMemoryWriter> longTermWriter;
 	private final ObjectProvider<LongTermMemoryProcessor> longTermProcessor;
 	private final ObjectProvider<ChatRateLimiter.RateLimiter> rateLimiter;
+	private final ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor;
 	private final SessionService sessionService;
 	private final AiProviderProperties properties;
 	private final boolean memoryEnabled;
@@ -88,6 +90,7 @@ public class ChatService {
 			ObjectProvider<LongTermMemoryConfig.LongTermMemoryWriter> longTermWriter,
 			ObjectProvider<LongTermMemoryProcessor> longTermProcessor,
 			ObjectProvider<ChatRateLimiter.RateLimiter> rateLimiter,
+			ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor,
 			SessionService sessionService,
 			AiProviderProperties properties) {
 		this.registry = registry;
@@ -97,6 +100,7 @@ public class ChatService {
 		this.longTermWriter = longTermWriter;
 		this.longTermProcessor = longTermProcessor;
 		this.rateLimiter = rateLimiter;
+		this.safeGuardAdvisor = safeGuardAdvisor;
 		this.sessionService = sessionService;
 		this.properties = properties;
 		this.memoryEnabled = properties.resolveMemory().isEnabled();
@@ -140,6 +144,7 @@ public class ChatService {
 							.param(ChatMemory.CONVERSATION_ID, req.conversationId()))
 					.advisors(memoryAdvisor)
 					.advisors(a -> applyLongTermAdvisor(a, req))
+					.advisors(a -> applySafeGuardAdvisor(a))
 					.options(options.mutate())
 					.call();
 			return Mono.fromCallable(() -> spec.chatResponse())
@@ -198,6 +203,7 @@ public class ChatService {
 					.advisors(a -> a.param(ChatMemory.CONVERSATION_ID, req.conversationId()))
 					.advisors(memoryAdvisor)
 					.advisors(a -> applyLongTermAdvisor(a, req))
+					.advisors(a -> applySafeGuardAdvisor(a))
 					.options(options.mutate())
 					.stream()
 					.chatResponse()
@@ -519,18 +525,21 @@ public class ChatService {
 				.subscribe();
 	}
 
-	private void applyLongTermAdvisor(
-			ChatClient.AdvisorSpec a, ChatRequest request) {
+	private void applyLongTermAdvisor(ChatClient.AdvisorSpec advisorSpec, ChatRequest request) {
 		LongTermMemoryConfig.LongTermMemoryAdvisorFactory factory = longTermFactory.getIfAvailable();
-		if (factory == null) {
-			return;
+		if (factory != null) {
+			Advisor advisor = factory.forUser(request.resolveUserId());
+			if (advisor != null) {
+				advisorSpec.advisors(advisor);
+			}
 		}
-		// 按 userId 维度隔离长期记忆检索，避免跨用户污染；每次请求独立构造 advisor，不串线
-		Advisor advisor = factory.forUser(request.resolveUserId());
-		if (advisor == null) {
-			return;
+	}
+
+	private void applySafeGuardAdvisor(ChatClient.AdvisorSpec advisorSpec) {
+		SafeGuardAdvisor advisor = safeGuardAdvisor.getIfAvailable();
+		if (advisor != null) {
+			advisorSpec.advisors(advisor);
 		}
-		a.advisors(advisor);
 	}
 
 	private ChatOptions buildChatOptions(ResolvedModel resolved) {
