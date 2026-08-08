@@ -3,6 +3,7 @@
 import {
   Calendar,
   Check,
+  CloudOff,
   Edit2,
   MessageSquare,
   PanelLeftClose,
@@ -35,6 +36,8 @@ interface SidebarProps {
   sessions: ChatSession[];
   activeId: string | null;
   collapsed: boolean;
+  loadingSessions?: boolean;
+  isOfflineFallback?: boolean;
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
@@ -89,6 +92,8 @@ export function Sidebar({
   sessions,
   activeId,
   collapsed,
+  loadingSessions,
+  isOfflineFallback,
   onSelect,
   onNew,
   onDelete,
@@ -162,7 +167,33 @@ export function Sidebar({
 
         {/* 会话列表：分组滚动展示 */}
         <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-3 scrollbar-hidden">
-          {sessions.length === 0 ? (
+          {/* 云端同步失败提示 */}
+          {isOfflineFallback && (
+            <div className="mx-1 mb-2 flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-[11px] font-medium text-amber-700 dark:bg-amber-500/15 dark:border-amber-500/30 dark:text-amber-300 shadow-2xs">
+              <CloudOff className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <span className="flex-1 truncate">云端同步失败，使用本地缓存</span>
+            </div>
+          )}
+
+          {loadingSessions ? (
+            <div className="space-y-3 px-1 py-1">
+              <div className="h-3 w-16 rounded bg-zinc-200/70 dark:bg-zinc-800/70 animate-pulse" />
+              <div className="space-y-2">
+                {[1, 2, 3, 4].map((i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 bg-zinc-200/40 dark:bg-zinc-900/40 animate-pulse"
+                  >
+                    <div className="size-4 rounded-md bg-zinc-300/60 dark:bg-zinc-800/60" />
+                    <div className="flex-1 space-y-1.5 min-w-0">
+                      <div className="h-3 w-3/4 rounded bg-zinc-300/60 dark:bg-zinc-800/60" />
+                      <div className="h-2 w-1/3 rounded bg-zinc-200/80 dark:bg-zinc-800/40" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : sessions.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
               <div className="flex size-10 items-center justify-center rounded-2xl bg-zinc-200/50 text-zinc-400 dark:bg-zinc-800/50">
                 <MessageSquare className="size-5" />

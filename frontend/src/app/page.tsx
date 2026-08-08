@@ -213,6 +213,8 @@ export default function Home() {
   });
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState<boolean>(true);
+  const [isOfflineFallback, setIsOfflineFallback] = useState<boolean>(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -338,10 +340,18 @@ export default function Home() {
     setModel(savedModel);
 
     void (async () => {
+      setLoadingSessions(true);
       const dbSessions = await fetchSessionsApi();
-      const initialSessions =
-        dbSessions && dbSessions.length > 0 ? dbSessions : loadSessions();
+      let initialSessions: ChatSession[];
+      if (dbSessions !== null) {
+        initialSessions = dbSessions.length > 0 ? dbSessions : loadSessions();
+        setIsOfflineFallback(false);
+      } else {
+        initialSessions = loadSessions();
+        setIsOfflineFallback(true);
+      }
       setSessions(initialSessions);
+      setLoadingSessions(false);
 
       const activeRaw =
         typeof window !== "undefined" ? localStorage.getItem(ACTIVE_KEY) : null;
@@ -545,6 +555,8 @@ export default function Home() {
         sessions={sessions}
         activeId={activeId}
         collapsed={collapsed}
+        loadingSessions={loadingSessions}
+        isOfflineFallback={isOfflineFallback}
         onSelect={selectSession}
         onNew={goToRootDraft}
         onDelete={deleteSession}
