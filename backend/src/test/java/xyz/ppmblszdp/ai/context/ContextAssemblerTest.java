@@ -53,4 +53,42 @@ class ContextAssemblerTest {
 		assertEquals(5, trimmed.size());
 		assertTrue(trimmed.get(0) instanceof SystemMessage);
 	}
+
+	@Test
+	void testSlidingWindowStripsOrphanLeadingAssistantMessage() {
+		List<ChatMessageDto> history = List.of(
+				new ChatMessageDto("assistant", "Orphan assistant reply without user prompt"),
+				new ChatMessageDto("user", "User question 1"),
+				new ChatMessageDto("assistant", "Assistant answer 1")
+		);
+
+		List<Message> result = assembler.assemble("Current question", history, null, null, 32768);
+
+		assertEquals(4, result.size());
+		assertTrue(result.get(0) instanceof SystemMessage);
+		assertTrue(result.get(1) instanceof UserMessage);
+		assertEquals("User question 1", result.get(1).getText());
+		assertTrue(result.get(2) instanceof AssistantMessage);
+		assertEquals("Assistant answer 1", result.get(2).getText());
+		assertTrue(result.get(3) instanceof UserMessage);
+		assertEquals("Current question", result.get(3).getText());
+	}
+
+	@Test
+	void testTrimMessagesStripsOrphanLeadingAssistantMessage() {
+		List<Message> messages = List.of(
+				new SystemMessage("You are a helpful assistant"),
+				new AssistantMessage("Orphan assistant reply"),
+				new UserMessage("Message 1"),
+				new AssistantMessage("Reply 1")
+		);
+
+		List<Message> trimmed = assembler.trimMessages(messages, 32768);
+
+		assertEquals(3, trimmed.size());
+		assertTrue(trimmed.get(0) instanceof SystemMessage);
+		assertTrue(trimmed.get(1) instanceof UserMessage);
+		assertEquals("Message 1", trimmed.get(1).getText());
+		assertTrue(trimmed.get(2) instanceof AssistantMessage);
+	}
 }

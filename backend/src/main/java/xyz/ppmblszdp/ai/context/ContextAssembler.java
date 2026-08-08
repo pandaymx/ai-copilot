@@ -207,6 +207,15 @@ public class ContextAssembler {
 		}
 		// kept 是反向收集的，需反转回正序
 		Collections.reverse(kept);
+		// 清理头部孤儿 assistant 消息，确保历史消息始终以 user 消息开头
+		while (!kept.isEmpty()) {
+			ChatMessageDto first = kept.get(0);
+			if ("assistant".equalsIgnoreCase(first.role())) {
+				kept.remove(0);
+			} else {
+				break;
+			}
+		}
 		return kept;
 	}
 
@@ -236,6 +245,15 @@ public class ContextAssembler {
 			kept.add(msg);
 		}
 		Collections.reverse(kept);
+		// 清理头部孤儿 AssistantMessage
+		while (!kept.isEmpty()) {
+			Message first = kept.get(0);
+			if (first instanceof AssistantMessage) {
+				kept.remove(0);
+			} else {
+				break;
+			}
+		}
 		return kept;
 	}
 
