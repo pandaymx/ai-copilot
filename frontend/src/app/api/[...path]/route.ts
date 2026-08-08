@@ -4,7 +4,35 @@ export const dynamic = "force-dynamic";
 
 const BACKEND_BASE_URL = process.env.BACKEND_URL || "http://localhost:8084";
 
-function getCorsHeaders(req?: NextRequest): Record<string, string> {
+function getForwardHeaders(req: NextRequest): HeadersInit {
+  const headers = new Headers();
+  req.headers.forEach((value, key) => {
+    if (key.toLowerCase() !== "host") {
+      headers.set(key, value);
+    }
+  });
+  return headers;
+}
+
+function copyBackendHeaders(
+  backendRes: Response,
+  extraHeaders?: Record<string, string>,
+): Headers {
+  const headers = new Headers();
+  backendRes.headers.forEach((value, key) => {
+    if (key.toLowerCase() !== "content-encoding") {
+      headers.set(key, value);
+    }
+  });
+  if (extraHeaders) {
+    Object.entries(extraHeaders).forEach(([k, v]) => {
+      headers.set(k, v);
+    });
+  }
+  return headers;
+}
+
+function getFallbackCorsHeaders(req?: NextRequest): Record<string, string> {
   const allowedOriginEnv =
     process.env.CORS_ALLOWED_ORIGINS || process.env.CORS_ALLOWED_ORIGIN;
   const requestOrigin = req?.headers.get("origin");
@@ -17,8 +45,6 @@ function getCorsHeaders(req?: NextRequest): Record<string, string> {
     } else {
       allowOrigin = allowedList[0] || "*";
     }
-  } else if (requestOrigin) {
-    allowOrigin = requestOrigin;
   }
 
   return {
@@ -77,22 +103,40 @@ function getTargetUrl(pathSegments: string[], search: string): string {
   return search ? `${target}${search}` : target;
 }
 
-export async function OPTIONS(req: NextRequest) {
-  const cors = getCorsHeaders(req);
-  return new NextResponse(null, {
-    status: 204,
-    headers: {
-      ...cors,
-      "Access-Control-Max-Age": "86400",
-    },
-  });
+export async function OPTIONS(
+  req: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> },
+) {
+  const { path } = await params;
+  const targetUrl = getTargetUrl(path, req.nextUrl.search);
+  try {
+    const backendRes = await fetch(targetUrl, {
+      method: "OPTIONS",
+      headers: getForwardHeaders(req),
+    });
+    return new NextResponse(null, {
+      status: backendRes.status,
+      headers: copyBackendHeaders(backendRes, {
+        "Access-Control-Max-Age": "86400",
+      }),
+    });
+  } catch {
+    const fallbackCors = getFallbackCorsHeaders(req);
+    return new NextResponse(null, {
+      status: 204,
+      headers: {
+        ...fallbackCors,
+        "Access-Control-Max-Age": "86400",
+      },
+    });
+  }
 }
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
-  const cors = getCorsHeaders(req);
+  const fallbackCors = getFallbackCorsHeaders(req);
   const clientIp = getClientIp(req);
   if (isRateLimited(clientIp)) {
     return NextResponse.json(
@@ -103,7 +147,7 @@ export async function POST(
       {
         status: 429,
         headers: {
-          ...cors,
+          ...fallbackCors,
           "Retry-After": "60",
         },
       },
@@ -117,10 +161,7 @@ export async function POST(
     const bodyText = await req.text();
     const backendRes = await fetch(targetUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": req.headers.get("content-type") || "application/json",
-        Accept: req.headers.get("accept") || "text/event-stream",
-      },
+      headers: getForwardHeaders(req),
       body: bodyText,
     });
 
@@ -134,29 +175,24 @@ export async function POST(
 
       return new Response(readable, {
         status: backendRes.status,
-        headers: {
-          ...cors,
+        headers: copyBackendHeaders(backendRes, {
           "Content-Type": "text/event-stream; charset=utf-8",
           "Cache-Control": "no-cache, no-transform",
           "X-Accel-Buffering": "no",
           "X-Content-Type-Options": "nosniff",
           Connection: "keep-alive",
-        },
+        }),
       });
     }
 
     return new Response(backendRes.body, {
       status: backendRes.status,
-      headers: {
-        ...cors,
-        "Content-Type":
-          backendRes.headers.get("content-type") || "application/json",
-      },
+      headers: copyBackendHeaders(backendRes),
     });
   } catch (err) {
     return NextResponse.json(
       { error: true, message: (err as Error).message },
-      { status: 500, headers: cors },
+      { status: 500, headers: fallbackCors },
     );
   }
 }
@@ -165,7 +201,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
-  const cors = getCorsHeaders(req);
+  const fallbackCors = getFallbackCorsHeaders(req);
   const clientIp = getClientIp(req);
   if (isRateLimited(clientIp)) {
     return NextResponse.json(
@@ -176,7 +212,7 @@ export async function GET(
       {
         status: 429,
         headers: {
-          ...cors,
+          ...fallbackCors,
           "Retry-After": "60",
         },
       },
@@ -188,19 +224,17 @@ export async function GET(
 
   try {
     const backendRes = await fetch(targetUrl, {
-      headers: {
-        Accept: req.headers.get("accept") || "application/json",
-      },
+      method: "GET",
+      headers: getForwardHeaders(req),
     });
-    const data = await backendRes.json();
-    return NextResponse.json(data, {
+    return new Response(backendRes.body, {
       status: backendRes.status,
-      headers: cors,
+      headers: copyBackendHeaders(backendRes),
     });
   } catch (err) {
     return NextResponse.json(
       { error: true, message: (err as Error).message },
-      { status: 500, headers: cors },
+      { status: 500, headers: fallbackCors },
     );
   }
 }

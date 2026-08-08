@@ -49,22 +49,34 @@ public class AiBeansConfiguration {
 	public CorsWebFilter corsWebFilter(CorsProperties corsProperties) {
 		CorsConfiguration corsConfig = new CorsConfiguration();
 		String allowedOriginsStr = corsProperties.resolveAllowedOrigins();
+		boolean allowCredentials = corsProperties.isAllowCredentials();
+
 		if (allowedOriginsStr != null && !allowedOriginsStr.isBlank()) {
 			String[] origins = allowedOriginsStr.split(",");
 			for (String origin : origins) {
 				String trimmed = origin.trim();
-				if (trimmed.equals("*") || trimmed.contains("*")) {
+				if (trimmed.equals("*")) {
+					if (allowCredentials) {
+						corsConfig.addAllowedOriginPattern("*");
+					} else {
+						corsConfig.addAllowedOrigin("*");
+					}
+				} else if (trimmed.contains("*")) {
 					corsConfig.addAllowedOriginPattern(trimmed);
 				} else {
 					corsConfig.addAllowedOrigin(trimmed);
 				}
 			}
 		} else {
-			corsConfig.addAllowedOriginPattern("*");
+			if (allowCredentials) {
+				corsConfig.addAllowedOriginPattern("*");
+			} else {
+				corsConfig.addAllowedOrigin("*");
+			}
 		}
 		corsConfig.addAllowedMethod("*");
 		corsConfig.addAllowedHeader("*");
-		corsConfig.setAllowCredentials(corsProperties.isAllowCredentials());
+		corsConfig.setAllowCredentials(allowCredentials);
 		corsConfig.setMaxAge(3600L);
 
 		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
