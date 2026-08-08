@@ -114,6 +114,8 @@ app:
             tags: [chat]
             max-context-tokens: 32768
             default: true
+            input-price-per-k: 0.0010
+            output-price-per-k: 0.0020
       openai:
         display-name: OpenAI
         models:
@@ -124,6 +126,8 @@ app:
             tags: [multimodal]
             max-context-tokens: 128000
             default: true
+            input-price-per-k: 0.0180
+            output-price-per-k: 0.0720
       google:
         display-name: Google Gemini
         models:
@@ -134,42 +138,56 @@ app:
             tags: [multimodal]
             max-context-tokens: 1048576
             default: true
+            input-price-per-k: 0.0005
+            output-price-per-k: 0.0020
           - id: gemini-3.5-flash
             name: gemini-3.5-flash
             display-name: Gemini 3.5 Flash
             description: Google 轻量高速多模态模型
             tags: [multimodal]
             max-context-tokens: 1048576
+            input-price-per-k: 0.0005
+            output-price-per-k: 0.0020
           - id: gemini-3.5-flash-lite
             name: gemini-3.5-flash-lite
             display-name: Gemini 3.5 Flash Lite
             description: Google 轻量低成本多模态模型
             tags: [multimodal]
             max-context-tokens: 1048576
+            input-price-per-k: 0.0002
+            output-price-per-k: 0.0008
           - id: gemini-3.1-pro-preview
             name: gemini-3.1-pro-preview
             display-name: Gemini 3.1 Pro Preview
             description: Google 旗舰多模态模型预览版
             tags: [multimodal]
             max-context-tokens: 2097152
+            input-price-per-k: 0.0090
+            output-price-per-k: 0.0360
           - id: gemini-3.1-flash-lite
             name: gemini-3.1-flash-lite
             display-name: Gemini 3.1 Flash Lite
             description: Google 轻量低成本多模态模型
             tags: [multimodal]
             max-context-tokens: 1048576
+            input-price-per-k: 0.0002
+            output-price-per-k: 0.0008
           - id: gemma-4-26b-a4b-it
             name: gemma-4-26b-a4b-it
             display-name: Gemma 4 26B
             description: Google 开源轻量模型
             tags: [open-source]
             max-context-tokens: 262144
+            input-price-per-k: 0.0000
+            output-price-per-k: 0.0000
           - id: gemma-4-31b-it
             name: gemma-4-31b-it
             display-name: Gemma 4 31B
             description: Google 开源模型
             tags: [open-source]
             max-context-tokens: 262144
+            input-price-per-k: 0.0000
+            output-price-per-k: 0.0000
       ollama:
         display-name: Ollama (本地)
         models:
@@ -180,6 +198,8 @@ app:
             tags: [local]
             max-context-tokens: 8192
             default: true
+            input-price-per-k: 0.0000
+            output-price-per-k: 0.0000
       anthropic:
         display-name: Anthropic Claude
         models:
@@ -190,6 +210,8 @@ app:
             tags: [chat]
             max-context-tokens: 200000
             default: true
+            input-price-per-k: 0.0215
+            output-price-per-k: 0.1075
 
     # 记忆子系统配置（会话记忆 JdbcChatMemory + 长期记忆 pgvector + Redis 热缓存/限流）
     # 仅在 enabled=true 时启用记忆路径；否则 ChatService 退化为旧 history 模式。
@@ -227,12 +249,16 @@ app:
             tags: [chat]
             max-context-tokens: 32768
             default: true
+            input-price-per-k: 0.0040
+            output-price-per-k: 0.0120
           - id: qwen-plus
             name: qwen-plus
             display-name: 通义千问 Plus
             description: 通义千问性价比版本
             tags: [chat]
             max-context-tokens: 131072
+            input-price-per-k: 0.0008
+            output-price-per-k: 0.0020
 
       # 百度千帆：OpenAI 兼容协议（v2 兼容端点）
       - id: qianfan
@@ -248,6 +274,8 @@ app:
             tags: [chat]
             max-context-tokens: 8192
             default: true
+            input-price-per-k: 0.0040
+            output-price-per-k: 0.0120
 
       # 智谱 GLM：OpenAI 兼容协议
       - id: zhipu
@@ -263,6 +291,8 @@ app:
             tags: [chat]
             max-context-tokens: 32768
             default: true
+            input-price-per-k: 0.0050
+            output-price-per-k: 0.0050
 
       # 自定义协议示例（需自行实现 CustomChatModelSupplier 并注册为名为 baiduNative 的 Bean）
       # - id: baidu-native

@@ -3,6 +3,7 @@ package xyz.ppmblszdp.ai.config;
 import jakarta.annotation.Nullable;
 import org.springframework.boot.context.properties.bind.Name;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -23,6 +24,8 @@ import java.util.List;
  *                        缺省时回落到全局 {@code app.ai.context.default-max-context-tokens}
  * @param enabled         是否启用；为 {@code false} 时不会被注册，也不会出现在模型列表中
  * @param defaultModel    是否为所属供应商的默认模型（YAML 中写作 {@code default: true}）
+ * @param inputPricePerK  每千输入 Token 价格（单位：RMB 元）
+ * @param outputPricePerK 每千输出 Token 价格（单位：RMB 元）
  */
 public record ModelConfig(
 		@Nullable String id,
@@ -33,7 +36,9 @@ public record ModelConfig(
 		@Nullable List<String> tags,
 		@Nullable Integer maxContextTokens,
 		@Nullable Boolean enabled,
-		@Name("default") @Nullable Boolean defaultModel
+		@Name("default") @Nullable Boolean defaultModel,
+		@Name("input-price-per-k") @Nullable BigDecimal inputPricePerK,
+		@Name("output-price-per-k") @Nullable BigDecimal outputPricePerK
 ) {
 
 	/**

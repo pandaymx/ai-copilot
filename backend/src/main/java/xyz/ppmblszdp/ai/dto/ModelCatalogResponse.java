@@ -1,5 +1,6 @@
 package xyz.ppmblszdp.ai.dto;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -28,7 +29,9 @@ public record ModelCatalogResponse(
 			String description,
 			String badge,
 			List<String> tags,
-			int maxContextTokens
+			int maxContextTokens,
+			BigDecimal inputPricePerK,
+			BigDecimal outputPricePerK
 	) {
 	}
 }

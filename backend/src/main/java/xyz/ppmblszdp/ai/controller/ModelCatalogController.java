@@ -39,7 +39,9 @@ public class ModelCatalogController {
 						md.description(),
 						md.badge(),
 						md.tags(),
-						md.maxContextTokens()));
+						md.maxContextTokens(),
+						md.inputPricePerK(),
+						md.outputPricePerK()));
 			}
 			providers.add(new ModelCatalogResponse.ProviderEntry(
 					pd.providerId(),

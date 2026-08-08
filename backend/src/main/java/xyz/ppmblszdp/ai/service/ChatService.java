@@ -31,9 +31,12 @@ import xyz.ppmblszdp.ai.dto.MediaDto;
 import xyz.ppmblszdp.ai.memory.ChatRateLimiter;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryProcessor;
+import xyz.ppmblszdp.ai.registry.ModelDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -202,7 +205,7 @@ public class ChatService {
 					.stream()
 					.chatResponse()
 					.timeout(STREAM_TIMEOUT)
-					.concatMap(resp -> processChatResponseToChunks(resp, fullContent))
+					.concatMap(resp -> processChatResponseToChunks(resp, fullContent, resolved))
 					.doOnComplete(() -> recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(), req.message(), fullContent.toString()))
 					.doOnCancel(() -> {
 						if (fullContent.length() > 0) {
@@ -229,10 +232,10 @@ public class ChatService {
 
 		return resolved.chatModel().stream(prompt)
 				.timeout(STREAM_TIMEOUT)
-				.concatMap(resp -> processChatResponseToChunks(resp, fullContent));
+				.concatMap(resp -> processChatResponseToChunks(resp, fullContent, resolved));
 	}
 
-	private Flux<ChatChunkDto> processChatResponseToChunks(ChatResponse resp, StringBuilder fullContent) {
+	private Flux<ChatChunkDto> processChatResponseToChunks(ChatResponse resp, StringBuilder fullContent, ResolvedModel resolved) {
 		if (resp == null) return Flux.empty();
 		List<ChatChunkDto> chunks = new ArrayList<>();
 
@@ -250,7 +253,7 @@ public class ChatService {
 		}
 
 		// 3. 提取 Usage (Prompt / Completion / Total Tokens 及预估费用)
-		ChatChunkDto.UsageDto usageDto = extractUsageDto(resp);
+		ChatChunkDto.UsageDto usageDto = extractUsageDto(resp, resolved);
 		if (usageDto != null) {
 			chunks.add(ChatChunkDto.usage(usageDto));
 		}
@@ -270,7 +273,7 @@ public class ChatService {
 		return null;
 	}
 
-	private ChatChunkDto.UsageDto extractUsageDto(ChatResponse resp) {
+	private ChatChunkDto.UsageDto extractUsageDto(ChatResponse resp, ResolvedModel resolved) {
 		if (resp == null || resp.getMetadata() == null || resp.getMetadata().getUsage() == null) return null;
 		var u = resp.getMetadata().getUsage();
 		int prompt = u.getPromptTokens() != null ? u.getPromptTokens().intValue() : 0;
@@ -278,9 +281,22 @@ public class ChatService {
 		int total = u.getTotalTokens() != null ? u.getTotalTokens().intValue() : (prompt + completion);
 		if (total == 0) return null;
 
-		// 预估费用：按 DeepSeek/OpenAI 通用均价 0.002元/千 Token 估算 RMB
-		double cost = (prompt * 0.001 + completion * 0.002) / 1000.0 * 7.2;
-		return new ChatChunkDto.UsageDto(prompt, completion, total, Math.round(cost * 10000.0) / 10000.0);
+		ModelDescriptor descriptor = (resolved != null) ? resolved.model() : null;
+		BigDecimal inputPrice = (descriptor != null && descriptor.inputPricePerK() != null)
+				? descriptor.inputPricePerK() : ModelDescriptor.DEFAULT_INPUT_PRICE;
+		BigDecimal outputPrice = (descriptor != null && descriptor.outputPricePerK() != null)
+				? descriptor.outputPricePerK() : ModelDescriptor.DEFAULT_OUTPUT_PRICE;
+
+		BigDecimal promptCost = BigDecimal.valueOf(prompt)
+				.divide(BigDecimal.valueOf(1000), 6, RoundingMode.HALF_UP)
+				.multiply(inputPrice);
+
+		BigDecimal completionCost = BigDecimal.valueOf(completion)
+				.divide(BigDecimal.valueOf(1000), 6, RoundingMode.HALF_UP)
+				.multiply(outputPrice);
+
+		BigDecimal totalCostRmb = promptCost.add(completionCost).setScale(4, RoundingMode.HALF_UP);
+		return new ChatChunkDto.UsageDto(prompt, completion, total, totalCostRmb.doubleValue());
 	}
 
 	private boolean useMemory(ChatRequest request) {
