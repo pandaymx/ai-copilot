@@ -62,6 +62,7 @@ public class ChatService {
 	private static final Logger log = LoggerFactory.getLogger(ChatService.class);
 
 	private static final Duration STREAM_TIMEOUT = Duration.ofMinutes(5);
+	private static final Duration CALL_TIMEOUT = Duration.ofSeconds(60);
 
 	private final ProviderRegistry registry;
 	private final ContextAssembler contextAssembler;
@@ -145,6 +146,18 @@ public class ChatService {
 								req.conversationId(),
 								null,
 								null);
+					})
+					.timeout(CALL_TIMEOUT)
+					.onErrorResume(java.util.concurrent.TimeoutException.class, ex -> {
+						log.warn("非流式请求响应超时 (>{}) → 供应商={}, 模型={}",
+								CALL_TIMEOUT, resolved.provider().providerId(), resolved.model().id());
+						return Mono.just(new ChatResponseDto(
+								"上游供应商响应超时，请稍后再试。",
+								resolved.provider().providerId(),
+								resolved.model().id(),
+								req.conversationId(),
+								null,
+								null));
 					})
 					.subscribeOn(Schedulers.boundedElastic());
 		}
@@ -316,6 +329,18 @@ public class ChatService {
 				.map(resp -> new ChatResponseDto(
 						extractText(resp), resolved.provider().providerId(), resolved.model().id(),
 						request.conversationId(), null, null))
+				.timeout(CALL_TIMEOUT)
+				.onErrorResume(java.util.concurrent.TimeoutException.class, ex -> {
+					log.warn("非流式请求响应超时 (>{}) → 供应商={}, 模型={}",
+							CALL_TIMEOUT, resolved.provider().providerId(), resolved.model().id());
+					return Mono.just(new ChatResponseDto(
+							"上游供应商响应超时，请稍后再试。",
+							resolved.provider().providerId(),
+							resolved.model().id(),
+							request.conversationId(),
+							null,
+							null));
+				})
 				.subscribeOn(Schedulers.boundedElastic());
 	}
 
