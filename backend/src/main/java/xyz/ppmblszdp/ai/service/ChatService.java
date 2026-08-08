@@ -348,8 +348,11 @@ public class ChatService {
 		}
 		String cid = ensureConversation(request).conversationId();
 		if (cid != null && !cid.isBlank()) {
-			// 副作用异步化：将 JDBC 数据库更新下沉至 boundedElastic 调度器，避免阻塞 WebFlux 事件循环并缩短首包延迟 (TTFB)
+			// 副作用异步化：将 JDBC 会话更新（touchSession/标题兜底）下沉至 boundedElastic 调度器，
+			// 避免阻塞 WebFlux 主事件循环并缩短首包延迟 (TTFB)；高并发极端场景后续可扩展 Redis 节流/合并写。
 			Mono.fromRunnable(() -> sessionService.touchSession(cid, deriveDefaultTitle(request.message())))
+					.doOnError(ex -> log.warn("异步更新会话状态(touchSession)失败 [cid={}]: {}", cid, ex.getMessage()))
+					.onErrorComplete()
 					.subscribeOn(Schedulers.boundedElastic())
 					.subscribe();
 		}
