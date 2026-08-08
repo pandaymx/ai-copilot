@@ -26,6 +26,21 @@ log_infra()   { echo -e "${CYAN}[INFRA]${NC} $1"; }
 log_backend() { echo -e "${MAGENTA}[BACKEND]${NC} $1"; }
 log_front()   { echo -e "${BLUE}[FRONTEND]${NC} $1"; }
 
+# 0. Auto-include user local toolchain directories into PATH if present
+for path_entry in "$HOME/.bun/bin" "$HOME/.sdkman/candidates/java/current/bin" "$HOME/.local/bin" "$HOME/.fnm/current/bin"; do
+  if [ -d "$path_entry" ] && [[ ":$PATH:" != *":$path_entry:"* ]]; then
+    export PATH="$path_entry:$PATH"
+  fi
+done
+
+# Attempt sourcing SDKMAN init if java is not yet in PATH
+if ! command -v java >/dev/null 2>&1 && [ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]; then
+  # Sourcing sdkman-init may return non-zero in set -e if unset variables exist; protect with || true
+  set +e
+  source "$HOME/.sdkman/bin/sdkman-init.sh" 2>/dev/null || true
+  set -e
+fi
+
 # 1. Detect Container Engine (Rootless friendly)
 detect_compose_engine() {
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
@@ -198,7 +213,55 @@ cleanup() {
 
 trap cleanup SIGINT SIGTERM EXIT
 
-log_info "Starting AI-Copilot (Rootless Orchestration)..."
+# Pre-flight Toolchain Verification for Hybrid Mode
+check_native_requirements() {
+  local missing=0
+
+  log_info "Checking native toolchain requirements..."
+
+  # Check Java
+  if ! command -v java >/dev/null 2>&1; then
+    log_error "Missing requirement: 'java' executable not found in PATH."
+    log_error "Spring Boot backend requires JDK 25."
+    missing=1
+  else
+    local java_ver
+    java_ver=$(java -version 2>&1 | head -n 1)
+    log_info "Found Java: $java_ver"
+  fi
+
+  # Check Bun / Node
+  if command -v bun >/dev/null 2>&1; then
+    local bun_ver
+    bun_ver=$(bun --version 2>&1 || echo "unknown")
+    log_info "Found Bun: v$bun_ver"
+  elif command -v npm >/dev/null 2>&1; then
+    local node_ver
+    node_ver=$(node --version 2>&1 || echo "unknown")
+    log_warn "Bun not found in PATH, falling back to npm (Node $node_ver)."
+  else
+    log_error "Missing requirement: Neither 'bun' nor 'npm' found in PATH."
+    missing=1
+  fi
+
+  if [ "$missing" -ne 0 ]; then
+    echo "======================================================================"
+    log_error "Native toolchain check failed!"
+    log_error "To fix this, choose one of the following:"
+    log_error "  1. Install JDK 25 & Bun on host system (and ensure in PATH):"
+    log_error "     - Java: sdk install java 25-open (or apt/manual)"
+    log_error "     - Bun:  curl -fsSL https://bun.sh/install | bash"
+    log_error "  2. Use zero-dependency Docker container mode (no host JDK/Bun needed):"
+    log_error "     ./start.sh docker   (or 'task docker:up')"
+    echo "======================================================================"
+    exit 1
+  fi
+}
+
+log_info "Starting AI-Copilot (Rootless Orchestration - Hybrid Mode)..."
+
+# Step 0: Check Host Toolchains
+check_native_requirements
 
 # Step 1: Infrastructure
 start_infra
