@@ -19,13 +19,19 @@ import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
 
+import xyz.ppmblszdp.ai.memory.LongTermMemoryProcessor;
+
 import java.util.List;
 import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ChatServiceTest {
@@ -125,5 +131,46 @@ class ChatServiceTest {
 					assertEquals("gpt-4o", dto.model());
 				})
 				.verifyComplete();
+	}
+
+	@Test
+	void testChatWithLongTermMemoryExceptionDoesNotFailMainFlow() throws InterruptedException {
+		AiProviderProperties.MemoryConfig memoryConfig = mock(AiProviderProperties.MemoryConfig.class);
+		when(memoryConfig.isEnabled()).thenReturn(true);
+		when(properties.resolveMemory()).thenReturn(memoryConfig);
+
+		LongTermMemoryProcessor processor = mock(LongTermMemoryProcessor.class);
+		doThrow(new RuntimeException("pgvector connection refused"))
+				.when(processor).processTurn(any(), any(), any(), any());
+		when(longTermProcessor.getIfAvailable()).thenReturn(processor);
+
+		ChatService enabledChatService = new ChatService(
+				registry,
+				contextAssembler,
+				sessionChatMemory,
+				longTermFactory,
+				longTermWriter,
+				longTermProcessor,
+				rateLimiter,
+				sessionService,
+				properties
+		);
+
+		ChatResponse chatResponse = new ChatResponse(List.of(new Generation(new AssistantMessage("Hello!"))));
+		when(chatModel.call(any(Prompt.class))).thenReturn(chatResponse);
+
+		ChatRequest request = new ChatRequest("Hi", null, "openai", "gpt-4o", null, "conv-1", "user-1", null);
+		Mono<ChatResponseDto> resultMono = enabledChatService.chat(request);
+
+		StepVerifier.create(resultMono)
+				.assertNext(dto -> {
+					assertNotNull(dto);
+					assertEquals("Hello!", dto.content());
+				})
+				.verifyComplete();
+
+		// 给足时间等待异步重试完成，并验证重试了 2 次 (1 首次 + 1 重试)
+		Thread.sleep(2500);
+		verify(processor, times(2)).processTurn(eq("user-1"), eq("conv-1"), eq("Hi"), eq("Hello!"));
 	}
 }

@@ -16,6 +16,8 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
+import reactor.util.retry.Retry;
+import java.time.Duration;
 import org.springframework.ai.content.Media;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.util.MimeTypeUtils;
@@ -33,7 +35,6 @@ import xyz.ppmblszdp.ai.registry.ResolvedModel;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -43,16 +44,20 @@ import java.util.Objects;
 /**
  * 聊天业务服务。
  *
- * <p>三种路径：
+ * <p>
+ * 三种路径：
  * <ol>
- *   <li><b>记忆驱动</b>（有 conversationId 且 app.ai.memory.enabled=true）：走 ChatClient + Advisor
- *       （MessageChatMemoryAdvisor 会话记忆 + 长期记忆 Advisor），conversationId 在每次请求时动态注入，
- *       多线程并发不会串线；</li>
- *   <li><b>旧 history 模式</b>（无 conversationId）：沿用 ContextAssembler 组装历史，完全向后兼容；</li>
- *   <li><b>单轮</b>（无 conversationId 且无 history）：仅当前消息。</li>
+ * <li><b>记忆驱动</b>（有 conversationId 且 app.ai.memory.enabled=true）：走 ChatClient +
+ * Advisor
+ * （MessageChatMemoryAdvisor 会话记忆 + 长期记忆 Advisor），conversationId 在每次请求时动态注入，
+ * 多线程并发不会串线；</li>
+ * <li><b>旧 history 模式</b>（无 conversationId）：沿用 ContextAssembler
+ * 组装历史，完全向后兼容；</li>
+ * <li><b>单轮</b>（无 conversationId 且无 history）：仅当前消息。</li>
  * </ol>
  *
- * <p>记忆相关异常降级为「无记忆单次对话」，不向上抛 5xx；ContextAssembler 的 Token 预算裁剪在旧路径生效，
+ * <p>
+ * 记忆相关异常降级为「无记忆单次对话」，不向上抛 5xx；ContextAssembler 的 Token 预算裁剪在旧路径生效，
  * 记忆路径由 MessageChatMemoryAdvisor 的 RETRIEVE_SIZE 控制提取条数。
  */
 @Service
@@ -202,10 +207,12 @@ public class ChatService {
 					.chatResponse()
 					.timeout(STREAM_TIMEOUT)
 					.concatMap(resp -> processChatResponseToChunks(resp, fullContent, resolved))
-					.doOnComplete(() -> recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(), req.message(), fullContent.toString()))
+					.doOnComplete(() -> recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(),
+							req.message(), fullContent.toString()))
 					.doOnCancel(() -> {
 						if (fullContent.length() > 0) {
-							recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(), req.message(), fullContent.toString());
+							recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(), req.message(),
+									fullContent.toString());
 						}
 					});
 		}
@@ -218,7 +225,8 @@ public class ChatService {
 				.map(ChatChunkDto::content);
 	}
 
-	private Flux<ChatChunkDto> streamChunksWithoutMemory(ResolvedModel resolved, ChatRequest request, ChatOptions options) {
+	private Flux<ChatChunkDto> streamChunksWithoutMemory(ResolvedModel resolved, ChatRequest request,
+			ChatOptions options) {
 		List<Media> mediaList = convertMediaList(request.media());
 		List<Message> messages = contextAssembler.assemble(
 				request.message(), request.history(), request.systemPrompt(),
@@ -231,8 +239,10 @@ public class ChatService {
 				.concatMap(resp -> processChatResponseToChunks(resp, fullContent, resolved));
 	}
 
-	private Flux<ChatChunkDto> processChatResponseToChunks(ChatResponse resp, StringBuilder fullContent, ResolvedModel resolved) {
-		if (resp == null) return Flux.empty();
+	private Flux<ChatChunkDto> processChatResponseToChunks(ChatResponse resp, StringBuilder fullContent,
+			ResolvedModel resolved) {
+		if (resp == null)
+			return Flux.empty();
 		List<ChatChunkDto> chunks = new ArrayList<>();
 
 		// 1. 提取推理/思考文本 (DeepSeek R1 / Qwen Reasoning / Spring AI Output)
@@ -258,30 +268,38 @@ public class ChatService {
 	}
 
 	private String extractReasoning(ChatResponse resp) {
-		if (resp == null || resp.getResult() == null || resp.getResult().getOutput() == null) return null;
+		if (resp == null || resp.getResult() == null || resp.getResult().getOutput() == null)
+			return null;
 		Map<String, Object> metadata = resp.getResult().getOutput().getMetadata();
 		if (metadata != null) {
 			Object r = metadata.get("reasoning_content");
-			if (r == null) r = metadata.get("reasoning");
-			if (r == null) r = metadata.get("thinking");
-			if (r instanceof String s && !s.isEmpty()) return s;
+			if (r == null)
+				r = metadata.get("reasoning");
+			if (r == null)
+				r = metadata.get("thinking");
+			if (r instanceof String s && !s.isEmpty())
+				return s;
 		}
 		return null;
 	}
 
 	private ChatChunkDto.UsageDto extractUsageDto(ChatResponse resp, ResolvedModel resolved) {
-		if (resp == null || resp.getMetadata() == null || resp.getMetadata().getUsage() == null) return null;
+		if (resp == null || resp.getMetadata() == null || resp.getMetadata().getUsage() == null)
+			return null;
 		var u = resp.getMetadata().getUsage();
 		int prompt = u.getPromptTokens() != null ? u.getPromptTokens().intValue() : 0;
 		int completion = u.getCompletionTokens() != null ? u.getCompletionTokens().intValue() : 0;
 		int total = u.getTotalTokens() != null ? u.getTotalTokens().intValue() : (prompt + completion);
-		if (total == 0) return null;
+		if (total == 0)
+			return null;
 
 		ModelDescriptor descriptor = (resolved != null) ? resolved.model() : null;
 		BigDecimal inputPrice = (descriptor != null && descriptor.inputPricePerK() != null)
-				? descriptor.inputPricePerK() : ModelDescriptor.DEFAULT_INPUT_PRICE;
+				? descriptor.inputPricePerK()
+				: ModelDescriptor.DEFAULT_INPUT_PRICE;
 		BigDecimal outputPrice = (descriptor != null && descriptor.outputPricePerK() != null)
-				? descriptor.outputPricePerK() : ModelDescriptor.DEFAULT_OUTPUT_PRICE;
+				? descriptor.outputPricePerK()
+				: ModelDescriptor.DEFAULT_OUTPUT_PRICE;
 
 		BigDecimal promptCost = BigDecimal.valueOf(prompt)
 				.divide(BigDecimal.valueOf(1000), 6, RoundingMode.HALF_UP)
@@ -335,8 +353,7 @@ public class ChatService {
 		List<Message> messages = contextAssembler.assemble(
 				request.message(), request.history(), request.systemPrompt(),
 				null, resolved.model().maxContextTokens(), mediaList);
-		Prompt prompt =
-				new Prompt(messages, options);
+		Prompt prompt = new Prompt(messages, options);
 		return Mono.fromCallable(() -> resolved.chatModel().call(prompt))
 				.map(resp -> new ChatResponseDto(
 						extractText(resp), resolved.provider().providerId(), resolved.model().id(),
@@ -361,8 +378,7 @@ public class ChatService {
 		List<Message> messages = contextAssembler.assemble(
 				request.message(), request.history(), request.systemPrompt(),
 				null, resolved.model().maxContextTokens(), mediaList);
-		Prompt prompt =
-				new Prompt(messages, options);
+		Prompt prompt = new Prompt(messages, options);
 		return resolved.chatModel().stream(prompt)
 				.timeout(STREAM_TIMEOUT)
 				.map(resp -> extractText(resp))
@@ -417,13 +433,19 @@ public class ChatService {
 				: contextAssembler.defaultSystemPrompt();
 	}
 
-	private void recordLongTermMemoryAsync(String userId, String conversationId, String userMessage, String assistantReply) {
+	private void recordLongTermMemoryAsync(String userId, String conversationId, String userMessage,
+			String assistantReply) {
 		if (!memoryEnabled || userId == null || userId.isBlank() || userMessage == null || userMessage.isBlank()) {
 			return;
 		}
 		LongTermMemoryProcessor processor = longTermProcessor.getIfAvailable();
 		if (processor != null) {
 			Mono.fromRunnable(() -> processor.processTurn(userId, conversationId, userMessage, assistantReply))
+					.timeout(Duration.ofSeconds(10))
+					.retryWhen(Retry.fixedDelay(1, Duration.ofSeconds(2)))
+					.doOnError(ex -> log.warn("长期记忆处理(processTurn)写入失败 [userId={}, conversationId={}]: {}", userId,
+							conversationId, ex.getMessage()))
+					.onErrorComplete()
 					.subscribeOn(Schedulers.boundedElastic())
 					.subscribe();
 			return;
@@ -434,14 +456,17 @@ public class ChatService {
 		}
 		String content = "【用户提问】: " + userMessage + "\n【AI回复】: " + (assistantReply != null ? assistantReply : "");
 		Mono.fromRunnable(() -> writer.write(userId, content))
+				.timeout(Duration.ofSeconds(10))
+				.retryWhen(Retry.fixedDelay(1, Duration.ofSeconds(2)))
+				.doOnError(ex -> log.warn("长期记忆(writer)写入失败 [userId={}]: {}", userId, ex.getMessage()))
+				.onErrorComplete()
 				.subscribeOn(Schedulers.boundedElastic())
 				.subscribe();
 	}
 
 	private void applyLongTermAdvisor(
 			ChatClient.AdvisorSpec a, ChatRequest request) {
-		LongTermMemoryConfig.LongTermMemoryAdvisorFactory factory =
-				longTermFactory.getIfAvailable();
+		LongTermMemoryConfig.LongTermMemoryAdvisorFactory factory = longTermFactory.getIfAvailable();
 		if (factory == null) {
 			return;
 		}
