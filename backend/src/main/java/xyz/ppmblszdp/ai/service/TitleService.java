@@ -78,7 +78,7 @@ public class TitleService {
 		String question = truncate(userMessage, MAX_QUESTION_CHARS);
 		String content = truncate(answer, MAX_ANSWER_CHARS);
 		if (question.isBlank() && content.isBlank()) {
-			return Mono.just(null);
+			return Mono.empty();
 		}
 
 		ResolvedModel resolved;
@@ -86,7 +86,7 @@ public class TitleService {
 			resolved = registry.resolve(provider, model);
 		} catch (Exception ex) {
 			log.warn("标题生成：模型解析失败 → {}", ex.getMessage());
-			return Mono.just(null);
+			return Mono.empty();
 		}
 
 		ChatOptions options = buildOptions(resolved);
@@ -111,7 +111,7 @@ public class TitleService {
 				.onErrorResume(ex -> {
 					log.warn("标题生成失败 → 供应商={}, 模型={}: {}",
 							resolved.provider().providerId(), resolved.model().id(), ex.getMessage());
-					return Mono.just(null);
+					return Mono.empty();
 				})
 				.subscribeOn(Schedulers.boundedElastic());
 	}

@@ -1,5 +1,7 @@
 package xyz.ppmblszdp.ai.controller;
 
+import java.util.Map;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import xyz.ppmblszdp.ai.dto.ChatChunkDto;
+import xyz.ppmblszdp.ai.dto.ChatFeedbackRequest;
 import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
 import xyz.ppmblszdp.ai.dto.TitleRequest;

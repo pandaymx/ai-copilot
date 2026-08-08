@@ -1,0 +1,64 @@
+package xyz.ppmblszdp.ai.controller;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.model.ChatModel;
+import xyz.ppmblszdp.ai.dto.ModelCatalogResponse;
+import xyz.ppmblszdp.ai.registry.ModelDescriptor;
+import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
+import xyz.ppmblszdp.ai.registry.ProviderRegistry;
+
+import java.math.BigDecimal;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.Mockito.mock;
+
+class ModelCatalogControllerTest {
+
+	private ProviderRegistry registry;
+	private ModelCatalogController controller;
+
+	@BeforeEach
+	void setUp() {
+		ChatModel chatModel = mock(ChatModel.class);
+		ModelDescriptor gpt4o = ModelDescriptor.builder()
+				.id("gpt-4o")
+				.modelName("gpt-4o")
+				.displayName("GPT-4o")
+				.inputPricePerK(BigDecimal.valueOf(0.015))
+				.outputPricePerK(BigDecimal.valueOf(0.06))
+				.build();
+
+		ProviderDescriptor openai = ProviderDescriptor.builder()
+				.providerId("openai")
+				.displayName("OpenAI")
+				.chatModel(chatModel)
+				.defaultModelId("gpt-4o")
+				.models(java.util.Map.of("gpt-4o", gpt4o))
+				.build();
+
+		registry = ProviderRegistry.builder()
+				.register(openai)
+				.defaultProviderId("openai")
+				.defaultModelId("gpt-4o")
+				.build();
+
+		controller = new ModelCatalogController(registry);
+	}
+
+	@Test
+	void testListReturnsProvidersAndModels() {
+		ModelCatalogResponse response = controller.list();
+		assertNotNull(response);
+		assertEquals("openai", response.defaultProvider());
+		assertEquals("gpt-4o", response.defaultModel());
+		assertEquals(1, response.providers().size());
+
+		ModelCatalogResponse.ProviderEntry provider = response.providers().get(0);
+		assertEquals("openai", provider.id());
+		assertEquals(1, provider.models().size());
+		assertEquals("gpt-4o", provider.models().get(0).id());
+		assertEquals(BigDecimal.valueOf(0.015), provider.models().get(0).inputPricePerK());
+	}
+}
