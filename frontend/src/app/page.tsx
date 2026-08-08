@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Code2,
   Cpu,
+  Download,
   FileText,
   Layers,
   PanelLeftOpen,
@@ -25,6 +26,7 @@ import {
   ModelSelector,
   type SelectedModel,
 } from "@/components/chat/model-selector";
+import { ExportDialog } from "@/components/chat/export-dialog";
 import { type ChatSession, Sidebar } from "@/components/chat/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -220,6 +222,7 @@ export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [collapsed, setCollapsed] = useState(false);
+  const [showExport, setShowExport] = useState(false);
   const [model, setModel] = useState<SelectedModel>({
     provider: "deepseek",
     model: "deepseek-chat",
@@ -622,6 +625,17 @@ export default function Home() {
               <ThemeToggle />
               <Button
                 variant="ghost"
+                size="icon-sm"
+                onClick={() => setShowExport(true)}
+                disabled={messages.length === 0}
+                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors"
+                aria-label="导出对话"
+                title="导出对话"
+              >
+                <Download className="size-4" />
+              </Button>
+              <Button
+                variant="ghost"
                 size="sm"
                 onClick={handleReset}
                 disabled={isStreaming || messages.length === 0}
@@ -792,6 +806,16 @@ export default function Home() {
           </form>
         </div>
       </div>
+
+      {/* 导出对话弹窗 */}
+      <ExportDialog
+        open={showExport}
+        messages={messages}
+        title={
+          sessions.find((s) => s.id === activeId)?.title ?? "AI-Copilot-对话"
+        }
+        onClose={() => setShowExport(false)}
+      />
     </div>
   );
 }
