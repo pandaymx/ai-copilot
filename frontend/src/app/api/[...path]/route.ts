@@ -33,8 +33,7 @@ function copyBackendHeaders(
 }
 
 function getFallbackCorsHeaders(req?: NextRequest): Record<string, string> {
-  const allowedOriginEnv =
-    process.env.CORS_ALLOWED_ORIGINS || process.env.CORS_ALLOWED_ORIGIN;
+  const allowedOriginEnv = process.env.CORS_ALLOWED_ORIGINS;
   const requestOrigin = req?.headers.get("origin");
 
   let allowOrigin = "*";
