@@ -171,7 +171,9 @@ export function Sidebar({
           {isOfflineFallback && (
             <div className="mx-1 mb-2 flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-[11px] font-medium text-amber-700 dark:bg-amber-500/15 dark:border-amber-500/30 dark:text-amber-300 shadow-2xs">
               <CloudOff className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-              <span className="flex-1 truncate">云端同步失败，使用本地缓存</span>
+              <span className="flex-1 truncate">
+                云端同步失败，使用本地缓存
+              </span>
             </div>
           )}
 

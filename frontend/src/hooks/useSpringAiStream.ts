@@ -135,8 +135,7 @@ export function useSpringAiStream(
     onFinish,
   } = options;
 
-  const [content, setContent] = useState("");
-  const [thinking, setThinking] = useState("");
+  const [streamData, setStreamData] = useState({ content: "", thinking: "" });
   const [usage, setUsage] = useState<{
     promptTokens: number;
     completionTokens: number;
@@ -150,20 +149,49 @@ export function useSpringAiStream(
   const contentRef = useRef("");
   const thinkingRef = useRef("");
   const historyRef = useRef<SpringAiStreamMessage[]>([]);
+  const rafRef = useRef<number | null>(null);
+
+  const flushState = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    setStreamData({
+      content: contentRef.current,
+      thinking: thinkingRef.current,
+    });
+  }, []);
+
+  const scheduleUpdate = useCallback(() => {
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      setStreamData({
+        content: contentRef.current,
+        thinking: thinkingRef.current,
+      });
+    });
+  }, []);
 
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+      }
     };
   }, []);
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
     contentRef.current = "";
     thinkingRef.current = "";
-    setContent("");
-    setThinking("");
+    setStreamData({ content: "", thinking: "" });
     setUsage(null);
     setLoading(false);
     setError(null);
@@ -174,10 +202,11 @@ export function useSpringAiStream(
       const currentContent = contentRef.current;
       abortRef.current.abort();
       abortRef.current = null;
+      flushState();
       setLoading(false);
       onFinish?.(currentContent);
     }
-  }, [onFinish]);
+  }, [flushState, onFinish]);
 
   const send = useCallback(
     (input: string, extraBody?: Record<string, unknown>) => {
@@ -196,10 +225,13 @@ export function useSpringAiStream(
         ? onBeforeSend(historyRef.current)
         : historyRef.current;
 
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
       contentRef.current = "";
       thinkingRef.current = "";
-      setContent("");
-      setThinking("");
+      setStreamData({ content: "", thinking: "" });
       setUsage(null);
       setError(null);
       setLoading(true);
@@ -227,7 +259,7 @@ export function useSpringAiStream(
                 }
                 if (parsed?.type === "reasoning" && parsed.reasoning) {
                   thinkingRef.current += parsed.reasoning;
-                  setThinking(thinkingRef.current);
+                  scheduleUpdate();
                   onReasoning?.(parsed.reasoning);
                   return;
                 }
@@ -243,7 +275,7 @@ export function useSpringAiStream(
               const delta = parseChunk(ev.data);
               if (delta) {
                 contentRef.current += delta;
-                setContent(contentRef.current);
+                scheduleUpdate();
               }
             },
             onerror(err) {
@@ -258,6 +290,7 @@ export function useSpringAiStream(
         } finally {
           if (abortRef.current === controller) {
             abortRef.current = null;
+            flushState();
             setLoading(false);
             onFinish?.(contentRef.current);
           }
@@ -276,9 +309,20 @@ export function useSpringAiStream(
       onUsage,
       onBeforeSend,
       onFinish,
+      flushState,
+      scheduleUpdate,
       loading,
     ],
   );
 
-  return { content, thinking, usage, loading, error, send, stop, reset };
+  return {
+    content: streamData.content,
+    thinking: streamData.thinking,
+    usage,
+    loading,
+    error,
+    send,
+    stop,
+    reset,
+  };
 }
