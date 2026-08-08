@@ -17,6 +17,7 @@ import xyz.ppmblszdp.ai.dto.TitleRequest;
 import xyz.ppmblszdp.ai.dto.TitleResponse;
 import xyz.ppmblszdp.ai.exception.AiException;
 import xyz.ppmblszdp.ai.service.ChatService;
+import xyz.ppmblszdp.ai.service.FeedbackService;
 import xyz.ppmblszdp.ai.service.SessionService;
 import xyz.ppmblszdp.ai.service.TitleService;
 
@@ -24,9 +25,9 @@ import xyz.ppmblszdp.ai.service.TitleService;
  * 聊天接口控制器。
  *
  * <ul>
- *   <li>{@code POST /api/chat}：非流式，返回完整回复；</li>
- *   <li>{@code POST /api/chat/stream}：结构化 SSE 流式，由框架自动进行类型安全的 JSON 序列化与分帧，
- *       流末补发 done 帧；中途异常转成 error SSE 事件后正常 complete，避免前端只见网络错误。</li>
+ * <li>{@code POST /api/chat}：非流式，返回完整回复；</li>
+ * <li>{@code POST /api/chat/stream}：结构化 SSE 流式，由框架自动进行类型安全的 JSON 序列化与分帧，
+ * 流末补发 done 帧；中途异常转成 error SSE 事件后正常 complete，避免前端只见网络错误。</li>
  * </ul>
  */
 @RestController
@@ -38,11 +39,14 @@ public class ChatController {
 	private final ChatService chatService;
 	private final TitleService titleService;
 	private final SessionService sessionService;
+	private final FeedbackService feedbackService;
 
-	public ChatController(ChatService chatService, TitleService titleService, SessionService sessionService) {
+	public ChatController(ChatService chatService, TitleService titleService, SessionService sessionService,
+			xyz.ppmblszdp.ai.service.FeedbackService feedbackService) {
 		this.chatService = chatService;
 		this.titleService = titleService;
 		this.sessionService = sessionService;
+		this.feedbackService = feedbackService;
 	}
 
 	@PostMapping
@@ -59,28 +63,36 @@ public class ChatController {
 				? Flux.just(ServerSentEvent.builder(ChatChunkDto.conversation(conversationId)).build())
 				: Flux.empty();
 		return head.concatWith(chatService.streamChatChunks(request)
-						.map(chunk -> ServerSentEvent.builder(chunk).build()))
+				.map(chunk -> ServerSentEvent.builder(chunk).build()))
 				.concatWithValues(ServerSentEvent.builder(ChatChunkDto.done()).build())
-				.onErrorResume(AiException.class, ex ->
-						Flux.just(ServerSentEvent.builder(ChatChunkDto.error(ex.getErrorCode(), ex.getMessage())).build()))
+				.onErrorResume(AiException.class,
+						ex -> Flux.just(ServerSentEvent.builder(ChatChunkDto.error(ex.getErrorCode(), ex.getMessage()))
+								.build()))
 				.onErrorResume(Exception.class, ex -> {
 					log.warn("流式未预期异常: {}", ex.getMessage());
-					return Flux.just(ServerSentEvent.builder(ChatChunkDto.error("UPSTREAM_ERROR", ex.getMessage())).build());
+					return Flux.just(
+							ServerSentEvent.builder(ChatChunkDto.error("UPSTREAM_ERROR", ex.getMessage())).build());
 				});
 	}
 
-	@PostMapping(value = "/title", consumes = MediaType.APPLICATION_JSON_VALUE,
-			produces = MediaType.APPLICATION_JSON_VALUE)
+	@PostMapping(value = "/title", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
 	public Mono<TitleResponse> title(@RequestBody TitleRequest request) {
 		return titleService
 				.generateTitle(request.message(), request.answer(), request.provider(), request.model())
 				.doOnNext(generatedTitle -> {
-					if (generatedTitle != null && !generatedTitle.isBlank() && request.conversationId() != null && !request.conversationId().isBlank()) {
+					if (generatedTitle != null && !generatedTitle.isBlank() && request.conversationId() != null
+							&& !request.conversationId().isBlank()) {
 						sessionService.renameSession(request.conversationId(), generatedTitle);
 					}
 				})
 				.map(TitleResponse::new)
 				.defaultIfEmpty(new TitleResponse(""));
 	}
-}
 
+	@PostMapping(value = "/feedback", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+	public Mono<Map<String, Object>> feedback(@RequestBody ChatFeedbackRequest request) {
+		return Mono.fromRunnable(() -> feedbackService.saveFeedback(request))
+				.subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+				.thenReturn(Map.of("success", true));
+	}
+}

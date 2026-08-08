@@ -646,6 +646,7 @@ export default function Home() {
                 <MessageBubble
                   key={m.id}
                   message={m}
+                  conversationId={activeId || undefined}
                   streaming={m.id === liveIdRef.current && isStreaming}
                   onRegenerate={() =>
                     handleSend(messages[messages.length - 2]?.content)

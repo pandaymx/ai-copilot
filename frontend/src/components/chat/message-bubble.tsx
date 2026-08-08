@@ -45,12 +45,14 @@ export interface ChatMessage {
 interface MessageBubbleProps {
   message: ChatMessage;
   streaming?: boolean;
+  conversationId?: string;
   onRegenerate?: () => void;
 }
 
 export function MessageBubble({
   message,
   streaming,
+  conversationId,
   onRegenerate,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
@@ -65,6 +67,23 @@ export function MessageBubble({
       setTimeout(() => setCopied(false), 1800);
     } catch {
       // 忽略复制失败
+    }
+  };
+
+  const handleFeedback = (newLiked: boolean | null) => {
+    setLiked(newLiked);
+    if (newLiked !== null) {
+      fetch("/api/chat/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: conversationId || "",
+          messageId: message.id || "",
+          rating: newLiked ? "THUMBS_UP" : "THUMBS_DOWN",
+        }),
+      }).catch((err) => {
+        console.warn("提交点赞/点踩反馈失败:", err);
+      });
     }
   };
 
@@ -238,7 +257,7 @@ export function MessageBubble({
 
             <button
               type="button"
-              onClick={() => setLiked(liked === true ? null : true)}
+              onClick={() => handleFeedback(liked === true ? null : true)}
               className={cn(
                 "flex size-7 items-center justify-center rounded-lg text-zinc-400 transition-colors",
                 liked === true
@@ -252,7 +271,7 @@ export function MessageBubble({
 
             <button
               type="button"
-              onClick={() => setLiked(liked === false ? null : false)}
+              onClick={() => handleFeedback(liked === false ? null : false)}
               className={cn(
                 "flex size-7 items-center justify-center rounded-lg text-zinc-400 transition-colors",
                 liked === false
