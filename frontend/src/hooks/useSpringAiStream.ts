@@ -13,12 +13,11 @@ export interface UseSpringAiStreamOptions {
   endpoint?: string;
   /** 自定义请求头，会与 Accept: text/event-stream 合并。 */
   headers?: Record<string, string>;
-  /** 自定义请求体构造，便于适配不同模型的入参格式。 */
-  buildBody?: (
-    input: string,
-    history: SpringAiStreamMessage[],
-    extraBody?: Record<string, unknown>,
-  ) => unknown;
+  /**
+   * 自定义请求体构造，便于适配不同模型的入参格式。
+   * 历史消息由调用方通过 extraBody 传入，hook 不维护内部历史。
+   */
+  buildBody?: (input: string, extraBody?: Record<string, unknown>) => unknown;
   /**
    * 从单个 SSE data 字段（已剥离前缀、保留内部空白）中解析出增量文本。
    * 返回 null 表示无有效内容（如 [DONE] 或心跳）。
@@ -36,8 +35,6 @@ export interface UseSpringAiStreamOptions {
     totalTokens: number;
     estimatedCostRmb?: number;
   }) => void;
-  /** 在请求前对消息历史做处理（如裁剪）。 */
-  onBeforeSend?: (history: SpringAiStreamMessage[]) => SpringAiStreamMessage[];
   /** 流完整结束后回调（成功完成或异常均触发），参数为最终累计文本、思考过程与 Token 用量。 */
   onFinish?: (
     finalContent: string,
@@ -119,12 +116,8 @@ function defaultParseChunk(data: string): string | null {
   }
 }
 
-function defaultBuildBody(
-  input: string,
-  history: SpringAiStreamMessage[],
-  extraBody?: Record<string, unknown>,
-) {
-  return { message: input, history, ...extraBody };
+function defaultBuildBody(input: string, extraBody?: Record<string, unknown>) {
+  return { message: input, ...extraBody };
 }
 
 /**
@@ -143,7 +136,6 @@ export function useSpringAiStream(
     onConversationId,
     onReasoning,
     onUsage,
-    onBeforeSend,
     onFinish,
   } = options;
 
@@ -166,7 +158,6 @@ export function useSpringAiStream(
     totalTokens: number;
     estimatedCostRmb?: number;
   } | null>(null);
-  const historyRef = useRef<SpringAiStreamMessage[]>([]);
   const rafRef = useRef<number | null>(null);
 
   const flushState = useCallback(() => {
@@ -238,14 +229,6 @@ export function useSpringAiStream(
       const controller = new AbortController();
       abortRef.current = controller;
 
-      historyRef.current = [
-        ...historyRef.current,
-        { role: "user", content: message },
-      ];
-      const payload = onBeforeSend
-        ? onBeforeSend(historyRef.current)
-        : historyRef.current;
-
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
@@ -267,7 +250,7 @@ export function useSpringAiStream(
               Accept: "text/event-stream",
               ...headers,
             },
-            body: JSON.stringify(buildBody(message, payload, extraBody)),
+            body: JSON.stringify(buildBody(message, extraBody)),
 
             signal: controller.signal,
             openWhenHidden: true,
@@ -334,7 +317,6 @@ export function useSpringAiStream(
       onConversationId,
       onReasoning,
       onUsage,
-      onBeforeSend,
       onFinish,
       flushState,
       scheduleUpdate,
