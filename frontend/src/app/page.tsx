@@ -132,85 +132,86 @@ function loadSavedModel(): SelectedModel {
 }
 
 export default function Home() {
-  const { content, loading, error, send, stop } = useSpringAiStream({
-    endpoint: "/api/chat/stream",
-    onConversationId: (serverConvId) => {
-      if (serverConvId && activeId && serverConvId !== activeId) {
-        setActiveId(serverConvId);
-        setSessions((prev) =>
-          prev.map((s) => (s.id === activeId ? { ...s, id: serverConvId } : s)),
-        );
-        if (typeof window !== "undefined") {
-          localStorage.setItem(ACTIVE_KEY, serverConvId);
-        }
-      }
-    },
-    onReasoning: (delta) => {
-      const liveId = liveIdRef.current;
-      if (!liveId) return;
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === liveId ? { ...m, thinking: (m.thinking || "") + delta } : m,
-        ),
-      );
-    },
-    onUsage: (u) => {
-      const liveId = liveIdRef.current;
-      if (!liveId) return;
-      setMessages((prev) =>
-        prev.map((m) => (m.id === liveId ? { ...m, usage: u } : m)),
-      );
-    },
-    onFinish: (finalContent) => {
-      const liveId = liveIdRef.current;
-      if (!liveId || !activeId) return;
-      liveIdRef.current = null;
-      const question = liveUserTextRef.current;
-      liveUserTextRef.current = "";
-
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === liveId ? { ...m, content: finalContent } : m,
-        ),
-      );
-
-      setSessions((prev) =>
-        prev.map((s) => {
-          if (s.id !== activeId) return s;
-          const updatedMessages = (s.messages ?? []).map((m) =>
-            m.id === liveId ? { ...m, content: finalContent } : m,
+  const { content, thinking, usage, loading, error, send, stop } =
+    useSpringAiStream({
+      endpoint: "/api/chat/stream",
+      onConversationId: (serverConvId) => {
+        if (serverConvId && activeId && serverConvId !== activeId) {
+          setActiveId(serverConvId);
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.id === activeId ? { ...s, id: serverConvId } : s,
+            ),
           );
-          return { ...s, messages: updatedMessages, updatedAt: Date.now() };
-        }),
-      );
+          if (typeof window !== "undefined") {
+            localStorage.setItem(ACTIVE_KEY, serverConvId);
+          }
+        }
+      },
+      onFinish: (finalContent, finalThinking, finalUsage) => {
+        const liveId = liveIdRef.current;
+        if (!liveId || !activeId) return;
+        liveIdRef.current = null;
+        const question = liveUserTextRef.current;
+        liveUserTextRef.current = "";
 
-      // 仅当标题仍为自动生成（未被用户重命名、也未被 AI 改写）时才更新标题
-      const target = sessionsRef.current.find((s) => s.id === activeId);
-      if (!target || target.isDefaultTitle !== true) return;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === liveId
+              ? {
+                  ...m,
+                  content: finalContent,
+                  thinking: finalThinking || m.thinking,
+                  usage: finalUsage ?? m.usage,
+                }
+              : m,
+          ),
+        );
 
-      void (async () => {
-        const aiTitle = await fetchTitle({
-          message: question,
-          answer: finalContent,
-          provider: model.provider,
-          model: model.model,
-          conversationId: activeId,
-        });
         setSessions((prev) =>
           prev.map((s) => {
-            if (s.id !== activeId || s.isDefaultTitle !== true) return s;
-            const title = aiTitle ?? deriveTitle(finalContent);
-            return {
-              ...s,
-              title,
-              isDefaultTitle: false,
-              updatedAt: Date.now(),
-            };
+            if (s.id !== activeId) return s;
+            const updatedMessages = (s.messages ?? []).map((m) =>
+              m.id === liveId
+                ? {
+                    ...m,
+                    content: finalContent,
+                    thinking: finalThinking || m.thinking,
+                    usage: finalUsage ?? m.usage,
+                  }
+                : m,
+            );
+            return { ...s, messages: updatedMessages, updatedAt: Date.now() };
           }),
         );
-      })();
-    },
-  });
+
+        // 仅当标题仍为自动生成（未被用户重命名、也未被 AI 改写）时才更新标题
+        const target = sessionsRef.current.find((s) => s.id === activeId);
+        if (!target || target.isDefaultTitle !== true) return;
+
+        void (async () => {
+          const aiTitle = await fetchTitle({
+            message: question,
+            answer: finalContent,
+            provider: model.provider,
+            model: model.model,
+            conversationId: activeId,
+          });
+          setSessions((prev) =>
+            prev.map((s) => {
+              if (s.id !== activeId || s.isDefaultTitle !== true) return s;
+              const title = aiTitle ?? deriveTitle(finalContent);
+              return {
+                ...s,
+                title,
+                isDefaultTitle: false,
+                updatedAt: Date.now(),
+              };
+            }),
+          );
+        })();
+      },
+    });
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState<boolean>(true);
@@ -400,16 +401,7 @@ export default function Home() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: 副作用触发滚动
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, content]);
-
-  // 流式内容实时写回 DOM
-  useEffect(() => {
-    if (!liveIdRef.current) return;
-    const liveId = liveIdRef.current;
-    setMessages((prev) =>
-      prev.map((m) => (m.id === liveId ? { ...m, content } : m)),
-    );
-  }, [content]);
+  }, [messages, content, thinking]);
 
   // 自适应文本框高度
   // biome-ignore lint/correctness/useExhaustiveDependencies: 高度随 input 重新计算
@@ -642,17 +634,28 @@ export default function Home() {
             <EmptyState onPickPrompt={handlePickPrompt} />
           ) : (
             <div className="mx-auto w-full max-w-3xl py-4">
-              {messages.map((m) => (
-                <MessageBubble
-                  key={m.id}
-                  message={m}
-                  conversationId={activeId || undefined}
-                  streaming={m.id === liveIdRef.current && isStreaming}
-                  onRegenerate={() =>
-                    handleSend(messages[messages.length - 2]?.content)
-                  }
-                />
-              ))}
+              {messages.map((m) => {
+                const isLive = m.id === liveIdRef.current && isStreaming;
+                const messageToRender = isLive
+                  ? {
+                      ...m,
+                      content: content || m.content,
+                      thinking: thinking || m.thinking,
+                      usage: usage ?? m.usage,
+                    }
+                  : m;
+                return (
+                  <MessageBubble
+                    key={m.id}
+                    message={messageToRender}
+                    conversationId={activeId || undefined}
+                    streaming={isLive}
+                    onRegenerate={() =>
+                      handleSend(messages[messages.length - 2]?.content)
+                    }
+                  />
+                );
+              })}
               <div ref={bottomRef} className="h-6" />
             </div>
           )}

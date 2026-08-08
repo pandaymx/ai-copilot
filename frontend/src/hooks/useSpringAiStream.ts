@@ -38,8 +38,17 @@ export interface UseSpringAiStreamOptions {
   }) => void;
   /** 在请求前对消息历史做处理（如裁剪）。 */
   onBeforeSend?: (history: SpringAiStreamMessage[]) => SpringAiStreamMessage[];
-  /** 流完整结束后回调（成功完成或异常均触发），参数为最终累计文本。 */
-  onFinish?: (finalContent: string) => void;
+  /** 流完整结束后回调（成功完成或异常均触发），参数为最终累计文本、思考过程与 Token 用量。 */
+  onFinish?: (
+    finalContent: string,
+    finalThinking?: string,
+    finalUsage?: {
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+      estimatedCostRmb?: number;
+    } | null,
+  ) => void;
 }
 
 export interface UseSpringAiStreamResult {
@@ -151,6 +160,12 @@ export function useSpringAiStream(
   const abortRef = useRef<AbortController | null>(null);
   const contentRef = useRef("");
   const thinkingRef = useRef("");
+  const usageRef = useRef<{
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    estimatedCostRmb?: number;
+  } | null>(null);
   const historyRef = useRef<SpringAiStreamMessage[]>([]);
   const rafRef = useRef<number | null>(null);
 
@@ -194,6 +209,7 @@ export function useSpringAiStream(
     }
     contentRef.current = "";
     thinkingRef.current = "";
+    usageRef.current = null;
     setStreamData({ content: "", thinking: "" });
     setUsage(null);
     setLoading(false);
@@ -203,11 +219,13 @@ export function useSpringAiStream(
   const stop = useCallback(() => {
     if (abortRef.current) {
       const currentContent = contentRef.current;
+      const currentThinking = thinkingRef.current;
+      const currentUsage = usageRef.current;
       abortRef.current.abort();
       abortRef.current = null;
       flushState();
       setLoading(false);
-      onFinish?.(currentContent);
+      onFinish?.(currentContent, currentThinking, currentUsage);
     }
   }, [flushState, onFinish]);
 
@@ -234,6 +252,7 @@ export function useSpringAiStream(
       }
       contentRef.current = "";
       thinkingRef.current = "";
+      usageRef.current = null;
       setStreamData({ content: "", thinking: "" });
       setUsage(null);
       setError(null);
@@ -267,6 +286,7 @@ export function useSpringAiStream(
                   return;
                 }
                 if (parsed?.type === "usage" && parsed.usage) {
+                  usageRef.current = parsed.usage;
                   setUsage(parsed.usage);
                   onUsage?.(parsed.usage);
                   return;
@@ -295,7 +315,11 @@ export function useSpringAiStream(
             abortRef.current = null;
             flushState();
             setLoading(false);
-            onFinish?.(contentRef.current);
+            onFinish?.(
+              contentRef.current,
+              thinkingRef.current,
+              usageRef.current,
+            );
           }
         }
       };

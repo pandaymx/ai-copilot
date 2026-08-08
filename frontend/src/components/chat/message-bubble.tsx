@@ -13,7 +13,7 @@ import {
   ThumbsUp,
   User,
 } from "lucide-react";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { ChatMessageErrorBoundary } from "./error-boundary";
@@ -49,7 +49,7 @@ interface MessageBubbleProps {
   onRegenerate?: () => void;
 }
 
-export function MessageBubble({
+function MessageBubbleBase({
   message,
   streaming,
   conversationId,
@@ -288,6 +288,14 @@ export function MessageBubble({
     </div>
   );
 }
+
+export const MessageBubble = memo(
+  MessageBubbleBase,
+  (prev, next) =>
+    prev.message === next.message &&
+    prev.streaming === next.streaming &&
+    prev.conversationId === next.conversationId,
+);
 
 /** 生成中优雅动画指示器 */
 function BreathingCursor() {
