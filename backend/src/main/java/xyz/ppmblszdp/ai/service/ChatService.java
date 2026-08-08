@@ -296,14 +296,18 @@ public class ChatService {
 	}
 
 	private ChatChunkDto.UsageDto extractUsageDto(ChatResponse resp, ResolvedModel resolved) {
-		if (resp == null || resp.getMetadata() == null || resp.getMetadata().getUsage() == null)
+		if (resp == null || resp.getMetadata() == null || resp.getMetadata().getUsage() == null) {
+			log.trace("LLM 响应未包含 Usage 元数据");
 			return null;
+		}
 		var u = resp.getMetadata().getUsage();
 		int prompt = u.getPromptTokens() != null ? u.getPromptTokens().intValue() : 0;
 		int completion = u.getCompletionTokens() != null ? u.getCompletionTokens().intValue() : 0;
 		int total = u.getTotalTokens() != null ? u.getTotalTokens().intValue() : (prompt + completion);
-		if (total == 0)
+		if (total == 0) {
+			log.debug("LLM 响应包含 Usage 元数据但 Token 用量全 0 (首包/中间块)，跳过生成 UsageDto");
 			return null;
+		}
 
 		ModelDescriptor descriptor = (resolved != null) ? resolved.model() : null;
 		BigDecimal inputPrice = (descriptor != null && descriptor.inputPricePerK() != null)
