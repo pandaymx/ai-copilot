@@ -258,18 +258,49 @@ export function ModelSelector({
         if (!res.ok) throw new Error("Failed to fetch models");
         return res.json();
       })
-      .then((data: { providers?: BackendProviderEntry[] }) => {
-        if (isMounted && data.providers && data.providers.length > 0) {
-          setCatalog(data.providers);
-        }
-      })
+      .then(
+        (data: {
+          providers?: BackendProviderEntry[];
+          defaultProvider?: string;
+          defaultModel?: string;
+        }) => {
+          if (isMounted && data.providers && data.providers.length > 0) {
+            setCatalog(data.providers);
+
+            // 校验当前选中的 (value.provider) 是否存在于后端返回的可用供应商清单中。
+            // 若不存在（例如默认配置了 deepseek，但后端因缺少 API Key 仅注册了 ollama），
+            // 自动校准切换为可用目录中的默认供应商与模型。
+            const currentProviderExists = data.providers.some(
+              (p) => p.id === value.provider,
+            );
+            if (!currentProviderExists) {
+              const targetProvider =
+                data.providers.find((p) => p.id === data.defaultProvider) ||
+                data.providers[0];
+              const targetModelId =
+                (data.defaultProvider === targetProvider.id
+                  ? data.defaultModel
+                  : undefined) ||
+                targetProvider.defaultModelId ||
+                targetProvider.models[0]?.id ||
+                "";
+              if (targetProvider && targetModelId) {
+                onChange({
+                  provider: targetProvider.id,
+                  model: targetModelId,
+                });
+              }
+            }
+          }
+        },
+      )
       .catch(() => {
         // 后端无法连接时静默回退默认目录
       });
     return () => {
       isMounted = false;
     };
-  }, [initialProviders]);
+  }, [initialProviders, value.provider, onChange]);
 
   // 低频轮询 + 下拉框打开/页面 Focus 时静默刷新健康数据
   useEffect(() => {
@@ -296,6 +327,8 @@ export function ModelSelector({
       const match = catalog.find((p) => p.id === value.provider);
       if (match) {
         setActiveProviderId(match.id);
+      } else if (catalog.length > 0) {
+        setActiveProviderId(catalog[0].id);
       }
     }
   }, [open, value.provider, catalog]);

@@ -165,9 +165,15 @@ public final class ProviderRegistry {
 		}
 
 		public ProviderRegistry build() {
-			if (defaultProviderId == null || defaultProviderId.isBlank()) {
+			if (defaultProviderId == null || defaultProviderId.isBlank() || !providers.containsKey(defaultProviderId)) {
 				if (!providers.isEmpty()) {
 					defaultProviderId = providers.keySet().iterator().next();
+				}
+			}
+			if (defaultProviderId != null && providers.containsKey(defaultProviderId)) {
+				ProviderDescriptor pd = providers.get(defaultProviderId);
+				if (defaultModelId == null || defaultModelId.isBlank() || (pd != null && pd.models() != null && !pd.models().containsKey(defaultModelId))) {
+					defaultModelId = (pd != null) ? pd.defaultModelId() : null;
 				}
 			}
 			return new ProviderRegistry(this);
