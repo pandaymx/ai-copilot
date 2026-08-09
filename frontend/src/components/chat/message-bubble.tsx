@@ -92,8 +92,10 @@ function MessageBubbleBase({
 
   return (
     <div
+      id={`msg-${message.id}`}
+      data-message-id={message.id}
       className={cn(
-        "group relative flex w-full gap-3.5 px-4 py-3 sm:px-6 transition-all",
+        "group relative flex w-full gap-3.5 px-4 py-3 sm:px-6 transition-all rounded-2xl duration-500",
         isUser ? "flex-row-reverse" : "flex-row",
       )}
     >

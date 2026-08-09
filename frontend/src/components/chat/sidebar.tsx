@@ -8,6 +8,7 @@ import {
   MessageSquare,
   PanelLeftClose,
   Plus,
+  Search,
   Sparkles,
   Trash2,
   User,
@@ -43,6 +44,7 @@ interface SidebarProps {
   onDelete: (id: string) => void;
   onRename?: (id: string, newTitle: string) => void;
   onToggleCollapsed: () => void;
+  onOpenSearch?: () => void;
 }
 
 function formatRelative(ts: number): string {
@@ -99,6 +101,7 @@ export function Sidebar({
   onDelete,
   onRename,
   onToggleCollapsed,
+  onOpenSearch,
 }: SidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -153,16 +156,28 @@ export function Sidebar({
             </Button>
           </div>
 
-          {/* 核心新建按钮：极光渐变 */}
-          <button
-            type="button"
-            onClick={onNew}
-            className="group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-indigo-500/25 transition-all duration-200 hover:shadow-lg hover:shadow-indigo-500/35 hover:scale-[1.01] active:scale-[0.99]"
-          >
-            <span className="absolute inset-0 bg-white/10 opacity-0 transition-opacity group-hover:opacity-100" />
-            <Plus className="size-4 transition-transform duration-200 group-hover:rotate-90" />
-            <span>开启新会话</span>
-          </button>
+          {/* 核心新建按钮与搜索按钮 */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onNew}
+              className="group relative flex flex-1 items-center justify-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700 px-3.5 py-2.5 text-xs font-semibold text-white shadow-md shadow-indigo-500/25 transition-all duration-200 hover:shadow-lg hover:shadow-indigo-500/35 hover:scale-[1.01] active:scale-[0.99]"
+            >
+              <span className="absolute inset-0 bg-white/10 opacity-0 transition-opacity group-hover:opacity-100" />
+              <Plus className="size-4 transition-transform duration-200 group-hover:rotate-90" />
+              <span>开启新会话</span>
+            </button>
+            {onOpenSearch && (
+              <button
+                type="button"
+                onClick={onOpenSearch}
+                title="搜索历史消息 (⌘K / Ctrl+K)"
+                className="flex items-center justify-center rounded-xl border border-zinc-200/80 bg-white px-3 py-2.5 text-xs font-medium text-zinc-700 shadow-xs hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 transition-colors"
+              >
+                <Search className="size-4 text-zinc-500 dark:text-zinc-400" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* 会话列表：分组滚动展示 */}

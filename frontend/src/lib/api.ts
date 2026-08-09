@@ -88,3 +88,37 @@ export async function deleteSessionApi(id: string): Promise<boolean> {
     return false;
   }
 }
+
+export interface SearchResultItem {
+  sessionId: string;
+  messageId: number;
+  role: string;
+  snippet: string;
+  timestamp: number;
+}
+
+export interface SearchResponse {
+  query: string;
+  results: SearchResultItem[];
+}
+
+export async function searchChatHistoryApi(
+  query: string,
+  limit = 50,
+  signal?: AbortSignal,
+): Promise<SearchResponse | null> {
+  if (!query.trim()) return null;
+  try {
+    const res = await fetch(
+      `/api/chat/search?q=${encodeURIComponent(query.trim())}&limit=${limit}`,
+      { signal },
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as SearchResponse;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") {
+      return null;
+    }
+    return null;
+  }
+}

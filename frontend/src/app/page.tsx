@@ -10,6 +10,7 @@ import {
   PanelLeftOpen,
   Paperclip,
   RotateCcw,
+  Search,
   Send,
   Sparkles,
   Square,
@@ -28,6 +29,7 @@ import {
   ModelSelector,
   type SelectedModel,
 } from "@/components/chat/model-selector";
+import { SearchDialog } from "@/components/chat/search-dialog";
 import { type ChatSession, Sidebar } from "@/components/chat/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -221,6 +223,19 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // 全局 ⌘K / Ctrl+K 快捷键唤起全盘全文检索
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
   const [model, setModel] = useState<SelectedModel>({
     provider: "deepseek",
     model: "deepseek-chat",
@@ -419,9 +434,39 @@ export default function Home() {
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [input]);
 
-  async function selectSession(id: string) {
+  function scrollToMessage(targetMessageId: string | number) {
+    setTimeout(() => {
+      const targetEl =
+        document.getElementById(`msg-${targetMessageId}`) ||
+        document.querySelector(`[data-message-id="${targetMessageId}"]`);
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+        targetEl.classList.add(
+          "ring-2",
+          "ring-indigo-500",
+          "bg-indigo-500/10",
+          "dark:bg-indigo-500/20",
+        );
+        setTimeout(() => {
+          targetEl.classList.remove(
+            "ring-2",
+            "ring-indigo-500",
+            "bg-indigo-500/10",
+            "dark:bg-indigo-500/20",
+          );
+        }, 2500);
+      }
+    }, 150);
+  }
+
+  async function selectSession(id: string, targetMessageId?: string | number) {
     if (id === activeId) {
-      setCollapsed(true);
+      if (typeof window !== "undefined" && window.innerWidth < 768) {
+        setCollapsed(true);
+      }
+      if (targetMessageId !== undefined && targetMessageId !== null) {
+        scrollToMessage(targetMessageId);
+      }
       return;
     }
     setActiveId(id);
@@ -439,6 +484,10 @@ export default function Home() {
     } else {
       const target = sessions.find((s) => s.id === id);
       setMessages(target?.messages ?? []);
+    }
+
+    if (targetMessageId !== undefined && targetMessageId !== null) {
+      scrollToMessage(targetMessageId);
     }
   }
 
@@ -600,6 +649,7 @@ export default function Home() {
         onDelete={deleteSession}
         onRename={renameSession}
         onToggleCollapsed={() => setCollapsed((c) => !c)}
+        onOpenSearch={() => setSearchOpen(true)}
       />
 
       {/* 移动端遮罩 */}
@@ -644,6 +694,16 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-2">
               <ThemeToggle />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setSearchOpen(true)}
+                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors"
+                aria-label="搜索历史消息 (⌘K)"
+                title="搜索历史消息 (⌘K)"
+              >
+                <Search className="size-4" />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -839,6 +899,15 @@ export default function Home() {
           sessions.find((s) => s.id === activeId)?.title ?? "AI-Copilot-对话"
         }
         onClose={() => setShowExport(false)}
+      />
+      {/* 历史消息全文检索弹窗 */}
+      <SearchDialog
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        sessions={sessions}
+        onSelectResult={(sessionId, messageId) =>
+          selectSession(sessionId, messageId)
+        }
       />
     </div>
   );
