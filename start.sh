@@ -102,7 +102,8 @@ check_status() {
 
   echo ""
   log_info "Port Availability Check:"
-  for port_info in "5432:PostgreSQL" "6379:Redis" "11434:Ollama" "8084:Backend" "3000:Frontend"; do
+  local ollama_port="${OLLAMA_HOST_PORT:-11435}"
+  for port_info in "5432:PostgreSQL" "6379:Redis" "${ollama_port}:Ollama" "8084:Backend" "3000:Frontend"; do
     IFS=":" read -r port name <<< "$port_info"
     if (nc -z localhost "$port" 2>/dev/null || (exec 3<>/dev/tcp/localhost/"$port") 2>/dev/null); then
       echo -e "  Port $port ($name): ${GREEN}RUNNING / LISTENING${NC}"
@@ -120,7 +121,7 @@ start_infra() {
     $COMPOSE_CMD -f "$COMPOSE_FILE" up -d postgres redis ollama
     wait_for_port "localhost" "5432" "PostgreSQL"
     wait_for_port "localhost" "6379" "Redis"
-    wait_for_port "localhost" "11434" "Ollama" 5
+    wait_for_port "localhost" "${OLLAMA_HOST_PORT:-11435}" "Ollama" 5
   else
     log_warn "Container engine or compose.yaml not found. Skipping infrastructure auto-boot."
   fi
