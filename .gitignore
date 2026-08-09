@@ -51,3 +51,8 @@ coverage/
 build/
 bin/
 target/
+
+# Test reports & results (Playwright)
+frontend/playwright-report/
+frontend/test-results/
+frontend/playwright/.cache/
