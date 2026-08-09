@@ -31,9 +31,11 @@ import {
 } from "@/components/chat/model-selector";
 import { SearchDialog } from "@/components/chat/search-dialog";
 import { type ChatSession, Sidebar } from "@/components/chat/sidebar";
+import { VoiceRecorderButton } from "@/components/chat/voice-recorder-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { useSpringAiStream } from "@/hooks/useSpringAiStream";
+import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import {
   deleteSessionApi,
   fetchSessionDetailApi,
@@ -42,6 +44,7 @@ import {
 } from "@/lib/api";
 import { fetchTitle } from "@/lib/title";
 import { cn } from "@/lib/utils";
+import { transcribe } from "@/lib/voice";
 
 const STORAGE_KEY = "ai-copilot-sessions";
 const ACTIVE_KEY = "ai-copilot-active";
@@ -243,6 +246,19 @@ export default function Home() {
 
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 语音录制：录音停止后自动上传转写并回填输入框
+  const recorder = useVoiceRecorder();
+  const handleVoiceStop = useCallback(async () => {
+    const result = await recorder.stop();
+    if (!result) return;
+    try {
+      const text = await transcribe(result.base64, result.mimeType);
+      if (text) setInput((prev) => (prev ? `${prev} ${text}` : text).trim());
+    } catch (err) {
+      console.error("语音识别失败:", err);
+    }
+  }, [recorder]);
 
   const isStreaming = loading;
   const hasError = Boolean(error);
@@ -858,7 +874,10 @@ export default function Home() {
               ) : (
                 <button
                   type="submit"
-                  disabled={!input.trim() && attachments.length === 0}
+                  disabled={
+                    (!input.trim() && attachments.length === 0) ||
+                    recorder.recording
+                  }
                   aria-label="发送"
                   className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-500/25 transition-all duration-200 hover:scale-105 hover:shadow-indigo-500/40 disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none"
                 >
@@ -870,6 +889,13 @@ export default function Home() {
             {/* 底部工具栏 */}
             <div className="flex items-center justify-between border-t border-zinc-100 px-1 pt-2 dark:border-zinc-800/60">
               <div className="flex items-center gap-2">
+                <VoiceRecorderButton
+                  recording={recorder.recording}
+                  seconds={recorder.seconds}
+                  disabled={recorder.unsupported || isStreaming}
+                  onStart={() => void recorder.start()}
+                  onStop={() => void handleVoiceStop()}
+                />
                 <Button
                   type="button"
                   variant="ghost"

@@ -2,26 +2,30 @@ package xyz.ppmblszdp.ai.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.audio.tts.TextToSpeechPrompt;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import xyz.ppmblszdp.ai.factory.ChatOptionsFactory;
+import org.springframework.ai.content.Media;
+import org.springframework.ai.openai.OpenAiAudioSpeechModel;
+import org.springframework.ai.openai.OpenAiAudioSpeechOptions;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
+import org.springframework.util.MimeTypeUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import reactor.util.retry.Retry;
 import java.time.Duration;
-import org.springframework.ai.content.Media;
-import org.springframework.beans.factory.DisposableBean;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.util.MimeTypeUtils;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.context.ContextAssembler;
 import xyz.ppmblszdp.ai.dto.ChatChunkDto;
@@ -92,6 +96,7 @@ public class ChatService implements DisposableBean {
 	private final ModelHealthTracker healthTracker;
 	private final SessionService sessionService;
 	private final AiProviderProperties properties;
+	private final ObjectProvider<OpenAiAudioSpeechModel> speechModelProvider;
 	private final boolean memoryEnabled;
 
 	/**
@@ -116,7 +121,8 @@ public class ChatService implements DisposableBean {
 			ObjectProvider<RagAdvisorConfig.RagAdvisorFactory> ragAdvisorFactory,
 			ModelHealthTracker healthTracker,
 			SessionService sessionService,
-			AiProviderProperties properties) {
+			AiProviderProperties properties,
+			ObjectProvider<OpenAiAudioSpeechModel> speechModelProvider) {
 		this.registry = registry;
 		this.contextAssembler = contextAssembler;
 		this.sessionChatMemory = sessionChatMemory;
@@ -131,6 +137,7 @@ public class ChatService implements DisposableBean {
 		this.healthTracker = healthTracker;
 		this.sessionService = sessionService;
 		this.properties = properties;
+		this.speechModelProvider = speechModelProvider;
 		this.memoryEnabled = properties.resolveMemory().isEnabled();
 	}
 
@@ -718,6 +725,73 @@ public class ChatService implements DisposableBean {
 	private ChatOptions buildChatOptions(ResolvedModel resolved) {
 		// 全局默认采样温度 0.2：偏向确定性、稳定的回复
 		return ChatOptionsFactory.forProvider(resolved, 0.2);
+	}
+
+	/**
+	 * 文本转语音（TTS）：调用 Gemini OpenAI 兼容端口的语音合成模型，返回 mp3 字节流。
+	 *
+	 * <p>底层 {@code OpenAiAudioSpeechModel} 由 Spring AI 自动装配，其 base-url 已在
+	 * {@code application.yaml} 的 {@code spring.ai.openai.audio.speech.*} 中独立指向 Gemini
+	 * 端口，与全局 {@code spring.ai.openai.base-url}（gpt-4o 聊天）互不干扰。</p>
+	 *
+	 * @param text       待合成文本
+	 * @param voice      语音名（可选；null 时回落自动配置的默认 voice）
+	 * @param userId     受信任身份，仅用于审计日志
+	 * @return mp3 二进制音频
+	 */
+	public Mono<byte[]> synthesizeSpeech(String text, String voice, String userId) {
+		OpenAiAudioSpeechModel speechModel = speechModelProvider.getIfAvailable();
+		if (speechModel == null) {
+			return Mono.error(new IllegalStateException("TTS 模型不可用：未启用 spring.ai.model.audio.speech=openai"));
+		}
+		return Mono.fromCallable(() -> {
+			OpenAiAudioSpeechOptions.Builder optsBuilder = OpenAiAudioSpeechOptions.builder()
+					.responseFormat("mp3")
+					.speed(1.0);
+			if (voice != null && !voice.isBlank()) {
+				optsBuilder.voice(voice.trim());
+			}
+			TextToSpeechPrompt prompt = new TextToSpeechPrompt(text, optsBuilder.build());
+			byte[] audio = speechModel.call(prompt).getResult().getOutput();
+			if (audio == null || audio.length == 0) {
+				throw new IllegalStateException("TTS 合成返回空音频");
+			}
+			log.info("TTS 合成完成 → 用户={}, 字符数={}, 字节数={}", userId, text.length(), audio.length);
+			return audio;
+		}).subscribeOn(Schedulers.boundedElastic());
+	}
+
+	/**
+	 * 语音转文本（STT）：复用项目已有的 Gemini 多模态 ChatModel，将音频作为 {@link Media}
+	 * 传入并指示模型精准转录，免去独立 whisper 接口。
+	 *
+	 * @param audioBytes 音频二进制
+	 * @param mimeType   音频 MIME（如 audio/webm、audio/mp4、audio/wav），由前端按浏览器能力探测上报
+	 * @param userId     受信任身份，仅用于审计日志
+	 * @return 转录后的纯文本
+	 */
+	public Mono<String> transcribeAudio(byte[] audioBytes, String mimeType, String userId) {
+		if (audioBytes == null || audioBytes.length == 0) {
+			return Mono.error(new IllegalArgumentException("音频数据为空"));
+		}
+		String resolvedMime = (mimeType != null && !mimeType.isBlank()) ? mimeType.trim() : "audio/webm";
+		return Mono.fromCallable(() -> {
+			ResolvedModel resolved = registry.resolve("google", null);
+			log.info("STT 转录开始 → 用户={}, 供应商={}, 模型={}, mime={}, 字节数={}",
+					userId, resolved.provider().providerId(), resolved.model().id(), resolvedMime, audioBytes.length);
+			Media audioMedia = new Media(MimeTypeUtils.parseMimeType(resolvedMime), new ByteArrayResource(audioBytes));
+			UserMessage userMessage = UserMessage.builder()
+					.text("请将这段语音精准转录为文本，不要包含任何其他多余的解释。")
+					.media(audioMedia)
+					.build();
+			ChatResponse response = resolved.chatModel().call(new Prompt(userMessage));
+			String transcript = extractText(response).strip();
+			if (transcript.isBlank()) {
+				throw new IllegalStateException("STT 转录结果为空");
+			}
+			log.info("STT 转录完成 → 用户={}, 文本长度={}", userId, transcript.length());
+			return transcript;
+		}).subscribeOn(Schedulers.boundedElastic());
 	}
 
 	private String extractText(ChatResponse resp) {

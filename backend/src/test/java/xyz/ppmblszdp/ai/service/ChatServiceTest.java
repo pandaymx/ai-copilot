@@ -9,6 +9,7 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.OpenAiAudioSpeechModel;
 import org.springframework.beans.factory.ObjectProvider;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -57,6 +58,8 @@ class ChatServiceTest {
 
 	private ChatModel chatModel;
 	private ChatService chatService;
+	@SuppressWarnings("unchecked")
+	private ObjectProvider<OpenAiAudioSpeechModel> speechModelProvider = mock(ObjectProvider.class);
 
 	@BeforeEach
 	@SuppressWarnings("unchecked")
@@ -112,7 +115,8 @@ class ChatServiceTest {
 				ragAdvisorFactory,
 				new ModelHealthTracker(),
 				sessionService,
-				properties);
+				properties,
+				speechModelProvider);
 	}
 
 	@Test
@@ -235,7 +239,8 @@ class ChatServiceTest {
 				mockRagAdvisorFactory,
 				new ModelHealthTracker(),
 				sessionService,
-				properties);
+				properties,
+				speechModelProvider);
 
 		ChatResponse chatResponse = new ChatResponse(List.of(new Generation(new AssistantMessage("Hello!"))));
 		when(chatModel.call(any(Prompt.class))).thenReturn(chatResponse);

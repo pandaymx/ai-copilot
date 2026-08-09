@@ -1,10 +1,12 @@
 package xyz.ppmblszdp.ai.controller;
 
+import java.util.Base64;
 import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,6 +21,8 @@ import xyz.ppmblszdp.ai.dto.ChatChunkDto;
 import xyz.ppmblszdp.ai.dto.ChatFeedbackRequest;
 import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
+import xyz.ppmblszdp.ai.dto.MediaDto;
+import xyz.ppmblszdp.ai.dto.TtsRequest;
 import xyz.ppmblszdp.ai.dto.TitleRequest;
 import xyz.ppmblszdp.ai.dto.TitleResponse;
 import xyz.ppmblszdp.ai.exception.AiException;
@@ -65,6 +69,46 @@ public class ChatController {
 	/** 从请求交换解析当前用户身份（dev 模式可 fallback 到请求体 userId） */
 	private String resolveIdentity(ServerWebExchange exchange, ChatRequest request) {
 		return UserIdentityFilter.resolveIdentity(exchange, request == null ? null : request.userId(), authProperties);
+	}
+
+	/**
+	 * 文本转语音（TTS）：合成并返回 mp3 音频二进制。复用 X-User-Id 网关鉴权，
+	 * AUTH_MODE=strict 缺头返回 401（由 UserIdentityFilter.resolveIdentity 抛出）。
+	 */
+	@PostMapping(value = "tts", produces = "audio/mpeg")
+	public Mono<ResponseEntity<byte[]>> tts(@RequestBody TtsRequest request, ServerWebExchange exchange) {
+		String userId = resolveIdentity(exchange, (ChatRequest) null);
+		return chatService.synthesizeSpeech(request.text(), request.voice(), userId)
+				.map(audio -> ResponseEntity.ok()
+						.contentType(MediaType.parseMediaType("audio/mpeg"))
+						.body(audio))
+				.onErrorResume(e -> Mono.error(new ResponseStatusException(
+						HttpStatus.BAD_GATEWAY, "语音合成失败：" + e.getMessage(), e)));
+	}
+
+	/**
+	 * 语音转文本（STT）：接收前端 base64 音频，复用 Gemini 多模态能力精准转录为文本。
+	 * 复用 X-User-Id 网关鉴权，AUTH_MODE=strict 缺头返回 401。
+	 */
+	@PostMapping(value = "transcribe", produces = MediaType.TEXT_PLAIN_VALUE)
+	public Mono<String> transcribe(@RequestBody MediaDto audio, ServerWebExchange exchange) {
+		String userId = resolveIdentity(exchange, (ChatRequest) null);
+		String base64 = audio.data();
+		if (base64 == null || base64.isBlank()) {
+			return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "音频数据为空"));
+		}
+		String mime = (audio.mimeType() != null && !audio.mimeType().isBlank())
+				? audio.mimeType() : "audio/webm";
+		byte[] bytes;
+		try {
+			String b64 = base64.contains(",") ? base64.substring(base64.indexOf(',') + 1) : base64;
+			bytes = Base64.getDecoder().decode(b64.trim());
+		} catch (IllegalArgumentException e) {
+			return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "音频 base64 解析失败"));
+		}
+		return chatService.transcribeAudio(bytes, mime, userId)
+				.onErrorResume(e -> Mono.error(new ResponseStatusException(
+						HttpStatus.BAD_GATEWAY, "语音识别失败：" + e.getMessage(), e)));
 	}
 
 	@PostMapping

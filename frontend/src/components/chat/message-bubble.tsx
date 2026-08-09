@@ -8,15 +8,18 @@ import {
   ChevronRight,
   Copy,
   FileText,
+  Loader2,
   RotateCcw,
   ThumbsDown,
   ThumbsUp,
   User,
+  Volume2,
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { type StreamStore, useStreamData } from "@/hooks/useSpringAiStream";
 import { cn } from "@/lib/utils";
+import { tts } from "@/lib/voice";
 import { ChatMessageErrorBoundary } from "./error-boundary";
 import { Markdown } from "./markdown";
 
@@ -62,6 +65,33 @@ function MessageBubbleBase({
   const [copied, setCopied] = useState(false);
   const [liked, setLiked] = useState<boolean | null>(null);
   const [showThinking, setShowThinking] = useState(true);
+  // 语音播放：合成中状态与音频对象 URL
+  const [speaking, setSpeaking] = useState(false);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+
+  const handleSpeak = async () => {
+    if (!message.content.trim() || speaking) return;
+    try {
+      setSpeaking(true);
+      const blob = await tts(message.content);
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+      const url = URL.createObjectURL(blob);
+      audioUrlRef.current = url;
+      setAudioUrl(url);
+    } catch (err) {
+      console.error("语音合成失败:", err);
+    } finally {
+      setSpeaking(false);
+    }
+  };
+
+  // 组件卸载时回收音频 URL，避免内存泄漏
+  useEffect(() => {
+    return () => {
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+    };
+  }, []);
 
   const handleCopy = async () => {
     try {
@@ -254,6 +284,26 @@ function MessageBubbleBase({
               )}
             </button>
 
+            {/* 朗读：调用 TTS 合成语音并可重播 */}
+            <button
+              type="button"
+              onClick={handleSpeak}
+              disabled={speaking || !message.content.trim()}
+              className={cn(
+                "flex size-7 items-center justify-center rounded-lg text-zinc-400 transition-colors",
+                speaking
+                  ? "text-indigo-500"
+                  : "hover:bg-zinc-100 hover:text-indigo-600 dark:hover:bg-zinc-800 dark:hover:text-indigo-400",
+              )}
+              title="朗读回复"
+            >
+              {speaking ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Volume2 className="size-3.5" />
+              )}
+            </button>
+
             {onRegenerate && (
               <button
                 type="button"
@@ -292,6 +342,18 @@ function MessageBubbleBase({
             >
               <ThumbsDown className="size-3.5" />
             </button>
+          </div>
+        )}
+
+        {/* 语音播放器：朗读后内嵌音频控件，支持重播 */}
+        {!isUser && audioUrl && (
+          <div className="mt-1.5">
+            {/* biome-ignore lint/a11y/useMediaCaption: 语音播放器无需字幕轨道 */}
+            <audio
+              controls
+              src={audioUrl}
+              className="h-9 w-full max-w-sm rounded-lg"
+            />
           </div>
         )}
       </div>
