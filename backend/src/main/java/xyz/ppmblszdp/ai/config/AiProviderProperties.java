@@ -33,6 +33,7 @@ public record AiProviderProperties(
 		@Nullable String systemPrompt,
 		@Nullable ContextConfig context,
 		@Nullable MemoryConfig memory,
+		@Nullable RagConfig rag,
 		@Nullable Map<String, FirstClassConfig> firstClass,
 		@Nullable List<SecondClassConfig> secondClass
 ) {
@@ -55,6 +56,11 @@ public record AiProviderProperties(
 	/** 记忆子系统配置（绑定 {@code app.ai.memory.*}）。 */
 	public MemoryConfig resolveMemory() {
 		return memory != null ? memory : MemoryConfig.defaults();
+	}
+
+	/** RAG 文档多源解析与检索管道配置（绑定 {@code app.ai.rag.*}）。 */
+	public RagConfig resolveRag() {
+		return rag != null ? rag : RagConfig.defaults();
 	}
 
 	/**
@@ -342,6 +348,55 @@ public record AiProviderProperties(
 		@Nullable
 		public Integer maxRetriesOrNull() {
 			return maxRetries;
+		}
+	}
+
+	/**
+	 * RAG 文档多源解析与检索管道配置（绑定 {@code app.ai.rag.*}）。
+	 *
+	 * <p>独立 pgvector 表 {@code ai_rag_documents}，与长期记忆物理隔离。
+	 *
+	 * @param enabled        RAG 总开关
+	 * @param topK           文档相似检索 Top-K
+	 * @param chunkSize      TokenTextSplitter 每片 Token 数
+	 * @param overlap        相邻切片重叠 Token 数
+	 * @param encodingType   TokenTextSplitter 分词编码
+	 * @param collectionName 独立 pgvector 表名
+	 */
+	public record RagConfig(
+			@Nullable Boolean enabled,
+			@Name("top-k") @Nullable Integer topK,
+			@Name("chunk-size") @Nullable Integer chunkSize,
+			@Nullable Integer overlap,
+			@Name("encoding-type") @Nullable String encodingType,
+			@Name("collection-name") @Nullable String collectionName
+	) {
+		public static RagConfig defaults() {
+			return new RagConfig(false, 4, 900, 180, "CL100K_BASE", "ai_rag_documents");
+		}
+
+		public boolean isEnabled() {
+			return enabled != null && enabled;
+		}
+
+		public int resolveTopK() {
+			return (topK != null && topK > 0) ? topK : 4;
+		}
+
+		public int resolveChunkSize() {
+			return (chunkSize != null && chunkSize > 0) ? chunkSize : 900;
+		}
+
+		public int resolveOverlap() {
+			return (overlap != null && overlap >= 0) ? overlap : 180;
+		}
+
+		public String resolveEncodingType() {
+			return (encodingType != null && !encodingType.isBlank()) ? encodingType.trim() : "CL100K_BASE";
+		}
+
+		public String resolveCollectionName() {
+			return (collectionName != null && !collectionName.isBlank()) ? collectionName.trim() : "ai_rag_documents";
 		}
 	}
 }

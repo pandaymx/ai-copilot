@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ContextAssemblerTest {
 
-	private final AiProviderProperties properties = new AiProviderProperties(null, null, null, null, "You are a helpful assistant", null, null, null, null);
+	private final AiProviderProperties properties = new AiProviderProperties(null, null, null, null, "You are a helpful assistant", null, null, null, null, null);
 	private final TokenEstimator estimator = new JTokkitTokenEstimator();
 	private final ContextAssembler assembler = new ContextAssembler(properties, estimator);
 

@@ -38,6 +38,7 @@ import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
 import xyz.ppmblszdp.ai.repository.UsageRepository;
 import xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor;
+import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -87,6 +88,7 @@ public class ChatService implements DisposableBean {
 	private final ObjectProvider<UsageQuotaChecker.UsageQuota> usageQuota;
 	private final UsageRepository usageRepository;
 	private final ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor;
+	private final ObjectProvider<RagAdvisorConfig.RagAdvisorFactory> ragAdvisorFactory;
 	private final ModelHealthTracker healthTracker;
 	private final SessionService sessionService;
 	private final AiProviderProperties properties;
@@ -111,6 +113,7 @@ public class ChatService implements DisposableBean {
 			ObjectProvider<UsageQuotaChecker.UsageQuota> usageQuota,
 			UsageRepository usageRepository,
 			ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor,
+			ObjectProvider<RagAdvisorConfig.RagAdvisorFactory> ragAdvisorFactory,
 			ModelHealthTracker healthTracker,
 			SessionService sessionService,
 			AiProviderProperties properties) {
@@ -124,6 +127,7 @@ public class ChatService implements DisposableBean {
 		this.usageQuota = usageQuota;
 		this.usageRepository = usageRepository;
 		this.safeGuardAdvisor = safeGuardAdvisor;
+		this.ragAdvisorFactory = ragAdvisorFactory;
 		this.healthTracker = healthTracker;
 		this.sessionService = sessionService;
 		this.properties = properties;
@@ -173,6 +177,7 @@ public class ChatService implements DisposableBean {
 					.advisors(memoryAdvisor)
 					.advisors(a -> applyLongTermAdvisor(a, userId))
 					.advisors(a -> applySafeGuardAdvisor(a))
+					.advisors(a -> applyRagAdvisor(a, userId))
 					.options(options.mutate())
 					.call();
 			return Mono.fromCallable(() -> spec.chatResponse())
@@ -245,6 +250,7 @@ public class ChatService implements DisposableBean {
 					.advisors(memoryAdvisor)
 					.advisors(a -> applyLongTermAdvisor(a, userId))
 					.advisors(a -> applySafeGuardAdvisor(a))
+					.advisors(a -> applyRagAdvisor(a, userId))
 					.options(options.mutate())
 					.stream()
 					.chatResponse()
@@ -695,6 +701,17 @@ public class ChatService implements DisposableBean {
 		SafeGuardAdvisor advisor = safeGuardAdvisor.getIfAvailable();
 		if (advisor != null) {
 			advisorSpec.advisors(advisor);
+		}
+	}
+
+	private void applyRagAdvisor(ChatClient.AdvisorSpec advisorSpec, String userId) {
+		RagAdvisorConfig.RagAdvisorFactory factory = ragAdvisorFactory.getIfAvailable();
+		if (factory != null) {
+			// sourceType 暂不传递（全局检索），后续可按请求粒度扩展过滤
+			Advisor advisor = factory.forUser(userId, null);
+			if (advisor != null) {
+				advisorSpec.advisors(advisor);
+			}
 		}
 	}
 

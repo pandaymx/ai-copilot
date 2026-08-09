@@ -33,6 +33,11 @@ dependencies {
 	implementation("org.springframework.ai:spring-ai-starter-model-chat-memory-repository-jdbc")
 	implementation("org.springframework.ai:spring-ai-starter-vector-store-pgvector")
 	implementation("org.springframework.ai:spring-ai-vector-store-advisor")
+	// RAG ETL Pipeline：多源文档解析与向量化管道
+	implementation("org.springframework.ai:spring-ai-pdf-document-reader")
+	implementation("org.springframework.ai:spring-ai-tika-document-reader")
+	implementation("org.springframework.ai:spring-ai-markdown-document-reader")
+	implementation("org.jsoup:jsoup:1.18.1")
 	implementation("org.springframework.boot:spring-boot-starter-data-jdbc")
 	implementation("org.springframework.boot:spring-boot-starter-data-redis")
 	implementation("org.apache.commons:commons-pool2")

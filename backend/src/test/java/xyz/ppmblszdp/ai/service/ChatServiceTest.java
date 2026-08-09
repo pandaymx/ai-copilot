@@ -26,6 +26,7 @@ import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryAdvisorFactory
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryWriter;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryProcessor;
 import xyz.ppmblszdp.ai.memory.UsageQuotaChecker;
+import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig;
 import xyz.ppmblszdp.ai.repository.UsageRepository;
 import xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor;
 
@@ -93,6 +94,7 @@ class ChatServiceTest {
 		when(registry.resolve(any(), any())).thenReturn(resolved);
 
 		ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor = mock(ObjectProvider.class);
+		ObjectProvider<RagAdvisorConfig.RagAdvisorFactory> ragAdvisorFactory = mock(ObjectProvider.class);
 		ObjectProvider<UsageQuotaChecker.UsageQuota> usageQuota = mock(ObjectProvider.class);
 		UsageRepository usageRepository = mock(UsageRepository.class);
 
@@ -107,6 +109,7 @@ class ChatServiceTest {
 				usageQuota,
 				usageRepository,
 				safeGuardAdvisor,
+				ragAdvisorFactory,
 				new ModelHealthTracker(),
 				sessionService,
 				properties);
@@ -213,6 +216,8 @@ class ChatServiceTest {
 		@SuppressWarnings("unchecked")
 		ObjectProvider<SafeGuardAdvisor> mockSafeGuardAdvisor = mock(ObjectProvider.class);
 		@SuppressWarnings("unchecked")
+		ObjectProvider<RagAdvisorConfig.RagAdvisorFactory> mockRagAdvisorFactory = mock(ObjectProvider.class);
+		@SuppressWarnings("unchecked")
 		ObjectProvider<UsageQuotaChecker.UsageQuota> usageQuota = mock(ObjectProvider.class);
 		UsageRepository usageRepository = mock(UsageRepository.class);
 
@@ -227,6 +232,7 @@ class ChatServiceTest {
 				usageQuota,
 				usageRepository,
 				mockSafeGuardAdvisor,
+				mockRagAdvisorFactory,
 				new ModelHealthTracker(),
 				sessionService,
 				properties);

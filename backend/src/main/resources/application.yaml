@@ -247,6 +247,18 @@ app:
             input-price-per-k: 0.0215
             output-price-per-k: 0.1075
 
+    # RAG 文档多源解析与检索管道配置（独立 pgvector 表 ai_rag_documents，与长期记忆物理隔离）
+    rag:
+      enabled: ${AI_RAG_ENABLED:false}                          # RAG 总开关；关闭时 RagAdvisor 不挂接对话链路
+      top-k: ${AI_RAG_TOP_K:4}                                  # 文档相似检索 Top-K
+      chunk-size: ${AI_RAG_CHUNK_SIZE:900}                      # Token 切片大小（TokenTextSplitter chunks）
+      overlap: ${AI_RAG_OVERLAP:180}                            # 相邻切片重叠 Token 数（≈ 20% chunk-size）
+      encoding-type: ${AI_RAG_ENCODING:CL100K_BASE}             # TokenTextSplitter 分词编码（CL100K_BASE/P50K_BASE/O200K_BASE）
+      collection-name: ${AI_RAG_COLLECTION:ai_rag_documents}    # 独立 pgvector 表名
+      ssrf:
+        timeout-seconds: ${AI_RAG_SSRF_TIMEOUT:5}               # URL 抓取连接超时（秒），防 Slowloris
+        max-body-bytes: ${AI_RAG_SSRF_MAX_BODY:10485760}        # 响应体上限 10MB，防 Zip Bomb
+
     # 记忆子系统配置（会话记忆 JdbcChatMemory + 长期记忆 pgvector + Redis 热缓存/限流）
     # 仅在 enabled=true 时启用记忆路径；否则 ChatService 退化为旧 history 模式。
     # 注意：即便未启用记忆，应用也能正常启动（DB/Redis 不可达不阻断启动）。

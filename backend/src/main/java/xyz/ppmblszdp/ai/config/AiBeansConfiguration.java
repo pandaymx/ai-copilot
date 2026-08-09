@@ -22,6 +22,7 @@ import xyz.ppmblszdp.ai.factory.ChatModelFactory;
 import xyz.ppmblszdp.ai.factory.CustomChatModelFactory;
 import xyz.ppmblszdp.ai.factory.OpenAiCompatibleChatModelFactory;
 import xyz.ppmblszdp.ai.identity.AuthProperties;
+import xyz.ppmblszdp.ai.rag.RagProperties;
 import xyz.ppmblszdp.ai.memory.NoOpEmbeddingModel;
 import xyz.ppmblszdp.ai.memory.SafeEmbeddingModel;
 import xyz.ppmblszdp.ai.registry.FirstClassProviderRegistrar;
@@ -43,7 +44,7 @@ import java.util.Map;
  * 两个 Registrar 的产出合成一个不可变 {@link ProviderRegistry}。
  */
 @Configuration
-@EnableConfigurationProperties({AiProviderProperties.class, CorsProperties.class, AuthProperties.class})
+@EnableConfigurationProperties({AiProviderProperties.class, CorsProperties.class, AuthProperties.class, RagProperties.class})
 public class AiBeansConfiguration {
 
 	@Bean
