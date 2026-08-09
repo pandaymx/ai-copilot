@@ -19,11 +19,15 @@ RUN ./gradlew bootJar --no-daemon -x test
 FROM eclipse-temurin:25-jre-alpine AS runner
 WORKDIR /app
 
-# Non-root user for security
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+# Non-root user for security (dedicated group, never root)
+RUN addgroup -g 10001 -S appgroup \
+    && adduser -u 10001 -S appuser -G appgroup
 
 COPY --from=builder /app/build/libs/*.jar app.jar
-RUN chown -R appuser:appgroup /app
+
+# Ensure the jar and workdir are owned by the non-root user
+RUN chown -R appuser:appgroup /app \
+    && chmod 644 /app/app.jar
 
 USER appuser
 
@@ -31,4 +35,4 @@ EXPOSE 8084
 
 ENV JAVA_OPTS="-Xms256m -Xmx512m"
 
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+ENTRYPOINT ["java", "-jar", "app.jar"]
