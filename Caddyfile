@@ -1,0 +1,33 @@
+# AI-Copilot 生产网关配置
+#
+# Caddy 在此承担三项职责（单容器、单文件完成）：
+#   1. TLS 终止：ACME (Let's Encrypt) 自动签发，并在到期前 ~30 天自动续期。
+#   2. 反向代理：将请求转发到同 compose 网络内的 frontend 服务 (Next.js :3000)。
+#   3. 鉴权边界：整站 basic_auth，认证通过后将受信任身份头 X-User-Id 注入上游，
+#      供后端 (app.auth.mode=strict) 做多租户隔离，绝不信任请求体中的 userId。
+#
+# 验证方式：HTTP 挑战（默认）。要求 80 端口公网可达且域名 A 记录指向本机。
+# 证书与 ACME 状态持久化在 caddy_data 卷 (/data)，重启不丢证书、不触发限频。
+#
+# 变量从 compose 的环境 / .env 注入：
+#   {$CADDY_DOMAIN}            对外服务域名，如 ai.home.ppmblszdp.top
+#   {$CADDY_BASIC_AUTH_HASH}   caddy hash-password 生成的 bcrypt 哈希
+#
+# 生成 basic_auth 哈希：
+#   docker run --rm caddy:2-alpine caddy hash-password '你的密码'
+
+{$CADDY_DOMAIN} {
+	# 整站 basic_auth：个人单用户场景最简单且安全边界清晰。
+	# 注意：Caddy 2.8+ 起 basicauth 已弃用，改用 basic_auth。
+	# 哈希为空时 Caddy 会拒绝启动（防止误开无鉴权的生产站点），
+	# 本地调试请先用 `caddy hash-password` 生成哈希填入 .env。
+	basic_auth {
+		alice {$CADDY_BASIC_AUTH_HASH}
+	}
+
+	# 认证边界注入受信任身份头，供后端采信。
+	header X-User-Id {http.auth.user.id}
+
+	# 反向代理到同网络内的 Next.js 前端（服务名寻址，非 localhost）。
+	reverse_proxy frontend:3000
+}

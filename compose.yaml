@@ -93,7 +93,35 @@ services:
       retries: 3
       start_period: 15s
 
+  # 统一网关：TLS 终止 (ACME 自动签发/续期) + 反向代理 + 整站 basic_auth 注入 X-User-Id。
+  # 替代 nginx + certbot 方案，单容器单 Caddyfile 完成三件事。
+  # 前置要求：80/443 端口公网可达，且 CADDY_DOMAIN 的 A 记录指向本机（HTTP 挑战）。
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      CADDY_DOMAIN: ${CADDY_DOMAIN:-localhost}
+      CADDY_BASIC_AUTH_HASH: ${CADDY_BASIC_AUTH_HASH:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:80 || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
 volumes:
   postgres-data:
   redis-data:
   ollama-data:
+  caddy-data:
+  caddy-config:

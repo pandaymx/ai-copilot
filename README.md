@@ -37,6 +37,38 @@ AI-Copilot 是一个结合 Java (Spring AI) 与 TypeScript (Next.js) 的高性�
 
 ---
 
+### 🌐 生产部署 (Caddy 反向代理 + 自动 TLS)
+
+容器化部署之上，可叠加一个 **Caddy 网关容器**作为统一入口，提供生产级 HTTPS：
+
+- **自动 TLS**：Caddy 内置 ACME (Let's Encrypt) 客户端，自动签发证书并在到期前 ~30 天自动续期，**无需 certbot 容器**。
+- **反向代理**：`Caddy(443) → frontend(3000) → backend(8084)`，证书续期全程无人工干预。
+- **身份边界**：整站 `basic_auth`，认证通过后将受信任头 `X-User-Id` 注入上游，后端 (`app.auth.mode=strict`) 据此做多租户隔离。
+
+#### 前置条件
+1. 将 `CADDY_DOMAIN` 的 **A 记录指向本机公网 IP**。
+2. 服务器 **80/443 端口公网可达**（采用 HTTP 挑战，无需 Cloudflare Token）。
+
+#### 部署步骤
+```bash
+# 1. 准备环境变量（含 Caddy 域名与 basic_auth 哈希）
+cp .env.example .env
+# 生成 basic_auth 哈希并填入 .env 的 CADDY_BASIC_AUTH_HASH
+docker run --rm caddy:2-alpine caddy hash-password '你的密码'
+# 编辑 .env：设置 CADDY_DOMAIN 与 CADDY_BASIC_AUTH_HASH
+
+# 2. 启动全部服务（含 caddy 网关）
+./start.sh docker
+# 或 task docker:up
+```
+
+#### 说明
+- 证书与 ACME 状态持久化于 `caddy-data` 卷，容器重启不丢证书、不触发 Let's Encrypt 限频。
+- `frontend` / `backend` 仍保留 `127.0.0.1` 回环绑定，便于本地直连调试，与 Caddy 通过服务名访问互不冲突。
+- `Caddyfile` 已内置配置；如需通配/隐藏源站等高级场景，可改用 DNS 挑战（需补充对应 DNS 插件与环境变量）。
+
+---
+
 ### 🛠️ 实用指令集
 
 ```bash
