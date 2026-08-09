@@ -8,6 +8,7 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.ObjectProvider;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -16,12 +17,17 @@ import xyz.ppmblszdp.ai.context.ContextAssembler;
 import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
 import xyz.ppmblszdp.ai.registry.ModelDescriptor;
+import xyz.ppmblszdp.ai.registry.ModelHealthTracker;
 import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
+import xyz.ppmblszdp.ai.memory.ChatRateLimiter.RateLimiter;
+import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryAdvisorFactory;
+import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryWriter;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryProcessor;
 import xyz.ppmblszdp.ai.memory.UsageQuotaChecker;
 import xyz.ppmblszdp.ai.repository.UsageRepository;
+import xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor;
 
 import java.util.List;
 import java.util.concurrent.TimeoutException;
@@ -41,10 +47,10 @@ class ChatServiceTest {
 	private ProviderRegistry registry;
 	private ContextAssembler contextAssembler;
 	private ObjectProvider<ChatMemory> sessionChatMemory;
-	private ObjectProvider<xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryAdvisorFactory> longTermFactory;
-	private ObjectProvider<xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryWriter> longTermWriter;
+	private ObjectProvider<LongTermMemoryAdvisorFactory> longTermFactory;
+	private ObjectProvider<LongTermMemoryWriter> longTermWriter;
 	private ObjectProvider<LongTermMemoryProcessor> longTermProcessor;
-	private ObjectProvider<xyz.ppmblszdp.ai.memory.ChatRateLimiter.RateLimiter> rateLimiter;
+	private ObjectProvider<RateLimiter> rateLimiter;
 	private SessionService sessionService;
 	private AiProviderProperties properties;
 
@@ -70,7 +76,7 @@ class ChatServiceTest {
 		when(properties.resolveMemory()).thenReturn(memoryConfig);
 
 		chatModel = mock(ChatModel.class);
-		when(chatModel.getOptions()).thenReturn(org.springframework.ai.openai.OpenAiChatOptions.builder().build());
+		when(chatModel.getOptions()).thenReturn(OpenAiChatOptions.builder().build());
 
 		ModelDescriptor modelDescriptor = ModelDescriptor.builder()
 				.id("gpt-4o")
@@ -86,7 +92,7 @@ class ChatServiceTest {
 		ResolvedModel resolved = new ResolvedModel(chatModel, providerDescriptor, modelDescriptor);
 		when(registry.resolve(any(), any())).thenReturn(resolved);
 
-		ObjectProvider<xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor> safeGuardAdvisor = mock(ObjectProvider.class);
+		ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor = mock(ObjectProvider.class);
 		ObjectProvider<UsageQuotaChecker.UsageQuota> usageQuota = mock(ObjectProvider.class);
 		UsageRepository usageRepository = mock(UsageRepository.class);
 
@@ -101,7 +107,7 @@ class ChatServiceTest {
 				usageQuota,
 				usageRepository,
 				safeGuardAdvisor,
-				new xyz.ppmblszdp.ai.registry.ModelHealthTracker(),
+				new ModelHealthTracker(),
 				sessionService,
 				properties);
 	}
@@ -148,8 +154,8 @@ class ChatServiceTest {
 	void testChatFallbackToSecondaryProviderWhenPrimaryFails() {
 		ChatModel primaryModel = mock(ChatModel.class);
 		ChatModel fallbackModel = mock(ChatModel.class);
-		when(primaryModel.getOptions()).thenReturn(org.springframework.ai.openai.OpenAiChatOptions.builder().build());
-		when(fallbackModel.getOptions()).thenReturn(org.springframework.ai.openai.OpenAiChatOptions.builder().build());
+		when(primaryModel.getOptions()).thenReturn(OpenAiChatOptions.builder().build());
+		when(fallbackModel.getOptions()).thenReturn(OpenAiChatOptions.builder().build());
 
 		ProviderDescriptor primaryProvider = ProviderDescriptor.builder()
 				.providerId("deepseek")
@@ -205,7 +211,8 @@ class ChatServiceTest {
 		when(longTermProcessor.getIfAvailable()).thenReturn(processor);
 
 		@SuppressWarnings("unchecked")
-		ObjectProvider<xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor> mockSafeGuardAdvisor = mock(ObjectProvider.class);
+		ObjectProvider<SafeGuardAdvisor> mockSafeGuardAdvisor = mock(ObjectProvider.class);
+		@SuppressWarnings("unchecked")
 		ObjectProvider<UsageQuotaChecker.UsageQuota> usageQuota = mock(ObjectProvider.class);
 		UsageRepository usageRepository = mock(UsageRepository.class);
 
@@ -220,7 +227,7 @@ class ChatServiceTest {
 				usageQuota,
 				usageRepository,
 				mockSafeGuardAdvisor,
-				new xyz.ppmblszdp.ai.registry.ModelHealthTracker(),
+				new ModelHealthTracker(),
 				sessionService,
 				properties);
 

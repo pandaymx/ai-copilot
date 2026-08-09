@@ -62,6 +62,7 @@ class UsageRepositoryTest {
 	}
 
 	@Test
+	@SuppressWarnings("unchecked")
 	void sumUsageByUserAndMonthAggregates() {
 		when(jdbcTemplate.query(any(String.class), any(org.springframework.jdbc.core.RowMapper.class), any(), any()))
 				.thenReturn(List.of(new UsageMonthlySummary(123L, new BigDecimal("0.45"))));
@@ -72,6 +73,7 @@ class UsageRepositoryTest {
 	}
 
 	@Test
+	@SuppressWarnings("unchecked")
 	void sumByModelReturnsGroupedRows() {
 		when(jdbcTemplate.query(any(String.class), any(org.springframework.jdbc.core.RowMapper.class), any(), any()))
 				.thenReturn(List.of(new UsageModelSummary("deepseek-chat", 100L, new BigDecimal("0.30"))));
