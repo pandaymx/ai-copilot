@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "biome check",
-    "format": "biome format --write"
+    "format": "biome format --write",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install --with-deps"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -28,6 +30,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.2",
+    "@playwright/test": "^1.52.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
