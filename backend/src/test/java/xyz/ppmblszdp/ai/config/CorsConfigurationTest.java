@@ -14,7 +14,7 @@ class CorsConfigurationTest {
 
 	@Test
 	void corsWebFilter_WildcardOriginAndNoCredentials_ReturnsExactWildcardOriginHeader() {
-		CorsProperties corsProperties = new CorsProperties("*", false);
+		CorsProperties corsProperties = new CorsProperties("*", false, null);
 		AiBeansConfiguration beansConfig = new AiBeansConfiguration();
 		CorsWebFilter filter = beansConfig.corsWebFilter(corsProperties);
 
@@ -37,8 +37,31 @@ class CorsConfigurationTest {
 	}
 
 	@Test
+	void corsWebFilter_AllowsCustomHeadersSuchAsXUserId() {
+		CorsProperties corsProperties = new CorsProperties("*", false, "*");
+		AiBeansConfiguration beansConfig = new AiBeansConfiguration();
+		CorsWebFilter filter = beansConfig.corsWebFilter(corsProperties);
+
+		MockServerWebExchange exchange = MockServerWebExchange.from(
+				MockServerHttpRequest.options("http://localhost:8084/api/chat")
+						.header("Origin", "http://example.com")
+						.header("Access-Control-Request-Method", "POST")
+						.header("Access-Control-Request-Headers", "X-User-Id, Content-Type")
+						.build()
+		);
+
+		WebFilterChain filterChain = ex -> Mono.empty();
+
+		StepVerifier.create(filter.filter(exchange, filterChain))
+				.verifyComplete();
+
+		assertThat(exchange.getResponse().getHeaders().getFirst("Access-Control-Allow-Headers"))
+				.contains("X-User-Id");
+	}
+
+	@Test
 	void corsWebFilter_WildcardOriginAndAllowCredentials_ReflectsOrigin() {
-		CorsProperties corsProperties = new CorsProperties("*", true);
+		CorsProperties corsProperties = new CorsProperties("*", true, null);
 		AiBeansConfiguration beansConfig = new AiBeansConfiguration();
 		CorsWebFilter filter = beansConfig.corsWebFilter(corsProperties);
 
@@ -62,7 +85,7 @@ class CorsConfigurationTest {
 
 	@Test
 	void corsWebFilter_ActualGetRequest_ReturnsCorsHeader() {
-		CorsProperties corsProperties = new CorsProperties("*", false);
+		CorsProperties corsProperties = new CorsProperties("*", false, null);
 		AiBeansConfiguration beansConfig = new AiBeansConfiguration();
 		CorsWebFilter filter = beansConfig.corsWebFilter(corsProperties);
 

@@ -57,7 +57,13 @@ public record ChatRequest(
 		return new ChatRequest(message, history, provider, model, systemPrompt, id, userId, media);
 	}
 
-	/** 解析当前用户 id；空则回落匿名标识（长期记忆仍按该匿名 id 隔离，不污染他人）。 */
+	/**
+	 * 解析当前用户 id；空则回落匿名标识。
+	 *
+	 * @deprecated 服务端身份已从受信任 {@code X-User-Id} Header 解析（见 {@code UserIdentityFilter}）。
+	 * 该方法仅保留作为 dev 模式 fallback，生产环境不应信任请求体中的 userId。
+	 */
+	@Deprecated(since = "auth-refactor", forRemoval = false)
 	public String resolveUserId() {
 		return (userId != null && !userId.isBlank()) ? userId : "anonymous";
 	}

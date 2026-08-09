@@ -31,14 +31,19 @@ public class SessionService {
 		this.chatMemoryProvider = chatMemoryProvider;
 	}
 
-	/** 查询所有历史会话列表 */
-	public List<SessionDto> getAllSessions() {
-		return sessionRepository.findAll();
+	/** 查询指定用户的所有历史会话列表 */
+	public List<SessionDto> getAllSessions(String userId) {
+		return sessionRepository.findAllByUserId(userId);
+	}
+
+	/** 按用户归属查询会话元数据（用于跨用户隔离校验），不存在返回 empty */
+	public Optional<SessionDto> findSession(String id, String userId) {
+		return sessionRepository.findByIdAndUserId(id, userId);
 	}
 
 	/** 查询指定会话的完整历史（含元数据与消息数组） */
-	public Optional<SessionDto.SessionDetail> getSessionDetail(String id) {
-		Optional<SessionDto> metaOpt = sessionRepository.findById(id);
+	public Optional<SessionDto.SessionDetail> getSessionDetail(String id, String userId) {
+		Optional<SessionDto> metaOpt = sessionRepository.findByIdAndUserId(id, userId);
 		ChatMemory memory = chatMemoryProvider.getIfAvailable();
 		
 		List<SessionDto.MessageItem> messageItems = new ArrayList<>();
@@ -79,30 +84,36 @@ public class SessionService {
 		return Optional.empty();
 	}
 
-	/** 新建/置顶/更新会话元数据 */
-	public void recordSession(String id, String title, boolean isDefaultTitle) {
-		sessionRepository.upsertSession(id, title, System.currentTimeMillis(), isDefaultTitle);
+	/** 新建/置顶/更新会话元数据（绑定用户） */
+	public void recordSession(String id, String userId, String title, boolean isDefaultTitle) {
+		sessionRepository.upsertSession(id, userId, title, System.currentTimeMillis(), isDefaultTitle);
 	}
 
-	/** 发送消息时刷新会话时间戳 */
-	public void touchSession(String id, String fallbackTitle) {
-		sessionRepository.touchSession(id, fallbackTitle, System.currentTimeMillis());
+	/** 发送消息时刷新会话时间戳（绑定用户） */
+	public void touchSession(String id, String userId, String fallbackTitle) {
+		sessionRepository.touchSession(id, userId, fallbackTitle, System.currentTimeMillis());
 	}
 
-	/** 重命名会话标题 */
-	public boolean renameSession(String id, String newTitle) {
-		Optional<SessionDto> existing = sessionRepository.findById(id);
+	/** 重命名会话标题（按用户隔离） */
+	public boolean renameSession(String id, String userId, String newTitle) {
+		Optional<SessionDto> existing = sessionRepository.findByIdAndUserId(id, userId);
 		if (existing.isEmpty()) {
-			sessionRepository.upsertSession(id, newTitle, System.currentTimeMillis(), false);
+			sessionRepository.upsertSession(id, userId, newTitle, System.currentTimeMillis(), false);
 		} else {
-			sessionRepository.updateTitle(id, newTitle, false);
+			sessionRepository.updateTitle(id, userId, newTitle, false);
 		}
 		return true;
 	}
 
-	/** 删除指定会话 */
-	public void deleteSession(String id) {
-		sessionRepository.deleteById(id);
+	/**
+	 * 删除指定用户的会话，返回是否成功删除（false 表示会话不存在或不属于该用户）。
+	 * 跨用户操作返回 false，由 Controller 转换为 404。
+	 */
+	public boolean deleteSession(String id, String userId) {
+		int affected = sessionRepository.deleteByIdAndUserId(id, userId);
+		if (affected <= 0) {
+			return false;
+		}
 		ChatMemory memory = chatMemoryProvider.getIfAvailable();
 		if (memory != null) {
 			try {
@@ -111,6 +122,7 @@ public class SessionService {
 				log.warn("清除会话 '{}' ChatMemory 失败: {}", id, ex.getMessage());
 			}
 		}
+		return true;
 	}
 
 	private List<MediaDto> extractMediaDtos(Message m) {

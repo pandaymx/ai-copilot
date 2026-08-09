@@ -17,9 +17,9 @@ public class FeedbackService {
 	}
 
 	/**
-	 * 保存点赞/点踩反馈。
+	 * 保存点赞/点踩反馈。userId 来自服务端受信任身份，不再信任请求体。
 	 */
-	public void saveFeedback(ChatFeedbackRequest request) {
-		feedbackRepository.saveFeedback(request);
+	public void saveFeedback(String userId, ChatFeedbackRequest request) {
+		feedbackRepository.saveFeedback(userId, request);
 	}
 }

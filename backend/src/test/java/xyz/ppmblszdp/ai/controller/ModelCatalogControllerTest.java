@@ -3,21 +3,28 @@ package xyz.ppmblszdp.ai.controller;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.web.server.ServerWebExchange;
 import xyz.ppmblszdp.ai.dto.ModelCatalogResponse;
+import xyz.ppmblszdp.ai.identity.AuthProperties;
+import xyz.ppmblszdp.ai.identity.UserIdentityFilter;
 import xyz.ppmblszdp.ai.registry.ModelDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class ModelCatalogControllerTest {
 
 	private ProviderRegistry registry;
 	private ModelCatalogController controller;
+	private ServerWebExchange exchange;
 
 	@BeforeEach
 	void setUp() {
@@ -44,12 +51,21 @@ class ModelCatalogControllerTest {
 				.defaultModelId("gpt-4o")
 				.build();
 
-		controller = new ModelCatalogController(registry, new xyz.ppmblszdp.ai.registry.ModelHealthTracker());
+		AuthProperties authProperties = mock(AuthProperties.class);
+		when(authProperties.isStrict()).thenReturn(false);
+
+		controller = new ModelCatalogController(registry, new xyz.ppmblszdp.ai.registry.ModelHealthTracker(), authProperties);
+
+		exchange = mock(ServerWebExchange.class);
+		Map<String, Object> attrs = new HashMap<>();
+		attrs.put(UserIdentityFilter.ATTR_HEADER_VALUE, "user-1");
+		attrs.put(UserIdentityFilter.ATTR_HEADER_PRESENT, true);
+		when(exchange.getAttributes()).thenReturn(attrs);
 	}
 
 	@Test
 	void testListReturnsProvidersAndModels() {
-		ModelCatalogResponse response = controller.list();
+		ModelCatalogResponse response = controller.list(exchange);
 		assertNotNull(response);
 		assertEquals("openai", response.defaultProvider());
 		assertEquals("gpt-4o", response.defaultModel());

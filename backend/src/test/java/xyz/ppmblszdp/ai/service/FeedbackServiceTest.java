@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import xyz.ppmblszdp.ai.dto.ChatFeedbackRequest;
 import xyz.ppmblszdp.ai.repository.FeedbackRepository;
 
+import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -15,8 +16,8 @@ class FeedbackServiceTest {
 		FeedbackService service = new FeedbackService(repository);
 
 		ChatFeedbackRequest request = new ChatFeedbackRequest("conv-1", "msg-1", "THUMBS_UP", "Great answer", "user-1");
-		service.saveFeedback(request);
+		service.saveFeedback("user-1", request);
 
-		verify(repository).saveFeedback(request);
+		verify(repository).saveFeedback(eq("user-1"), eq(request));
 	}
 }

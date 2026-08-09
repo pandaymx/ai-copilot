@@ -21,6 +21,7 @@ import xyz.ppmblszdp.ai.factory.AnthropicCompatibleChatModelFactory;
 import xyz.ppmblszdp.ai.factory.ChatModelFactory;
 import xyz.ppmblszdp.ai.factory.CustomChatModelFactory;
 import xyz.ppmblszdp.ai.factory.OpenAiCompatibleChatModelFactory;
+import xyz.ppmblszdp.ai.identity.AuthProperties;
 import xyz.ppmblszdp.ai.memory.NoOpEmbeddingModel;
 import xyz.ppmblszdp.ai.memory.SafeEmbeddingModel;
 import xyz.ppmblszdp.ai.registry.FirstClassProviderRegistrar;
@@ -42,7 +43,7 @@ import java.util.Map;
  * 两个 Registrar 的产出合成一个不可变 {@link ProviderRegistry}。
  */
 @Configuration
-@EnableConfigurationProperties({AiProviderProperties.class, CorsProperties.class})
+@EnableConfigurationProperties({AiProviderProperties.class, CorsProperties.class, AuthProperties.class})
 public class AiBeansConfiguration {
 
 	@Bean
@@ -75,7 +76,14 @@ public class AiBeansConfiguration {
 			}
 		}
 		corsConfig.addAllowedMethod("*");
-		corsConfig.addAllowedHeader("*");
+		String allowedHeadersStr = corsProperties.resolveAllowedHeaders();
+		if (allowedHeadersStr != null && !allowedHeadersStr.isBlank() && !"*".equals(allowedHeadersStr.trim())) {
+			for (String h : allowedHeadersStr.split(",")) {
+				corsConfig.addAllowedHeader(h.trim());
+			}
+		} else {
+			corsConfig.addAllowedHeader("*");
+		}
 		corsConfig.setAllowCredentials(allowCredentials);
 		corsConfig.setMaxAge(3600L);
 

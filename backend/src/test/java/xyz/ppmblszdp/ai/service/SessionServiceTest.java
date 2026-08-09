@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,9 +43,9 @@ class SessionServiceTest {
 	@Test
 	void testGetAllSessions() {
 		List<SessionDto> list = List.of(new SessionDto("conv-1", "Test Title", 1000L, true));
-		when(sessionRepository.findAll()).thenReturn(list);
+		when(sessionRepository.findAllByUserId("user-1")).thenReturn(list);
 
-		List<SessionDto> result = sessionService.getAllSessions();
+		List<SessionDto> result = sessionService.getAllSessions("user-1");
 		assertEquals(1, result.size());
 		assertEquals("conv-1", result.get(0).id());
 	}
@@ -52,14 +53,14 @@ class SessionServiceTest {
 	@Test
 	void testGetSessionDetailConstructsMessages() {
 		SessionDto meta = new SessionDto("conv-1", "Title", 1000L, false);
-		when(sessionRepository.findById("conv-1")).thenReturn(Optional.of(meta));
+		when(sessionRepository.findByIdAndUserId("conv-1", "user-1")).thenReturn(Optional.of(meta));
 		when(chatMemory.get("conv-1")).thenReturn(List.of(
 				new SystemMessage("System prompt"),
 				new UserMessage("Hi"),
 				new AssistantMessage("Hello")
 		));
 
-		Optional<SessionDto.SessionDetail> detailOpt = sessionService.getSessionDetail("conv-1");
+		Optional<SessionDto.SessionDetail> detailOpt = sessionService.getSessionDetail("conv-1", "user-1");
 		assertTrue(detailOpt.isPresent());
 		SessionDto.SessionDetail detail = detailOpt.get();
 		assertEquals("conv-1", detail.id());
@@ -72,32 +73,42 @@ class SessionServiceTest {
 
 	@Test
 	void testTouchSession() {
-		sessionService.touchSession("conv-1", "Fallback Title");
-		verify(sessionRepository).touchSession(eq("conv-1"), eq("Fallback Title"), anyLong());
+		sessionService.touchSession("conv-1", "user-1", "Fallback Title");
+		verify(sessionRepository).touchSession(eq("conv-1"), eq("user-1"), eq("Fallback Title"), anyLong());
 	}
 
 	@Test
 	void testRenameSessionExisting() {
-		when(sessionRepository.findById("conv-1")).thenReturn(Optional.of(new SessionDto("conv-1", "Old Title", 1000L, false)));
+		when(sessionRepository.findByIdAndUserId("conv-1", "user-1")).thenReturn(Optional.of(new SessionDto("conv-1", "Old Title", 1000L, false)));
 
-		boolean success = sessionService.renameSession("conv-1", "New Title");
+		boolean success = sessionService.renameSession("conv-1", "user-1", "New Title");
 		assertTrue(success);
-		verify(sessionRepository).updateTitle("conv-1", "New Title", false);
+		verify(sessionRepository).updateTitle("conv-1", "user-1", "New Title", false);
 	}
 
 	@Test
 	void testRenameSessionNew() {
-		when(sessionRepository.findById("conv-1")).thenReturn(Optional.empty());
+		when(sessionRepository.findByIdAndUserId("conv-1", "user-1")).thenReturn(Optional.empty());
 
-		boolean success = sessionService.renameSession("conv-1", "New Title");
+		boolean success = sessionService.renameSession("conv-1", "user-1", "New Title");
 		assertTrue(success);
-		verify(sessionRepository).upsertSession(eq("conv-1"), eq("New Title"), anyLong(), eq(false));
+		verify(sessionRepository).upsertSession(eq("conv-1"), eq("user-1"), eq("New Title"), anyLong(), eq(false));
 	}
 
 	@Test
 	void testDeleteSession() {
-		sessionService.deleteSession("conv-1");
-		verify(sessionRepository).deleteById("conv-1");
+		when(sessionRepository.deleteByIdAndUserId("conv-1", "user-1")).thenReturn(1);
+		boolean deleted = sessionService.deleteSession("conv-1", "user-1");
+		assertTrue(deleted);
+		verify(sessionRepository).deleteByIdAndUserId("conv-1", "user-1");
 		verify(chatMemory).clear("conv-1");
+	}
+
+	@Test
+	void testDeleteSessionNotFoundReturnsFalse() {
+		when(sessionRepository.deleteByIdAndUserId("conv-1", "user-1")).thenReturn(0);
+		boolean deleted = sessionService.deleteSession("conv-1", "user-1");
+		assertTrue(!deleted);
+		verify(chatMemory, never()).clear("conv-1");
 	}
 }

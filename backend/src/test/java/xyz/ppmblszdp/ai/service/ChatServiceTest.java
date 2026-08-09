@@ -106,7 +106,7 @@ class ChatServiceTest {
 		when(chatModel.call(any(Prompt.class))).thenReturn(chatResponse);
 
 		ChatRequest request = new ChatRequest("Hello", null, "openai", "gpt-4o", null, null, null, null);
-		Mono<ChatResponseDto> resultMono = chatService.chat(request);
+		Mono<ChatResponseDto> resultMono = chatService.chat(request, "user-1");
 
 		StepVerifier.create(resultMono)
 				.assertNext(dto -> {
@@ -126,7 +126,7 @@ class ChatServiceTest {
 		});
 
 		ChatRequest request = new ChatRequest("Hello", null, "openai", "gpt-4o", null, null, null, null);
-		Mono<ChatResponseDto> resultMono = chatService.chat(request);
+		Mono<ChatResponseDto> resultMono = chatService.chat(request, "user-1");
 
 		StepVerifier.create(resultMono)
 				.assertNext(dto -> {
@@ -171,7 +171,7 @@ class ChatServiceTest {
 		when(fallbackModel.call(any(Prompt.class))).thenReturn(fallbackResp);
 
 		ChatRequest request = new ChatRequest("Hi", null, "deepseek", "deepseek-chat", null, null, null, null);
-		Mono<ChatResponseDto> resultMono = chatService.chat(request);
+		Mono<ChatResponseDto> resultMono = chatService.chat(request, "user-1");
 
 		StepVerifier.create(resultMono)
 				.assertNext(dto -> {
@@ -218,7 +218,7 @@ class ChatServiceTest {
 		when(chatModel.call(any(Prompt.class))).thenReturn(chatResponse);
 
 		ChatRequest request = new ChatRequest("Hi", null, "openai", "gpt-4o", null, "conv-1", "user-1", null);
-		Mono<ChatResponseDto> resultMono = enabledChatService.chat(request);
+		Mono<ChatResponseDto> resultMono = enabledChatService.chat(request, "user-1");
 
 		StepVerifier.create(resultMono)
 				.assertNext(dto -> {

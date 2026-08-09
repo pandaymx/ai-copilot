@@ -43,11 +43,15 @@ public class FeedbackRepository {
 	}
 
 	/**
-	 * 保存用户对消息的点赞/点踩反馈记录。
+	 * 保存用户对消息的点赞/点踩反馈记录。userId 来自服务端受信任身份，不再信任请求体。
 	 */
-	public void saveFeedback(ChatFeedbackRequest request) {
+	public void saveFeedback(String userId, ChatFeedbackRequest request) {
 		if (request == null || request.rating() == null || request.rating().isBlank()) {
 			log.warn("跳过无效的反馈保存请求: {}", request);
+			return;
+		}
+		if (userId == null || userId.isBlank()) {
+			log.warn("跳过缺少用户身份的反馈保存请求: {}", request);
 			return;
 		}
 		String sql = """
@@ -60,10 +64,10 @@ public class FeedbackRepository {
 				request.messageId(),
 				request.rating().toUpperCase(),
 				request.comment(),
-				request.resolveUserId(),
+				userId,
 				System.currentTimeMillis()
 		);
 		log.info("已保存用户反馈记录 [user={}, cid={}, msgId={}, rating={}]",
-				request.resolveUserId(), request.conversationId(), request.messageId(), request.rating());
+				userId, request.conversationId(), request.messageId(), request.rating());
 	}
 }

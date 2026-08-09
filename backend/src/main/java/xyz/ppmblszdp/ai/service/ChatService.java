@@ -120,12 +120,12 @@ public class ChatService implements DisposableBean {
 		this.memoryEnabled = properties.resolveMemory().isEnabled();
 	}
 
-	/** 非流式：一次性返回完整回复。 */
-	public Mono<ChatResponseDto> chat(ChatRequest request) {
+	/** 非流式：一次性返回完整回复。userId 来自服务端受信任身份，用于限流/记忆隔离。 */
+	public Mono<ChatResponseDto> chat(ChatRequest request, String userId) {
 		ResolvedModel resolved = registry.resolve(request.provider(), request.model());
 		ChatRateLimiter.RateLimiter limiter = rateLimiter.getIfAvailable();
-		if (limiter != null && !limiter.tryAcquire(request.resolveUserId())) {
-			log.warn("非流式请求被限流 → 用户={}", request.resolveUserId());
+		if (limiter != null && !limiter.tryAcquire(userId)) {
+			log.warn("非流式请求被限流 → 用户={}", userId);
 			return Mono.just(new ChatResponseDto(
 					"请求过于频繁，请稍后再试。", resolved.provider().providerId(),
 					resolved.model().id(), request.conversationId(), null, null));
@@ -157,14 +157,14 @@ public class ChatService implements DisposableBean {
 					.advisors(a -> a
 							.param(ChatMemory.CONVERSATION_ID, req.conversationId()))
 					.advisors(memoryAdvisor)
-					.advisors(a -> applyLongTermAdvisor(a, req))
+					.advisors(a -> applyLongTermAdvisor(a, userId))
 					.advisors(a -> applySafeGuardAdvisor(a))
 					.options(options.mutate())
 					.call();
 			return Mono.fromCallable(() -> spec.chatResponse())
 					.map(resp -> {
 						String replyText = extractText(resp);
-						recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(), req.message(), replyText);
+						recordLongTermMemoryAsync(userId, req.conversationId(), req.message(), replyText);
 						healthTracker.recordSuccess(resolved.provider().providerId(), resolved.model().id());
 						return new ChatResponseDto(
 								replyText,
@@ -186,12 +186,12 @@ public class ChatService implements DisposableBean {
 		return callWithoutMemory(resolved, request, options);
 	}
 
-	/** 流式：结构化 ChatChunkDto Flux（包含思考过程 reasoning 与 token 用量）。 */
-	public Flux<ChatChunkDto> streamChatChunks(ChatRequest request) {
+	/** 流式：结构化 ChatChunkDto Flux（包含思考过程 reasoning 与 token 用量）。userId 来自服务端受信任身份。 */
+	public Flux<ChatChunkDto> streamChatChunks(ChatRequest request, String userId) {
 		ResolvedModel resolved = registry.resolve(request.provider(), request.model());
 		ChatRateLimiter.RateLimiter limiter = rateLimiter.getIfAvailable();
-		if (limiter != null && !limiter.tryAcquire(request.resolveUserId())) {
-			log.warn("流式请求被限流 → 用户={}", request.resolveUserId());
+		if (limiter != null && !limiter.tryAcquire(userId)) {
+			log.warn("流式请求被限流 → 用户={}", userId);
 			return Flux.just(ChatChunkDto.error("RATE_LIMIT", "请求过于频繁，请稍后再试。"));
 		}
 
@@ -221,7 +221,7 @@ public class ChatService implements DisposableBean {
 					})
 					.advisors(a -> a.param(ChatMemory.CONVERSATION_ID, req.conversationId()))
 					.advisors(memoryAdvisor)
-					.advisors(a -> applyLongTermAdvisor(a, req))
+					.advisors(a -> applyLongTermAdvisor(a, userId))
 					.advisors(a -> applySafeGuardAdvisor(a))
 					.options(options.mutate())
 					.stream()
@@ -242,11 +242,11 @@ public class ChatService implements DisposableBean {
 						}
 						return chunkFlux;
 					})
-					.doOnComplete(() -> recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(),
+					.doOnComplete(() -> recordLongTermMemoryAsync(userId, req.conversationId(),
 							req.message(), fullContent.toString()))
 					.doOnCancel(() -> {
 						if (fullContent.length() > 0) {
-							recordLongTermMemoryAsync(req.resolveUserId(), req.conversationId(), req.message(),
+							recordLongTermMemoryAsync(userId, req.conversationId(), req.message(),
 									fullContent.toString());
 						}
 					})
@@ -282,8 +282,8 @@ public class ChatService implements DisposableBean {
 		return streamChunksWithoutMemory(resolved, request, options);
 	}
 
-	public Flux<String> streamChat(ChatRequest request) {
-		return streamChatChunks(request)
+	public Flux<String> streamChat(ChatRequest request, String userId) {
+		return streamChatChunks(request, userId)
 				.filter(c -> "content".equals(c.type()) && c.content() != null)
 				.map(ChatChunkDto::content);
 	}
@@ -392,8 +392,8 @@ public class ChatService implements DisposableBean {
 		return request.withConversationId(java.util.UUID.randomUUID().toString());
 	}
 
-	/** 供 Controller 透传：返回本次请求最终使用的 conversationId（已回填生成值）。 */
-	public String resolveConversationId(ChatRequest request) {
+	/** 供 Controller 透传：返回本次请求最终使用的 conversationId（已回填生成值）。userId 用于会话归属绑定。 */
+	public String resolveConversationId(ChatRequest request, String userId) {
 		if (!useMemory(request)) {
 			return request.conversationId();
 		}
@@ -401,7 +401,7 @@ public class ChatService implements DisposableBean {
 		if (cid != null && !cid.isBlank()) {
 			// 副作用异步化：将 JDBC 会话更新（touchSession/标题兜底）下沉至 boundedElastic 调度器，
 			// 避免阻塞 WebFlux 主事件循环并缩短首包延迟 (TTFB)；高并发极端场景后续可扩展 Redis 节流/合并写。
-			reactor.core.Disposable disposable = Mono.fromRunnable(() -> sessionService.touchSession(cid, deriveDefaultTitle(request.message())))
+			reactor.core.Disposable disposable = Mono.fromRunnable(() -> sessionService.touchSession(cid, userId, deriveDefaultTitle(request.message())))
 					.doOnError(ex -> log.warn("异步更新会话状态(touchSession)失败 [cid={}]: {}", cid, ex.getMessage()))
 					.onErrorComplete()
 					.subscribeOn(Schedulers.boundedElastic())
@@ -573,10 +573,10 @@ public class ChatService implements DisposableBean {
 		fireAndForgetSubscriptions.add(d2);
 	}
 
-	private void applyLongTermAdvisor(ChatClient.AdvisorSpec advisorSpec, ChatRequest request) {
+	private void applyLongTermAdvisor(ChatClient.AdvisorSpec advisorSpec, String userId) {
 		LongTermMemoryConfig.LongTermMemoryAdvisorFactory factory = longTermFactory.getIfAvailable();
 		if (factory != null) {
-			Advisor advisor = factory.forUser(request.resolveUserId());
+			Advisor advisor = factory.forUser(userId);
 			if (advisor != null) {
 				advisorSpec.advisors(advisor);
 			}

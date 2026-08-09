@@ -13,6 +13,10 @@ import java.util.Optional;
 
 /**
  * 会话元数据 Repository（基于 JdbcTemplate 与 PostgreSQL 落盘存储）。
+ *
+ * <p>会话按 {@code user_id} 做多租户隔离：所有读写均绑定用户身份，跨用户的
+ * 会话不会被返回或删除。存量行可能 user_id 为 NULL（迁移前），属历史数据，
+ * 对认证用户不可见，可后续按需回填。
  */
 @Repository
 public class SessionRepository {
@@ -40,62 +44,69 @@ public class SessionRepository {
 						id VARCHAR(128) PRIMARY KEY,
 						title VARCHAR(255) NOT NULL,
 						updated_at BIGINT NOT NULL,
-						is_default_title BOOLEAN DEFAULT TRUE
+						is_default_title BOOLEAN DEFAULT TRUE,
+						user_id VARCHAR(128)
 					);
 					""");
-			jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_chat_session_updated ON chat_session(updated_at DESC);");
+			// 兼容存量表：缺列则补列
+			jdbcTemplate.execute("ALTER TABLE chat_session ADD COLUMN IF NOT EXISTS user_id VARCHAR(128);");
+			// 复合索引覆盖原单列索引，按 (user_id, updated_at DESC) 查询会话列表
+			jdbcTemplate.execute("DROP INDEX IF EXISTS idx_chat_session_updated;");
+			jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_chat_session_user_updated ON chat_session(user_id, updated_at DESC);");
 			log.info("PostgreSQL 会话元数据表 'chat_session' 初始化/校验成功");
 		} catch (Exception ex) {
 			log.error("初始化 PostgreSQL 会话元数据表失败: {}", ex.getMessage(), ex);
 		}
 	}
 
-	/** 新增或全量覆盖写入会话元数据 */
-	public void upsertSession(String id, String title, long updatedAt, boolean isDefaultTitle) {
+	/** 新增或全量覆盖写入会话元数据（绑定用户） */
+	public void upsertSession(String id, String userId, String title, long updatedAt, boolean isDefaultTitle) {
 		String sql = """
-				INSERT INTO chat_session (id, title, updated_at, is_default_title)
-				VALUES (?, ?, ?, ?)
+				INSERT INTO chat_session (id, user_id, title, updated_at, is_default_title)
+				VALUES (?, ?, ?, ?, ?)
 				ON CONFLICT (id) DO UPDATE SET
+					user_id = EXCLUDED.user_id,
 					title = EXCLUDED.title,
 					updated_at = EXCLUDED.updated_at,
 					is_default_title = EXCLUDED.is_default_title;
 				""";
-		jdbcTemplate.update(sql, id, title, updatedAt, isDefaultTitle);
+		jdbcTemplate.update(sql, id, userId, title, updatedAt, isDefaultTitle);
 	}
 
-	/** 仅更新会话时间戳（已有会话发送消息时） */
-	public void touchSession(String id, String fallbackTitle, long updatedAt) {
+	/** 仅更新会话时间戳（已有会话发送消息时，绑定用户） */
+	public void touchSession(String id, String userId, String fallbackTitle, long updatedAt) {
 		String sql = """
-				INSERT INTO chat_session (id, title, updated_at, is_default_title)
-				VALUES (?, ?, ?, TRUE)
+				INSERT INTO chat_session (id, user_id, title, updated_at, is_default_title)
+				VALUES (?, ?, ?, ?, TRUE)
 				ON CONFLICT (id) DO UPDATE SET
+					user_id = EXCLUDED.user_id,
 					updated_at = EXCLUDED.updated_at;
 				""";
-		jdbcTemplate.update(sql, id, fallbackTitle, updatedAt);
+		jdbcTemplate.update(sql, id, userId, fallbackTitle, updatedAt);
 	}
 
-	/** 更新会话标题 */
-	public void updateTitle(String id, String newTitle, boolean isDefaultTitle) {
-		String sql = "UPDATE chat_session SET title = ?, is_default_title = ?, updated_at = ? WHERE id = ?";
-		jdbcTemplate.update(sql, newTitle, isDefaultTitle, System.currentTimeMillis(), id);
+	/** 更新会话标题（按用户隔离） */
+	public void updateTitle(String id, String userId, String newTitle, boolean isDefaultTitle) {
+		String sql = "UPDATE chat_session SET title = ?, is_default_title = ?, updated_at = ? WHERE id = ? AND user_id = ?";
+		jdbcTemplate.update(sql, newTitle, isDefaultTitle, System.currentTimeMillis(), id, userId);
 	}
 
-	/** 获取所有会话元数据（按更新时间倒序） */
-	public List<SessionDto> findAll() {
-		String sql = "SELECT id, title, updated_at, is_default_title FROM chat_session ORDER BY updated_at DESC";
-		return jdbcTemplate.query(sql, ROW_MAPPER);
+	/** 获取指定用户的所有会话元数据（按更新时间倒序） */
+	public List<SessionDto> findAllByUserId(String userId) {
+		String sql = "SELECT id, title, updated_at, is_default_title FROM chat_session WHERE user_id = ? ORDER BY updated_at DESC";
+		return jdbcTemplate.query(sql, ROW_MAPPER, userId);
 	}
 
-	/** 根据 ID 查询单个会话元数据 */
-	public Optional<SessionDto> findById(String id) {
-		String sql = "SELECT id, title, updated_at, is_default_title FROM chat_session WHERE id = ?";
-		List<SessionDto> list = jdbcTemplate.query(sql, ROW_MAPPER, id);
+	/** 根据 ID 与用户查询单个会话元数据（归属校验） */
+	public Optional<SessionDto> findByIdAndUserId(String id, String userId) {
+		String sql = "SELECT id, title, updated_at, is_default_title FROM chat_session WHERE id = ? AND user_id = ?";
+		List<SessionDto> list = jdbcTemplate.query(sql, ROW_MAPPER, id, userId);
 		return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
 	}
 
-	/** 删除会话元数据 */
-	public void deleteById(String id) {
-		String sql = "DELETE FROM chat_session WHERE id = ?";
-		jdbcTemplate.update(sql, id);
+	/** 删除指定用户的会话元数据，返回受影响行数（0 表示会话不存在或不属于该用户） */
+	public int deleteByIdAndUserId(String id, String userId) {
+		String sql = "DELETE FROM chat_session WHERE id = ? AND user_id = ?";
+		return jdbcTemplate.update(sql, id, userId);
 	}
 }

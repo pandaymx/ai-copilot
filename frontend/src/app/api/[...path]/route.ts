@@ -11,6 +11,12 @@ function getForwardHeaders(req: NextRequest): HeadersInit {
       headers.set(key, value);
     }
   });
+  // 透传受信任身份头 X-User-Id（由上游网关 Caddy basic_auth 注入为认证边界；
+  // 后端据此做多租户隔离，绝不信任请求体中的 userId）。
+  const userId = req.headers.get("x-user-id");
+  if (userId) {
+    headers.set("X-User-Id", userId);
+  }
   return headers;
 }
 
@@ -50,7 +56,7 @@ function getFallbackCorsHeaders(req?: NextRequest): Record<string, string> {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Headers":
-      "Content-Type, Authorization, X-Requested-With",
+      "Content-Type, Authorization, X-Requested-With, X-User-Id",
     Vary: "Origin",
   };
 }
