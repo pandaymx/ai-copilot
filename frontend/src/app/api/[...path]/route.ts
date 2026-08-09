@@ -159,10 +159,17 @@ export async function POST(
 
   try {
     const bodyText = await req.text();
+    // 客户端断开（如用户取消 SSE 流）时主动 abort 后端请求，
+    // 让后端 stream 感知取消并释放上游连接，避免空转产生 token 浪费资源。
+    const abortController = new AbortController();
+    const onClientAbort = () => abortController.abort();
+    req.signal.addEventListener("abort", onClientAbort);
+
     const backendRes = await fetch(targetUrl, {
       method: "POST",
       headers: getForwardHeaders(req),
       body: bodyText,
+      signal: abortController.signal,
     });
 
     const isSse =
@@ -171,7 +178,14 @@ export async function POST(
 
     if (isSse && backendRes.body) {
       const { readable, writable } = new TransformStream();
-      backendRes.body.pipeTo(writable).catch(() => {});
+      // 代理写端关闭（客户端已断开）时取消监听并中止后端请求，释放上游资源。
+      const pipeDone = backendRes.body.pipeTo(writable);
+      pipeDone
+        .catch(() => abortController.abort())
+        .finally(() => req.signal.removeEventListener("abort", onClientAbort));
+      if (req.signal.aborted) {
+        abortController.abort();
+      }
 
       return new Response(readable, {
         status: backendRes.status,
@@ -184,6 +198,8 @@ export async function POST(
         }),
       });
     }
+
+    req.signal.removeEventListener("abort", onClientAbort);
 
     return new Response(backendRes.body, {
       status: backendRes.status,

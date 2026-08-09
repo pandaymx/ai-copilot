@@ -19,6 +19,7 @@ import reactor.core.scheduler.Schedulers;
 import reactor.util.retry.Retry;
 import java.time.Duration;
 import org.springframework.ai.content.Media;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.util.MimeTypeUtils;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
@@ -43,6 +44,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * 聊天业务服务。
@@ -64,7 +66,7 @@ import java.util.Objects;
  * 记忆路径由 MessageChatMemoryAdvisor 的 RETRIEVE_SIZE 控制提取条数。
  */
 @Service
-public class ChatService {
+public class ChatService implements DisposableBean {
 
 	private static final Logger log = LoggerFactory.getLogger(ChatService.class);
 
@@ -83,6 +85,14 @@ public class ChatService {
 	private final SessionService sessionService;
 	private final AiProviderProperties properties;
 	private final boolean memoryEnabled;
+
+	/**
+	 * 持有所有「即发即弃」订阅（touchSession / 长期记忆写入等）返回的 Disposable，
+	 * 便于在 Bean 销毁时统一 dispose，避免应用关闭/上下文销毁时订阅空转或泄漏。
+	 * 使用并发队列，订阅在 complete 后自动置为 disposed，cleanup 时跳过即可。
+	 */
+	private final ConcurrentLinkedQueue<reactor.core.Disposable> fireAndForgetSubscriptions =
+			new ConcurrentLinkedQueue<>();
 
 	public ChatService(
 			ProviderRegistry registry,
@@ -240,6 +250,10 @@ public class ChatService {
 									fullContent.toString());
 						}
 					})
+					// doFinally 作为兜底：无论正常完成、客户端取消还是异常，均确保底层订阅被释放，
+					// 避免因上游未正常关闭导致 HTTP 连接/缓冲区资源泄漏。
+					.doFinally(signalType -> log.debug("流式记忆路径订阅结束 (signal={}) → 供应商={}, 模型={}",
+							signalType, resolved.provider().providerId(), resolved.model().id()))
 					.onErrorResume(ex -> {
 						log.warn("流式主供应商请求失败 (记忆路径) → 供应商={}, 模型={}, 首帧下发状态={}: {}",
 								resolved.provider().providerId(), resolved.model().id(), hasEmittedFirstChunk[0],
@@ -387,11 +401,12 @@ public class ChatService {
 		if (cid != null && !cid.isBlank()) {
 			// 副作用异步化：将 JDBC 会话更新（touchSession/标题兜底）下沉至 boundedElastic 调度器，
 			// 避免阻塞 WebFlux 主事件循环并缩短首包延迟 (TTFB)；高并发极端场景后续可扩展 Redis 节流/合并写。
-			Mono.fromRunnable(() -> sessionService.touchSession(cid, deriveDefaultTitle(request.message())))
+			reactor.core.Disposable disposable = Mono.fromRunnable(() -> sessionService.touchSession(cid, deriveDefaultTitle(request.message())))
 					.doOnError(ex -> log.warn("异步更新会话状态(touchSession)失败 [cid={}]: {}", cid, ex.getMessage()))
 					.onErrorComplete()
 					.subscribeOn(Schedulers.boundedElastic())
 					.subscribe();
+			fireAndForgetSubscriptions.add(disposable);
 		}
 		return cid;
 	}
@@ -532,7 +547,7 @@ public class ChatService {
 		}
 		LongTermMemoryProcessor processor = longTermProcessor.getIfAvailable();
 		if (processor != null) {
-			Mono.fromRunnable(() -> processor.processTurn(userId, conversationId, userMessage, assistantReply))
+			reactor.core.Disposable d1 = Mono.fromRunnable(() -> processor.processTurn(userId, conversationId, userMessage, assistantReply))
 					.timeout(Duration.ofSeconds(10))
 					.retryWhen(Retry.fixedDelay(1, Duration.ofSeconds(2)))
 					.doOnError(ex -> log.warn("长期记忆处理(processTurn)写入失败 [userId={}, conversationId={}]: {}", userId,
@@ -540,6 +555,7 @@ public class ChatService {
 					.onErrorComplete()
 					.subscribeOn(Schedulers.boundedElastic())
 					.subscribe();
+			fireAndForgetSubscriptions.add(d1);
 			return;
 		}
 		LongTermMemoryConfig.LongTermMemoryWriter writer = longTermWriter.getIfAvailable();
@@ -547,13 +563,14 @@ public class ChatService {
 			return;
 		}
 		String content = "【用户提问】: " + userMessage + "\n【AI回复】: " + (assistantReply != null ? assistantReply : "");
-		Mono.fromRunnable(() -> writer.write(userId, content))
+		reactor.core.Disposable d2 = Mono.fromRunnable(() -> writer.write(userId, content))
 				.timeout(Duration.ofSeconds(10))
 				.retryWhen(Retry.fixedDelay(1, Duration.ofSeconds(2)))
 				.doOnError(ex -> log.warn("长期记忆(writer)写入失败 [userId={}]: {}", userId, ex.getMessage()))
 				.onErrorComplete()
 				.subscribeOn(Schedulers.boundedElastic())
 				.subscribe();
+		fireAndForgetSubscriptions.add(d2);
 	}
 
 	private void applyLongTermAdvisor(ChatClient.AdvisorSpec advisorSpec, ChatRequest request) {
@@ -592,5 +609,24 @@ public class ChatService {
 		}
 		String text = output.getText();
 		return (text == null) ? "" : text;
+	}
+
+	/**
+	 * Bean 销毁时统一释放所有「即发即弃」订阅，防止应用关闭/上下文销毁后订阅空转或泄漏。
+	 * 已自然完成的订阅 dispose 为幂等操作，安全。
+	 */
+	@Override
+	public void destroy() {
+		reactor.core.Disposable d;
+		int released = 0;
+		while ((d = fireAndForgetSubscriptions.poll()) != null) {
+			if (!d.isDisposed()) {
+				d.dispose();
+				released++;
+			}
+		}
+		if (released > 0) {
+			log.info("ChatService 销毁：已释放 {} 个未完成的即发即弃订阅", released);
+		}
 	}
 }
