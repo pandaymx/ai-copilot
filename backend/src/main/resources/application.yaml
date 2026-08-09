@@ -289,7 +289,7 @@ app:
       long-term-summarize-turn-interval: ${AI_MEMORY_LONGTERM_INTERVAL:5} # 摘要抽取对话轮次间隔
       conversation-ttl-days: ${AI_MEMORY_TTL_DAYS:14}  # 会话热缓存在 Redis 的 TTL（天），防止冷数据常驻
       rate-limit:
-        enabled: ${AI_MEMORY_RATELIMIT_ENABLED:false}  # Redis 限流开关（默认关闭，避免无 Redis 时阻断）；同时控制月度配额
+        enabled: ${AI_MEMORY_RATELIMIT_ENABLED:true}  # Redis 限流开关（默认开启，保护上游配额）；Redis 不可用或判定异常时降级放行，不会阻断业务；同时控制月度配额
         capacity: ${AI_MEMORY_RATELIMIT_CAPACITY:20}   # 窗口内最大请求数
         refill-seconds: ${AI_MEMORY_RATELIMIT_REFILL:60}  # 限流窗口（秒）
       usage-quota:
