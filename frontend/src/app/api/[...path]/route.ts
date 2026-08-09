@@ -6,13 +6,24 @@ const BACKEND_BASE_URL = process.env.BACKEND_URL || "http://localhost:8084";
 
 function getForwardHeaders(req: NextRequest): HeadersInit {
   const headers = new Headers();
+  // 仅透传显式白名单内的客户端头，避免把任意客户端可控头（含认证相关头）
+  // 转发到后端造成伪造后门。后端采信的受信任头一律由网关注入值覆盖。
+  const ALLOWED_FORWARD_HEADERS = new Set([
+    "content-type",
+    "authorization",
+    "accept",
+    "x-requested-with",
+    "x-forwarded-for",
+    "x-real-ip",
+  ]);
   req.headers.forEach((value, key) => {
-    if (key.toLowerCase() !== "host") {
+    if (ALLOWED_FORWARD_HEADERS.has(key.toLowerCase())) {
       headers.set(key, value);
     }
   });
-  // 透传受信任身份头 X-User-Id（由上游网关 Caddy basic_auth 注入为认证边界；
-  // 后端据此做多租户隔离，绝不信任请求体中的 userId）。
+  // 受信任身份头 X-User-Id 由上游网关 Caddy basic_auth 注入为认证边界，
+  // 后端据此做多租户隔离，绝不信任请求体中的 userId；
+  // 即便客户端伪造 X-User-Id 也会被此处网关注入值覆盖（后写覆盖先写）。
   const userId = req.headers.get("x-user-id");
   if (userId) {
     headers.set("X-User-Id", userId);

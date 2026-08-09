@@ -25,9 +25,11 @@
 		alice {$CADDY_BASIC_AUTH_HASH}
 	}
 
-	# 认证边界注入受信任身份头，供后端采信。
-	header X-User-Id {http.auth.user.id}
-
 	# 反向代理到同网络内的 Next.js 前端（服务名寻址，非 localhost）。
-	reverse_proxy frontend:3000
+	reverse_proxy frontend:3000 {
+		# 认证边界注入受信任身份头到上游请求，供后端采信。
+		# 注意：必须用 header_up（请求头）而非 header（响应头），
+		# 否则 strict 模式后端收不到 X-User-Id，所有 /api 返回 401。
+		header_up X-User-Id {http.auth.user.id}
+	}
 }
