@@ -1,0 +1,39 @@
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 4317
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /tmp/tempo/blocks
+
+compactor:
+  compaction:
+    block_retention: 1h
+
+querier:
+  frontend:
+    # 允许通过查询前端聚合
+    max_outstanding_per_tenant: 2000
+
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+  storage:
+    path: /tmp/tempo/generators
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graph, span-metrics]

@@ -1,0 +1,147 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "id": 1,
+      "title": "请求延迟 P95 / P99 (按 provider)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "P95",
+          "legendFormat": "P95 {{gen_ai_system}}",
+          "expr": "histogram_quantile(0.95, sum(rate(gen_ai_chat_client_operation_seconds_bucket[5m])) by (le, gen_ai_system))"
+        },
+        {
+          "refId": "P99",
+          "legendFormat": "P99 {{gen_ai_system}}",
+          "expr": "histogram_quantile(0.99, sum(rate(gen_ai_chat_client_operation_seconds_bucket[5m])) by (le, gen_ai_system))"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Provider 成功率",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "min": 0, "max": 1, "custom": { "drawStyle": "line", "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "success",
+          "legendFormat": "{{gen_ai_system}}",
+          "expr": "sum(rate(gen_ai_chat_client_operation_seconds_count{error=\"false\"}[5m])) by (gen_ai_system) / sum(rate(gen_ai_chat_client_operation_seconds_count[5m])) by (gen_ai_system)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "调用量 (QPS, 按 provider)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "drawStyle": "bars", "lineWidth": 1 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "qps",
+          "legendFormat": "{{gen_ai_system}}",
+          "expr": "sum(rate(gen_ai_chat_client_operation_seconds_count[5m])) by (gen_ai_system)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "进行中调用数 (active)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "active",
+          "legendFormat": "{{gen_ai_system}}",
+          "expr": "sum(gen_ai_chat_client_operation_active_count) by (gen_ai_system)"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Advisor 链耗时 (按 advisor 名称)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "advisor",
+          "legendFormat": "{{spring_ai_advisor_name}}",
+          "expr": "histogram_quantile(0.95, sum(rate(gen_ai_advisor_operation_seconds_bucket[5m])) by (le, spring_ai_advisor_name))"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Trace 搜索 (Tempo)",
+      "type": "trace",
+      "datasource": { "type": "tempo", "uid": "${DS_TEMPO}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "gen_ai_system != \"\"",
+          "queryType": "traceql"
+        }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["spring-ai", "observability"],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      },
+      {
+        "name": "DS_TEMPO",
+        "type": "datasource",
+        "query": "tempo",
+        "current": { "text": "Tempo", "value": "Tempo" }
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Spring AI 可观测性总览",
+  "uid": "spring-ai-overview",
+  "version": 1,
+  "weekStart": ""
+}

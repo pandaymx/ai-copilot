@@ -38,6 +38,9 @@ dependencies {
 	implementation("org.apache.commons:commons-pool2")
 	runtimeOnly("org.postgresql:postgresql")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
+	// 可观测性：OpenTelemetry tracing（ChatClient / Advisor 链 span 经 OTLP 导出）
+	implementation("io.micrometer:micrometer-tracing-bridge-otel")
+	implementation("io.opentelemetry:opentelemetry-exporter-otlp")
 	developmentOnly("org.springframework.boot:spring-boot-devtools")
 	developmentOnly("org.springframework.boot:spring-boot-docker-compose")
 	runtimeOnly("io.micrometer:micrometer-registry-prometheus")

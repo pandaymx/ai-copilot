@@ -2,6 +2,8 @@ server:
   port: ${SERVER_PORT:${PORT:8084}}
 
 spring:
+  application:
+    name: ${SPRING_APPLICATION_NAME:ai-copilot-backend}   # 出现在 trace 的 resource 中，便于在 Tempo 区分服务
   config:
     import:
       - optional:file:.env[.properties] # 让 Spring 原生将 .env 解析为 properties 读取
@@ -62,6 +64,15 @@ spring:
     # 会话记忆表（spring_ai_chat_memory）交由 JDBC 记忆 starter 在启动时自动建表；
     # 向量表（ai_long_term_memory）由 pgvector starter 自动建（含 CREATE EXTENSION IF NOT EXISTS vector）。
     chat:
+      # Spring AI 可观测性开关（observation 默认开启；显式声明，敏感内容默认不导出）
+      client:
+        observations:
+          log-prompt: false
+          log-completion: false
+      observations:
+        log-prompt: false
+        log-completion: false
+        include-error-logging: true
       memory:
         repository:
           jdbc:
@@ -83,6 +94,18 @@ management:
     metrics:
       export:
         enabled: true
+  # ---- OpenTelemetry / Tracing ----
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}   # 默认全采样，便于观察 ChatClient/Advisor 链路
+  otlp:
+    tracing:
+      endpoint: ${OTLP_TRACING_ENDPOINT:http://otel-collector:4318}  # OTLP/HTTP；gRPC 用 :4317
+      export:
+        timeout: 5s
+    metrics:
+      enabled: false   # metrics 仍走现有 /actuator/prometheus 直采，不重复经 otel-collector
+  # 资源属性（出现在 trace 的 resource 中，便于在 Tempo 区分服务）
 
 
 # =====================================================================
