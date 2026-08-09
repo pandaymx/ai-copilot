@@ -238,9 +238,12 @@ app:
       long-term-summarize-turn-interval: ${AI_MEMORY_LONGTERM_INTERVAL:5} # 摘要抽取对话轮次间隔
       conversation-ttl-days: ${AI_MEMORY_TTL_DAYS:14}  # 会话热缓存在 Redis 的 TTL（天），防止冷数据常驻
       rate-limit:
-        enabled: ${AI_MEMORY_RATELIMIT_ENABLED:false}  # Redis 限流开关（默认关闭，避免无 Redis 时阻断）
+        enabled: ${AI_MEMORY_RATELIMIT_ENABLED:false}  # Redis 限流开关（默认关闭，避免无 Redis 时阻断）；同时控制月度配额
         capacity: ${AI_MEMORY_RATELIMIT_CAPACITY:20}   # 窗口内最大请求数
         refill-seconds: ${AI_MEMORY_RATELIMIT_REFILL:60}  # 限流窗口（秒）
+      usage-quota:
+        monthly-token-quota: ${AI_USAGE_MONTHLY_QUOTA:1000000}  # 用户月度 Token 总量上限（≤0 表示无上限）
+        reserve-tokens: ${AI_USAGE_RESERVE_TOKENS:2000}          # 请求发起时预扣基础 token 数（事后按真实值校准）
 
     # 二等公民：纯 YAML 驱动新增厂商，无需改动 Java 代码。
     # 密钥一律以 ${ENV:占位} 引用；占位值（your_xxx_here）会被识别为未配置而跳过注册。

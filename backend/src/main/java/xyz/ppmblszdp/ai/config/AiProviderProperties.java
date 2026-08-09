@@ -112,6 +112,7 @@ public record AiProviderProperties(
 	 * @param longTermSummarizeTurnInterval 会话轮次间隔触发值
 	 * @param conversationTtlDays             会话热缓存在 Redis 的 TTL（天），防止冷数据常驻
 	 * @param rateLimit                      基于 Redis 的对话限流配置
+	 * @param usageQuota                     用户级月度 Token 总量配额配置（基于 Redis 累计）
 	 */
 	public record MemoryConfig(
 			@Nullable Boolean enabled,
@@ -123,11 +124,12 @@ public record AiProviderProperties(
 			@Name("long-term-summarize-enabled") @Nullable Boolean longTermSummarizeEnabled,
 			@Name("long-term-summarize-turn-interval") @Nullable Integer longTermSummarizeTurnInterval,
 			@Nullable Integer conversationTtlDays,
-			@Nullable RateLimitConfig rateLimit
+			@Nullable RateLimitConfig rateLimit,
+			@Name("usage-quota") @Nullable UsageQuotaConfig usageQuota
 	) {
 
 		public static MemoryConfig defaults() {
-			return new MemoryConfig(false, 20, 5, true, 0.85d, 15, true, 5, 14, null);
+			return new MemoryConfig(false, 20, 5, true, 0.85d, 15, true, 5, 14, null, null);
 		}
 
 		public boolean isEnabled() {
@@ -170,6 +172,38 @@ public record AiProviderProperties(
 
 		public RateLimitConfig resolveRateLimit() {
 			return rateLimit != null ? rateLimit : RateLimitConfig.defaults();
+		}
+
+		public UsageQuotaConfig resolveUsageQuota() {
+			return usageQuota != null ? usageQuota : UsageQuotaConfig.defaults();
+		}
+	}
+
+	/**
+	 * 用户级月度 Token 总量配额配置（基于 Redis 按月累计，保护上游月度成本）。
+	 *
+	 * <p>与 {@code rate-limit} 共享 {@code app.ai.memory.rate-limit.enabled} 开关：
+	 * 限流与配额均在该开关下启用。月度配额默认值 1,000,000 tokens，预扣基础值用于
+	 * 请求发起时无法预知真实 token 数的场景。所有字段支持 {@code ${ENV:默认}} 回退。
+	 *
+	 * @param monthlyTokenQuota 月度 token 上限（≤0 表示无上限）；回退 {@code AI_USAGE_MONTHLY_QUOTA}
+	 * @param reserveTokens     预扣基础 token 数（请求发起时占用，事后校准）；回退 {@code AI_USAGE_RESERVE_TOKENS}
+	 */
+	public record UsageQuotaConfig(
+			@Name("monthly-token-quota") @Nullable Long monthlyTokenQuota,
+			@Name("reserve-tokens") @Nullable Long reserveTokens
+	) {
+
+		public static UsageQuotaConfig defaults() {
+			return new UsageQuotaConfig(1_000_000L, 2000L);
+		}
+
+		public long resolveMonthlyTokenQuota() {
+			return (monthlyTokenQuota != null && monthlyTokenQuota >= 0) ? monthlyTokenQuota : 1_000_000L;
+		}
+
+		public long resolveReserveTokens() {
+			return (reserveTokens != null && reserveTokens >= 0) ? reserveTokens : 2000L;
 		}
 	}
 

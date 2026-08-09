@@ -20,6 +20,8 @@ import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryProcessor;
+import xyz.ppmblszdp.ai.memory.UsageQuotaChecker;
+import xyz.ppmblszdp.ai.repository.UsageRepository;
 
 import java.util.List;
 import java.util.concurrent.TimeoutException;
@@ -85,6 +87,8 @@ class ChatServiceTest {
 		when(registry.resolve(any(), any())).thenReturn(resolved);
 
 		ObjectProvider<xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor> safeGuardAdvisor = mock(ObjectProvider.class);
+		ObjectProvider<UsageQuotaChecker.UsageQuota> usageQuota = mock(ObjectProvider.class);
+		UsageRepository usageRepository = mock(UsageRepository.class);
 
 		chatService = new ChatService(
 				registry,
@@ -94,6 +98,8 @@ class ChatServiceTest {
 				longTermWriter,
 				longTermProcessor,
 				rateLimiter,
+				usageQuota,
+				usageRepository,
 				safeGuardAdvisor,
 				new xyz.ppmblszdp.ai.registry.ModelHealthTracker(),
 				sessionService,
@@ -200,6 +206,8 @@ class ChatServiceTest {
 
 		@SuppressWarnings("unchecked")
 		ObjectProvider<xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor> mockSafeGuardAdvisor = mock(ObjectProvider.class);
+		ObjectProvider<UsageQuotaChecker.UsageQuota> usageQuota = mock(ObjectProvider.class);
+		UsageRepository usageRepository = mock(UsageRepository.class);
 
 		ChatService enabledChatService = new ChatService(
 				registry,
@@ -209,6 +217,8 @@ class ChatServiceTest {
 				longTermWriter,
 				longTermProcessor,
 				rateLimiter,
+				usageQuota,
+				usageRepository,
 				mockSafeGuardAdvisor,
 				new xyz.ppmblszdp.ai.registry.ModelHealthTracker(),
 				sessionService,
