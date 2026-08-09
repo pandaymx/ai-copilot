@@ -8,6 +8,7 @@ import org.springframework.ai.deepseek.DeepSeekChatModel;
 import org.springframework.ai.google.genai.GoogleGenAiChatModel;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import xyz.ppmblszdp.ai.config.ApiKeyValidator;
@@ -21,9 +22,9 @@ import java.util.Map;
 /**
  * 一等公民注册器。
  *
- * <p>用 {@link ObjectProvider} 安全获取容器中官方 starter 自动装配的 ChatModel Bean
- * （Bean 缺失不报错，仅跳过）。结合 {@code app.ai.first-class} 配置补充模型清单与展示元数据；
- * 通过 {@link ApiKeyValidator} 过滤未配置密钥的供应商（Ollama 等本地模型豁免）。
+ * <p>结合 {@link ApiKeyValidator} 过滤未配置密钥的供应商；
+ * 用 {@link ObjectProvider} 安全获取容器中官方 starter 自动装配的 ChatModel Bean
+ * （Bean 缺失或初始化失败不报错，仅跳过）。
  */
 @Component
 public class FirstClassProviderRegistrar {
@@ -36,6 +37,18 @@ public class FirstClassProviderRegistrar {
 	private final ObjectProvider<OllamaChatModel> ollama;
 	private final ObjectProvider<AnthropicChatModel> anthropic;
 	private final AiProviderProperties properties;
+
+	@Value("${spring.ai.deepseek.api-key:}")
+	private String deepseekApiKey;
+
+	@Value("${spring.ai.openai.api-key:}")
+	private String openaiApiKey;
+
+	@Value("${spring.ai.google.genai.api-key:}")
+	private String googleApiKey;
+
+	@Value("${spring.ai.anthropic.api-key:}")
+	private String anthropicApiKey;
 
 	public FirstClassProviderRegistrar(
 			ObjectProvider<DeepSeekChatModel> deepseek,
@@ -55,18 +68,35 @@ public class FirstClassProviderRegistrar {
 	/** 收集所有可用的一等公民供应商描述符。 */
 	public Map<String, ProviderDescriptor> register() {
 		Map<String, ProviderDescriptor> result = new LinkedHashMap<>();
-		registerOne(result, "deepseek", deepseek.getIfAvailable(), properties.resolveFirstClass().get("deepseek"));
-		registerOne(result, "openai", openai.getIfAvailable(), properties.resolveFirstClass().get("openai"));
-		registerOne(result, "google", google.getIfAvailable(), properties.resolveFirstClass().get("google"));
-		registerOne(result, "ollama", ollama.getIfAvailable(), properties.resolveFirstClass().get("ollama"));
-		registerOne(result, "anthropic", anthropic.getIfAvailable(), properties.resolveFirstClass().get("anthropic"));
+		registerOne(result, "deepseek", deepseekApiKey, true, deepseek, properties.resolveFirstClass().get("deepseek"));
+		registerOne(result, "openai", openaiApiKey, true, openai, properties.resolveFirstClass().get("openai"));
+		registerOne(result, "google", googleApiKey, true, google, properties.resolveFirstClass().get("google"));
+		registerOne(result, "ollama", null, false, ollama, properties.resolveFirstClass().get("ollama"));
+		registerOne(result, "anthropic", anthropicApiKey, true, anthropic, properties.resolveFirstClass().get("anthropic"));
 		return result;
 	}
 
-	private void registerOne(Map<String, ProviderDescriptor> result, String providerId,
-							 ChatModel model, AiProviderProperties.FirstClassConfig cfg) {
+	private <T extends ChatModel> void registerOne(
+			Map<String, ProviderDescriptor> result,
+			String providerId,
+			String apiKey,
+			boolean requiresApiKey,
+			ObjectProvider<T> provider,
+			AiProviderProperties.FirstClassConfig cfg) {
+
+		if (cfg != null && !cfg.isEnabled()) {
+			log.info("一等公民供应商 '{}' 已配置为禁用，跳过注册", providerId);
+			return;
+		}
+
+		if (requiresApiKey && !ApiKeyValidator.isValid(apiKey)) {
+			log.warn("一等公民供应商 '{}' 未配置有效密钥（占位值或空白），跳过注册", providerId);
+			return;
+		}
+
+		ChatModel model = safeGetModel(provider, providerId);
 		if (model == null) {
-			log.debug("一等公民供应商 '{}' 的 ChatModel Bean 不存在，跳过", providerId);
+			log.debug("一等公民供应商 '{}' 的 ChatModel Bean 不可用，跳过注册", providerId);
 			return;
 		}
 		if (cfg != null && !cfg.isEnabled()) {
@@ -110,5 +140,14 @@ public class FirstClassProviderRegistrar {
 			index.put(md.id(), md);
 		}
 		return index;
+	}
+
+	private <T extends ChatModel> ChatModel safeGetModel(ObjectProvider<T> provider, String providerId) {
+		try {
+			return provider.getIfAvailable();
+		} catch (Throwable ex) {
+			log.warn("获取一等公民供应商 '{}' 的 ChatModel Bean 失败，已容错跳过: {}", providerId, ex.getMessage());
+			return null;
+		}
 	}
 }

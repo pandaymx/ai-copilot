@@ -53,6 +53,11 @@ spring:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
       chat:
         model: ${OLLAMA_MODEL:llama3}
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:${SPRING_AI_ANTHROPIC_API_KEY:your_anthropic_api_key_here}}
+      base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com}
+      chat:
+        model: ${ANTHROPIC_MODEL:claude-sonnet-4-20250514}
     # 会话记忆表（spring_ai_chat_memory）交由 JDBC 记忆 starter 在启动时自动建表；
     # 向量表（ai_long_term_memory）由 pgvector starter 自动建（含 CREATE EXTENSION IF NOT EXISTS vector）。
     chat:
