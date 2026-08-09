@@ -55,9 +55,9 @@ function getFallbackCorsHeaders(req?: NextRequest): Record<string, string> {
   };
 }
 
-// 代理层内存滑动窗口限流：每个 IP 允许 60 次/分钟
+// 代理层内存滑动窗口限流：每个 IP 允许 120 次/分钟
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const MAX_REQUESTS_PER_WINDOW = 60;
+const MAX_REQUESTS_PER_WINDOW = 120;
 const ipRequestLogs = new Map<string, number[]>();
 
 function isRateLimited(clientIp: string): boolean {
@@ -67,12 +67,13 @@ function isRateLimited(clientIp: string): boolean {
     (t) => now - t < RATE_LIMIT_WINDOW_MS,
   );
 
+  ipRequestLogs.set(clientIp, validTimestamps);
+
   if (validTimestamps.length >= MAX_REQUESTS_PER_WINDOW) {
     return true;
   }
 
   validTimestamps.push(now);
-  ipRequestLogs.set(clientIp, validTimestamps);
 
   // 定期清理过期的 IP 缓存记录，防止内存泄露
   if (ipRequestLogs.size > 1000) {

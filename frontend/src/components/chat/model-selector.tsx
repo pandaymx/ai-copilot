@@ -283,16 +283,22 @@ export function ModelSelector({
     };
   }, [fetchHealth]);
 
-  // 当外部选中的 provider 变化或 open 展开时校准 activeProviderId
+  // 当 open 展开时静默刷新健康诊断
   useEffect(() => {
     if (open) {
       fetchHealth();
+    }
+  }, [open, fetchHealth]);
+
+  // 当外部选中的 provider 变化或 open 展开时校准 activeProviderId
+  useEffect(() => {
+    if (open) {
       const match = catalog.find((p) => p.id === value.provider);
       if (match) {
         setActiveProviderId(match.id);
       }
     }
-  }, [open, value.provider, catalog, fetchHealth]);
+  }, [open, value.provider, catalog]);
 
   // 点击外部关闭
   useEffect(() => {
