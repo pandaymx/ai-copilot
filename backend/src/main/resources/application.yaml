@@ -7,7 +7,6 @@ spring:
       - optional:file:.env[.properties] # 让 Spring 原生将 .env 解析为 properties 读取
   docker:
     compose:
-      file: ${SPRING_DOCKER_COMPOSE_FILE:../compose.yaml}
       enabled: ${SPRING_DOCKER_COMPOSE_ENABLED:true}
       lifecycle-management: start-only
       readiness:
