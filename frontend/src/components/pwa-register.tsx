@@ -37,10 +37,18 @@ export function PwaRegister() {
       }
     };
 
-    window.addEventListener("load", registerSw);
-    return () => {
-      window.removeEventListener("load", registerSw);
-    };
+    if (document.readyState === "complete") {
+      if ("requestIdleCallback" in window) {
+        window.requestIdleCallback(() => registerSw());
+      } else {
+        setTimeout(registerSw, 1);
+      }
+    } else {
+      window.addEventListener("load", registerSw);
+      return () => {
+        window.removeEventListener("load", registerSw);
+      };
+    }
   }, []);
 
   return null;
