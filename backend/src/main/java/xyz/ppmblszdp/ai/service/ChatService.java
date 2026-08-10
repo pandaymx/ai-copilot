@@ -4,6 +4,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.audio.tts.TextToSpeechPrompt;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.ChatClient.CallResponseSpec;
+import org.springframework.ai.chat.client.ChatClient.ChatClientRequestSpec;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -18,9 +20,12 @@ import org.springframework.ai.openai.OpenAiAudioSpeechModel;
 import org.springframework.ai.openai.OpenAiAudioSpeechOptions;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MimeTypeUtils;
+
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -33,9 +38,13 @@ import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
 import xyz.ppmblszdp.ai.dto.MediaDto;
 import xyz.ppmblszdp.ai.memory.ChatRateLimiter;
+import xyz.ppmblszdp.ai.memory.ChatRateLimiter.RateLimiter;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig;
+import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryAdvisorFactory;
+import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryWriter;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryProcessor;
 import xyz.ppmblszdp.ai.memory.UsageQuotaChecker;
+import xyz.ppmblszdp.ai.memory.UsageQuotaChecker.UsageQuota;
 import xyz.ppmblszdp.ai.registry.ModelDescriptor;
 import xyz.ppmblszdp.ai.registry.ModelHealthTracker;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
@@ -43,6 +52,10 @@ import xyz.ppmblszdp.ai.registry.ResolvedModel;
 import xyz.ppmblszdp.ai.repository.UsageRepository;
 import xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor;
 import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig;
+import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig.RagAdvisorFactory;
+import xyz.ppmblszdp.ai.tool.ToolEventEmitter;
+import org.springframework.ai.tool.ToolCallback;
+import reactor.core.publisher.Sinks.Many;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -98,31 +111,35 @@ public class ChatService implements DisposableBean {
 	private final AiProviderProperties properties;
 	private final ObjectProvider<OpenAiAudioSpeechModel> speechModelProvider;
 	private final boolean memoryEnabled;
+	private final boolean agentEnabled;
+	private final ToolEventEmitter toolEventEmitter;
+	private final ToolCallback[] toolCallbacks;
 
 	/**
 	 * 持有所有「即发即弃」订阅（touchSession / 长期记忆写入等）返回的 Disposable，
 	 * 便于在 Bean 销毁时统一 dispose，避免应用关闭/上下文销毁时订阅空转或泄漏。
 	 * 使用并发队列，订阅在 complete 后自动置为 disposed，cleanup 时跳过即可。
 	 */
-	private final ConcurrentLinkedQueue<reactor.core.Disposable> fireAndForgetSubscriptions =
-			new ConcurrentLinkedQueue<>();
+	private final ConcurrentLinkedQueue<Disposable> fireAndForgetSubscriptions = new ConcurrentLinkedQueue<>();
 
 	public ChatService(
 			ProviderRegistry registry,
 			ContextAssembler contextAssembler,
 			ObjectProvider<ChatMemory> sessionChatMemory,
-			ObjectProvider<LongTermMemoryConfig.LongTermMemoryAdvisorFactory> longTermFactory,
-			ObjectProvider<LongTermMemoryConfig.LongTermMemoryWriter> longTermWriter,
+			ObjectProvider<LongTermMemoryAdvisorFactory> longTermFactory,
+			ObjectProvider<LongTermMemoryWriter> longTermWriter,
 			ObjectProvider<LongTermMemoryProcessor> longTermProcessor,
-			ObjectProvider<ChatRateLimiter.RateLimiter> rateLimiter,
-			ObjectProvider<UsageQuotaChecker.UsageQuota> usageQuota,
+			ObjectProvider<RateLimiter> rateLimiter,
+			ObjectProvider<UsageQuota> usageQuota,
 			UsageRepository usageRepository,
 			ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor,
-			ObjectProvider<RagAdvisorConfig.RagAdvisorFactory> ragAdvisorFactory,
+			ObjectProvider<RagAdvisorFactory> ragAdvisorFactory,
 			ModelHealthTracker healthTracker,
 			SessionService sessionService,
 			AiProviderProperties properties,
-			ObjectProvider<OpenAiAudioSpeechModel> speechModelProvider) {
+			ObjectProvider<OpenAiAudioSpeechModel> speechModelProvider,
+			ToolEventEmitter toolEventEmitter,
+			@Qualifier("agentToolCallbacks") ToolCallback[] toolCallbacks) {
 		this.registry = registry;
 		this.contextAssembler = contextAssembler;
 		this.sessionChatMemory = sessionChatMemory;
@@ -139,12 +156,20 @@ public class ChatService implements DisposableBean {
 		this.properties = properties;
 		this.speechModelProvider = speechModelProvider;
 		this.memoryEnabled = properties.resolveMemory().isEnabled();
+		this.agentEnabled = properties.resolveAgent().isEnabled();
+		this.toolEventEmitter = toolEventEmitter;
+		this.toolCallbacks = toolCallbacks;
+	}
+
+	/** Agent 模式是否启用：服务端正总开关 + 请求级开关二者皆为真。 */
+	private boolean useAgent(ChatRequest request) {
+		return agentEnabled && Boolean.TRUE.equals(request.agentEnabled());
 	}
 
 	/** 非流式：一次性返回完整回复。userId 来自服务端受信任身份，用于限流/记忆隔离。 */
 	public Mono<ChatResponseDto> chat(ChatRequest request, String userId) {
 		ResolvedModel resolved = registry.resolve(request.provider(), request.model());
-		ChatRateLimiter.RateLimiter limiter = rateLimiter.getIfAvailable();
+		RateLimiter limiter = rateLimiter.getIfAvailable();
 		if (limiter != null && !limiter.tryAcquire(userId)) {
 			log.warn("非流式请求被限流 → 用户={}", userId);
 			return Mono.just(new ChatResponseDto(
@@ -171,7 +196,7 @@ public class ChatService implements DisposableBean {
 			ChatClient client = resolved.chatClient();
 			MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(memory).build();
 			List<Media> mediaList = convertMediaList(req.media());
-			ChatClient.CallResponseSpec spec = client.prompt()
+			CallResponseSpec spec = client.prompt()
 					.system(sp -> sp.text(resolveSystemPrompt(req)))
 					.user(u -> {
 						u.text(req.message());
@@ -216,7 +241,7 @@ public class ChatService implements DisposableBean {
 	/** 流式：结构化 ChatChunkDto Flux（包含思考过程 reasoning 与 token 用量）。userId 来自服务端受信任身份。 */
 	public Flux<ChatChunkDto> streamChatChunks(ChatRequest request, String userId) {
 		ResolvedModel resolved = registry.resolve(request.provider(), request.model());
-		ChatRateLimiter.RateLimiter limiter = rateLimiter.getIfAvailable();
+		RateLimiter limiter = rateLimiter.getIfAvailable();
 		if (limiter != null && !limiter.tryAcquire(userId)) {
 			log.warn("流式请求被限流 → 用户={}", userId);
 			return Flux.just(ChatChunkDto.error("RATE_LIMIT", "请求过于频繁，请稍后再试。"));
@@ -229,6 +254,7 @@ public class ChatService implements DisposableBean {
 		boolean memoryPath = useMemory(request);
 		ChatOptions options = buildChatOptions(resolved);
 
+		boolean agentPath = useAgent(request);
 		if (memoryPath) {
 			ChatMemory memory = sessionChatMemory.getIfAvailable();
 			if (memory == null) {
@@ -245,7 +271,9 @@ public class ChatService implements DisposableBean {
 			AtomicReference<ChatChunkDto.UsageDto> lastUsage = new AtomicReference<>();
 			AtomicBoolean usageSettled = new AtomicBoolean(false);
 
-			return client.prompt()
+			// Agent 模式：构造线程安全的 multicast Sink 作为工具事件通道，并通过 ToolContext 注入工具
+			Many<ChatChunkDto> toolSink = agentPath ? toolEventEmitter.newSink() : null;
+			ChatClientRequestSpec requestSpec = client.prompt()
 					.system(sp -> sp.text(resolveSystemPrompt(req)))
 					.user(u -> {
 						u.text(req.message());
@@ -258,9 +286,15 @@ public class ChatService implements DisposableBean {
 					.advisors(a -> applyLongTermAdvisor(a, userId))
 					.advisors(a -> applySafeGuardAdvisor(a))
 					.advisors(a -> applyRagAdvisor(a, userId))
-					.options(options.mutate())
-					.stream()
-					.chatResponse()
+					.options(options.mutate());
+			if (agentPath) {
+				requestSpec = requestSpec.tools((Object[]) toolCallbacks)
+						.toolContext(Map.of(
+								"eventSink", toolSink,
+								ToolEventEmitter.CTX_EMITTER, toolEventEmitter,
+								ToolEventEmitter.CTX_USER_ID, userId));
+			}
+			Flux<ChatChunkDto> contentFlux = requestSpec.stream().chatResponse()
 					.timeout(STREAM_TIMEOUT)
 					.concatMap(resp -> {
 						boolean isFirst = !hasEmittedFirstChunk[0];
@@ -316,10 +350,18 @@ public class ChatService implements DisposableBean {
 									resolved.provider().providerId(), fallbackResolved.provider().providerId());
 							ChatOptions fallbackOpts = ChatOptionsFactory.forProvider(fallbackResolved, 0.2);
 							// 独立引用 + 内部 doFinally，避免与记忆路径主路径 doFinally 双重落库
-							return streamChunksWithoutMemory(fallbackResolved, request, fallbackOpts, new AtomicReference<>(), userId);
+							return streamChunksWithoutMemory(fallbackResolved, request, fallbackOpts,
+									new AtomicReference<>(), userId);
 						}
 						return Flux.just(ChatChunkDto.error("UPSTREAM_ERROR", "上游供应商响应异常，请稍后再试。"));
 					});
+
+			// 将 LLM 内容流与工具事件流合并；doFinally 中关闭工具 Sink，避免 Flux 泄漏/阻塞
+			if (agentPath && toolSink != null) {
+				Flux<ChatChunkDto> merged = Flux.merge(contentFlux, toolSink.asFlux());
+				return merged.doFinally(sig -> toolSink.tryEmitComplete());
+			}
+			return contentFlux;
 		}
 		return streamChunksWithoutMemory(resolved, request, options, new AtomicReference<>(), userId);
 	}
@@ -342,15 +384,38 @@ public class ChatService implements DisposableBean {
 		// 每条流式路径独立的 doFinally + AtomicBoolean，确保用量落库与配额校准仅执行一次，
 		// 无论正常完成、客户端取消还是异常结束（与记忆路径的 doFinally 互不干扰，避免双重落库）
 		AtomicBoolean settled = new AtomicBoolean(false);
-		return resolved.chatModel().stream(prompt)
+
+		// Agent 模式：经 ChatClient 装配工具（chatModel().stream 无法注入 tools），内容与工具事件流合并
+		boolean agentPath = useAgent(request);
+		Many<ChatChunkDto> toolSink = agentPath ? toolEventEmitter.newSink() : null;
+
+		ChatClientRequestSpec requestSpec = resolved.chatClient().prompt(prompt);
+		if (agentPath) {
+			requestSpec = requestSpec.tools((Object[]) toolCallbacks)
+					.toolContext(Map.of(
+							"eventSink", toolSink,
+							ToolEventEmitter.CTX_EMITTER, toolEventEmitter,
+							ToolEventEmitter.CTX_USER_ID, userId));
+		}
+		Flux<ChatChunkDto> contentFlux = requestSpec.stream().chatResponse()
 				.timeout(STREAM_TIMEOUT)
 				.concatMap(resp -> accumulateUsage(
-						processChatResponseToChunks(resp, fullContent, resolved), usageAccum))
-				.doFinally(signalType -> {
-					if (settled.compareAndSet(false, true)) {
-						settleUsage(userId, resolved, request.conversationId(), usageAccum.get());
-					}
-				});
+						processChatResponseToChunks(resp, fullContent, resolved), usageAccum));
+
+		if (agentPath && toolSink != null) {
+			Flux<ChatChunkDto> merged = Flux.merge(contentFlux, toolSink.asFlux());
+			return merged.doFinally(sig -> {
+				toolSink.tryEmitComplete();
+				if (settled.compareAndSet(false, true)) {
+					settleUsage(userId, resolved, request.conversationId(), usageAccum.get());
+				}
+			});
+		}
+		return contentFlux.doFinally(signalType -> {
+			if (settled.compareAndSet(false, true)) {
+				settleUsage(userId, resolved, request.conversationId(), usageAccum.get());
+			}
+		});
 	}
 
 	private Flux<ChatChunkDto> processChatResponseToChunks(ChatResponse resp, StringBuilder fullContent,
@@ -434,7 +499,8 @@ public class ChatService implements DisposableBean {
 	// ====================== Token 用量计量与月度配额 ======================
 
 	/** 在 chunk 流上累加 usage（取末次非零 total 的 UsageDto），供 doFinally 统一落库。 */
-	private Flux<ChatChunkDto> accumulateUsage(Flux<ChatChunkDto> chunkFlux, AtomicReference<ChatChunkDto.UsageDto> accum) {
+	private Flux<ChatChunkDto> accumulateUsage(Flux<ChatChunkDto> chunkFlux,
+			AtomicReference<ChatChunkDto.UsageDto> accum) {
 		return chunkFlux.doOnNext(c -> {
 			if (c != null && "usage".equals(c.type()) && c.usage() != null && c.usage().totalTokens() > 0) {
 				accum.set(c.usage());
@@ -444,7 +510,7 @@ public class ChatService implements DisposableBean {
 
 	/** 月度配额预扣：请求发起时无法预知真实 token 数，仅做“已用量 + 预扣值 > 上限”拦截。 */
 	private boolean tryReserveMonthlyQuota(String userId, ResolvedModel resolved) {
-		UsageQuotaChecker.UsageQuota quota = usageQuota.getIfAvailable();
+		UsageQuota quota = usageQuota.getIfAvailable();
 		if (quota == null) {
 			return true;
 		}
@@ -465,7 +531,8 @@ public class ChatService implements DisposableBean {
 	}
 
 	/** 非流式落库：从单次 UsageDto 异步落库并校准月度配额。 */
-	private void meterUsageAsync(String userId, ResolvedModel resolved, String conversationId, ChatChunkDto.UsageDto usage) {
+	private void meterUsageAsync(String userId, ResolvedModel resolved, String conversationId,
+			ChatChunkDto.UsageDto usage) {
 		settleUsage(userId, resolved, conversationId, usage);
 	}
 
@@ -473,7 +540,8 @@ public class ChatService implements DisposableBean {
 	 * 用量落库 + 月度配额校准（核心）。异步执行，不阻塞主链路。
 	 * 仅在真实 token 数 &gt; 0 时落库；cost 为 NULL 时兜底 ZERO。
 	 */
-	private void settleUsage(String userId, ResolvedModel resolved, String conversationId, ChatChunkDto.UsageDto usage) {
+	private void settleUsage(String userId, ResolvedModel resolved, String conversationId,
+			ChatChunkDto.UsageDto usage) {
 		if (usage == null || usage.totalTokens() <= 0) {
 			return;
 		}
@@ -483,12 +551,13 @@ public class ChatService implements DisposableBean {
 		int promptTokens = usage.promptTokens() > 0 ? usage.promptTokens() : 0;
 		int completionTokens = usage.completionTokens() > 0 ? usage.completionTokens() : 0;
 		int totalTokens = usage.totalTokens();
-		BigDecimal costRmb = (usage.estimatedCostRmb() != null) ? BigDecimal.valueOf(usage.estimatedCostRmb()) : BigDecimal.ZERO;
+		BigDecimal costRmb = (usage.estimatedCostRmb() != null) ? BigDecimal.valueOf(usage.estimatedCostRmb())
+				: BigDecimal.ZERO;
 
 		// 1) 异步落库用量（失败仅告警）
 		var saveSub = Mono.fromRunnable(() -> usageRepository.saveUsage(
-						userId, providerId, modelId, conversationId,
-						promptTokens, completionTokens, totalTokens, costRmb, monthKey))
+				userId, providerId, modelId, conversationId,
+				promptTokens, completionTokens, totalTokens, costRmb, monthKey))
 				.onErrorComplete(ex -> {
 					log.warn("用量落库失败 [user={}, model={}]: {}", userId, modelId, ex.getMessage());
 					return true;
@@ -499,11 +568,11 @@ public class ChatService implements DisposableBean {
 
 		// 2) 事后校准月度配额（净增量 = 真实 - 预扣值）
 		var calibrateSub = Mono.fromRunnable(() -> {
-					UsageQuotaChecker.UsageQuota quota = usageQuota.getIfAvailable();
-					if (quota != null) {
-						quota.consumeActual(userId, totalTokens);
-					}
-				})
+			UsageQuota quota = usageQuota.getIfAvailable();
+			if (quota != null) {
+				quota.consumeActual(userId, totalTokens);
+			}
+		})
 				.onErrorComplete(ex -> {
 					log.warn("月度配额校准失败 [user={}]: {}", userId, ex.getMessage());
 					return true;
@@ -534,7 +603,8 @@ public class ChatService implements DisposableBean {
 		if (cid != null && !cid.isBlank()) {
 			// 副作用异步化：将 JDBC 会话更新（touchSession/标题兜底）下沉至 boundedElastic 调度器，
 			// 避免阻塞 WebFlux 主事件循环并缩短首包延迟 (TTFB)；高并发极端场景后续可扩展 Redis 节流/合并写。
-			reactor.core.Disposable disposable = Mono.fromRunnable(() -> sessionService.touchSession(cid, userId, deriveDefaultTitle(request.message())))
+			Disposable disposable = Mono
+					.fromRunnable(() -> sessionService.touchSession(cid, userId, deriveDefaultTitle(request.message())))
 					.doOnError(ex -> log.warn("异步更新会话状态(touchSession)失败 [cid={}]: {}", cid, ex.getMessage()))
 					.onErrorComplete()
 					.subscribeOn(Schedulers.boundedElastic())
@@ -552,7 +622,8 @@ public class ChatService implements DisposableBean {
 		return firstLine.length() > 18 ? firstLine.substring(0, 18) + "…" : firstLine;
 	}
 
-	private Mono<ChatResponseDto> callWithoutMemory(ResolvedModel resolved, ChatRequest request, ChatOptions options, String userId) {
+	private Mono<ChatResponseDto> callWithoutMemory(ResolvedModel resolved, ChatRequest request, ChatOptions options,
+			String userId) {
 		List<Media> mediaList = convertMediaList(request.media());
 		List<Message> messages = contextAssembler.assemble(
 				request.message(), request.history(), request.systemPrompt(),
@@ -592,9 +663,11 @@ public class ChatService implements DisposableBean {
 			Prompt prompt = new Prompt(messages, fallbackOptions);
 			return Mono.fromCallable(() -> fallbackResolved.chatModel().call(prompt))
 					.map(resp -> {
-						meterUsageAsync(userId, fallbackResolved, request.conversationId(), extractUsageDto(resp, fallbackResolved));
+						meterUsageAsync(userId, fallbackResolved, request.conversationId(),
+								extractUsageDto(resp, fallbackResolved));
 						return new ChatResponseDto(
-								extractText(resp), fallbackResolved.provider().providerId(), fallbackResolved.model().id(),
+								extractText(resp), fallbackResolved.provider().providerId(),
+								fallbackResolved.model().id(),
 								request.conversationId(), null, null);
 					})
 					.timeout(CALL_TIMEOUT)
@@ -668,7 +741,8 @@ public class ChatService implements DisposableBean {
 		}
 		LongTermMemoryProcessor processor = longTermProcessor.getIfAvailable();
 		if (processor != null) {
-			reactor.core.Disposable d1 = Mono.fromRunnable(() -> processor.processTurn(userId, conversationId, userMessage, assistantReply))
+			Disposable d1 = Mono
+					.fromRunnable(() -> processor.processTurn(userId, conversationId, userMessage, assistantReply))
 					.timeout(Duration.ofSeconds(10))
 					.retryWhen(Retry.fixedDelay(1, Duration.ofSeconds(2)))
 					.doOnError(ex -> log.warn("长期记忆处理(processTurn)写入失败 [userId={}, conversationId={}]: {}", userId,
@@ -679,12 +753,12 @@ public class ChatService implements DisposableBean {
 			fireAndForgetSubscriptions.add(d1);
 			return;
 		}
-		LongTermMemoryConfig.LongTermMemoryWriter writer = longTermWriter.getIfAvailable();
+		LongTermMemoryWriter writer = longTermWriter.getIfAvailable();
 		if (writer == null) {
 			return;
 		}
 		String content = "【用户提问】: " + userMessage + "\n【AI回复】: " + (assistantReply != null ? assistantReply : "");
-		reactor.core.Disposable d2 = Mono.fromRunnable(() -> writer.write(userId, content))
+		Disposable d2 = Mono.fromRunnable(() -> writer.write(userId, content))
 				.timeout(Duration.ofSeconds(10))
 				.retryWhen(Retry.fixedDelay(1, Duration.ofSeconds(2)))
 				.doOnError(ex -> log.warn("长期记忆(writer)写入失败 [userId={}]: {}", userId, ex.getMessage()))
@@ -695,7 +769,7 @@ public class ChatService implements DisposableBean {
 	}
 
 	private void applyLongTermAdvisor(ChatClient.AdvisorSpec advisorSpec, String userId) {
-		LongTermMemoryConfig.LongTermMemoryAdvisorFactory factory = longTermFactory.getIfAvailable();
+		LongTermMemoryAdvisorFactory factory = longTermFactory.getIfAvailable();
 		if (factory != null) {
 			Advisor advisor = factory.forUser(userId);
 			if (advisor != null) {
@@ -712,7 +786,7 @@ public class ChatService implements DisposableBean {
 	}
 
 	private void applyRagAdvisor(ChatClient.AdvisorSpec advisorSpec, String userId) {
-		RagAdvisorConfig.RagAdvisorFactory factory = ragAdvisorFactory.getIfAvailable();
+		RagAdvisorFactory factory = ragAdvisorFactory.getIfAvailable();
 		if (factory != null) {
 			// sourceType 暂不传递（全局检索），后续可按请求粒度扩展过滤
 			Advisor advisor = factory.forUser(userId, null);
@@ -730,13 +804,16 @@ public class ChatService implements DisposableBean {
 	/**
 	 * 文本转语音（TTS）：调用 Gemini OpenAI 兼容端口的语音合成模型，返回 mp3 字节流。
 	 *
-	 * <p>底层 {@code OpenAiAudioSpeechModel} 由 Spring AI 自动装配，其 base-url 已在
-	 * {@code application.yaml} 的 {@code spring.ai.openai.audio.speech.*} 中独立指向 Gemini
-	 * 端口，与全局 {@code spring.ai.openai.base-url}（gpt-4o 聊天）互不干扰。</p>
+	 * <p>
+	 * 底层 {@code OpenAiAudioSpeechModel} 由 Spring AI 自动装配，其 base-url 已在
+	 * {@code application.yaml} 的 {@code spring.ai.openai.audio.speech.*} 中独立指向
+	 * Gemini
+	 * 端口，与全局 {@code spring.ai.openai.base-url}（gpt-4o 聊天）互不干扰。
+	 * </p>
 	 *
-	 * @param text       待合成文本
-	 * @param voice      语音名（可选；null 时回落自动配置的默认 voice）
-	 * @param userId     受信任身份，仅用于审计日志
+	 * @param text   待合成文本
+	 * @param voice  语音名（可选；null 时回落自动配置的默认 voice）
+	 * @param userId 受信任身份，仅用于审计日志
 	 * @return mp3 二进制音频
 	 */
 	public Mono<byte[]> synthesizeSpeech(String text, String voice, String userId) {
@@ -816,7 +893,7 @@ public class ChatService implements DisposableBean {
 	 */
 	@Override
 	public void destroy() {
-		reactor.core.Disposable d;
+		Disposable d;
 		int released = 0;
 		while ((d = fireAndForgetSubscriptions.poll()) != null) {
 			if (!d.isDisposed()) {

@@ -17,11 +17,16 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { type StreamStore, useStreamData } from "@/hooks/useSpringAiStream";
+import {
+  type StreamStore,
+  type ToolCallItem,
+  useStreamData,
+} from "@/hooks/useSpringAiStream";
 import { cn } from "@/lib/utils";
 import { tts } from "@/lib/voice";
 import { ChatMessageErrorBoundary } from "./error-boundary";
 import { Markdown } from "./markdown";
+import { ToolCard } from "./tool-card";
 
 export interface AttachmentItem {
   id: string;
@@ -46,6 +51,8 @@ export interface ChatMessage {
     estimatedCostRmb?: number;
   };
   attachments?: AttachmentItem[];
+  /** 工具调用列表（已完成消息持久化用；流式消息由 streamStore.toolCalls 驱动）。 */
+  toolCalls?: ToolCallItem[];
 }
 
 interface MessageBubbleProps {
@@ -244,6 +251,15 @@ function MessageBubbleBase({
           </div>
         )}
 
+        {/* 工具调用卡片区：Agent 模式下渲染（callId 作唯一 key，保证并行多调用不闪烁/不顺序颠倒） */}
+        {!isUser && message.toolCalls && message.toolCalls.length > 0 && (
+          <div className="flex w-full flex-col gap-2">
+            {message.toolCalls.map((tc) => (
+              <ToolCard key={tc.callId} item={tc} />
+            ))}
+          </div>
+        )}
+
         {/* 气泡本文 */}
         {(isUser || message.content || streaming) && (
           <div
@@ -381,19 +397,21 @@ export function LiveMessageBubble({
   streamStore,
   conversationId,
 }: LiveMessageBubbleProps) {
-  const { content, thinking, usage } = useStreamData(streamStore);
+  const { content, thinking, usage, toolCalls } = useStreamData(streamStore);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll into view on streaming content update
   useEffect(() => {
     containerRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [content, thinking]);
+  }, [content, thinking, toolCalls]);
 
   const liveMessage: ChatMessage = {
     ...message,
     content: content || message.content,
     thinking: thinking || message.thinking,
     usage: usage ?? message.usage,
+    // 将流式 Map 转为数组（保留 callId 作为 ToolCard key），供气泡内渲染
+    toolCalls: Object.values(toolCalls),
   };
 
   return (

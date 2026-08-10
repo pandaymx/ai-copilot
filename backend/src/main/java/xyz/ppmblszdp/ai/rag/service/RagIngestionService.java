@@ -26,7 +26,8 @@ import java.util.List;
  * 将文档解析、切片（含 overlap）、元数据注入、批量写入串联为单一编排入口。
  * 异常受控（记录日志并上报），不静默吞关键错误。
  *
- * <p><b>去重（回应任务 7.4）</b>：入库前按切片 {@code contentHash + userId} 预检，已存在则跳过该切片，
+ * <p>
+ * <b>去重（回应任务 7.4）</b>：入库前按切片 {@code contentHash + userId} 预检，已存在则跳过该切片，
  * 返回新增/跳过计数，避免同一内容重复堆积向量。
  */
 @Service
@@ -56,7 +57,8 @@ public class RagIngestionService {
      * @param ingested 实际写入向量库的 chunk 数
      * @param skipped  因内容重复（contentHash 已存在）而跳过的 chunk 数
      */
-    public record IngestResult(int ingested, int skipped) {}
+    public record IngestResult(int ingested, int skipped) {
+    }
 
     /**
      * 入库入口：读取 → 切片 → 注入元数据（含 contentHash）→ 去重预检 → 批量写入。
@@ -132,7 +134,8 @@ public class RagIngestionService {
     /**
      * 覆盖更新（重新入库）：先按 {@code source + userId} 删除旧向量，再走完整入库管道。
      *
-     * <p><b>幂等与一致性（回应优化建议 1）</b>：采用"先删后写"策略。仅当删除阶段已成功（无异常抛出）
+     * <p>
+     * <b>幂等与一致性（回应优化建议 1）</b>：采用"先删后写"策略。仅当删除阶段已成功（无异常抛出）
      * 才执行后续入库；若删除失败则直接抛出，绝不在旧数据残留状态下写入，避免脏数据。
      *
      * @param sourceType 文档源类型
@@ -150,7 +153,8 @@ public class RagIngestionService {
     /**
      * 重新入库结果：删除的旧向量数 + 新写入/跳过数。
      */
-    public record ReingestResult(int removed, int ingested, int skipped) {}
+    public record ReingestResult(int removed, int ingested, int skipped) {
+    }
 
     /**
      * 按 {@code source + userId} 精确删除对应向量（幂等：删除目标不存在时返回 0 不报错）。
@@ -165,8 +169,7 @@ public class RagIngestionService {
             FilterExpressionBuilder feb = new FilterExpressionBuilder();
             Filter.Expression filter = feb.and(
                     feb.eq("source", source),
-                    feb.eq("userId", (userId != null) ? userId : "system")
-            ).build();
+                    feb.eq("userId", (userId != null) ? userId : "system")).build();
             ragVectorStore.delete(filter);
             log.info("RAG 删除完成: source={} userId={}", source, userId);
             return 1;
@@ -180,7 +183,9 @@ public class RagIngestionService {
      * 内容级去重：对每个 chunk 的 contentHash（同一 userId 下）是否已经存在于向量库做预检，
      * 已存在则跳过。返回需要写入的增量 chunk 列表。
      *
-     * <p>实现：聚合去重 hash 集合，逐个 hash 用 {@code eq(contentHash) AND eq(userId)} 查询一次（topK=1），
+     * <p>
+     * 实现：聚合去重 hash 集合，逐个 hash 用 {@code eq(contentHash) AND eq(userId)}
+     * 查询一次（topK=1），
      * 命中即视为重复。检索降级（抛出异常）时视为"未重复"，保证入库流程不中断。
      */
     private List<Document> dedupeByContentHash(List<Document> chunks, String userId) {
@@ -196,8 +201,7 @@ public class RagIngestionService {
             String hash = hashObj.toString();
             Filter.Expression filter = feb.and(
                     feb.eq("contentHash", hash),
-                    feb.eq("userId", uid)
-            ).build();
+                    feb.eq("userId", uid)).build();
             SearchRequest probe = SearchRequest.builder()
                     .query("") // 去重仅用 filter，不需要语义相似
                     .topK(1)

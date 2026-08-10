@@ -34,6 +34,7 @@ public record AiProviderProperties(
 		@Nullable ContextConfig context,
 		@Nullable MemoryConfig memory,
 		@Nullable RagConfig rag,
+		@Nullable AgentConfig agent,
 		@Nullable Map<String, FirstClassConfig> firstClass,
 		@Nullable List<SecondClassConfig> secondClass
 ) {
@@ -61,6 +62,11 @@ public record AiProviderProperties(
 	/** RAG 文档多源解析与检索管道配置（绑定 {@code app.ai.rag.*}）。 */
 	public RagConfig resolveRag() {
 		return rag != null ? rag : RagConfig.defaults();
+	}
+
+	/** Agent 工具调用子系统配置（绑定 {@code app.ai.agent.*}）。 */
+	public AgentConfig resolveAgent() {
+		return agent != null ? agent : AgentConfig.defaults();
 	}
 
 	/**
@@ -182,6 +188,36 @@ public record AiProviderProperties(
 
 		public UsageQuotaConfig resolveUsageQuota() {
 			return usageQuota != null ? usageQuota : UsageQuotaConfig.defaults();
+		}
+	}
+
+	/**
+	 * Agent 工具调用子系统配置（绑定 {@code app.ai.agent.*}）。
+	 *
+	 * @param enabled         Agent 模式服务端总开关；false 时即使前端开启 agentEnabled 也不装配工具
+	 * @param maxToolCalls     单次请求内允许连续调用工具的最大次数（防止 LLM 死循环消耗 Token）
+	 * @param timeoutSeconds   单次工具执行的超时上限（秒）
+	 */
+	public record AgentConfig(
+			@Nullable Boolean enabled,
+			@Name("max-tool-calls") @Nullable Integer maxToolCalls,
+			@Name("timeout-seconds") @Nullable Integer timeoutSeconds
+	) {
+
+		public static AgentConfig defaults() {
+			return new AgentConfig(true, 5, 30);
+		}
+
+		public boolean isEnabled() {
+			return enabled == null || enabled;
+		}
+
+		public int resolveMaxToolCalls() {
+			return (maxToolCalls != null && maxToolCalls > 0) ? maxToolCalls : 5;
+		}
+
+		public int resolveTimeoutSeconds() {
+			return (timeoutSeconds != null && timeoutSeconds > 0) ? timeoutSeconds : 30;
 		}
 	}
 

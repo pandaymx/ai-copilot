@@ -62,7 +62,7 @@ class ChatControllerTest {
 
 	@Test
 	void testChatEndpoint() {
-		ChatRequest req = new ChatRequest("Hi", null, "openai", "gpt-4o", null, "conv-1", "user-1", null);
+		ChatRequest req = new ChatRequest("Hi", null, "openai", "gpt-4o", null, "conv-1", "user-1", null, null);
 		ChatResponseDto dto = new ChatResponseDto("Hello!", "openai", "gpt-4o", "conv-1", null, null);
 		when(chatService.chat(req, "user-1")).thenReturn(Mono.just(dto));
 

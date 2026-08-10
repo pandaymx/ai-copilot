@@ -22,6 +22,17 @@ export function useStreamData(store: StreamStore): StreamData {
   );
 }
 
+/** 单个工具调用的状态（前端侧，用于渲染工具卡片）。 */
+export interface ToolCallItem {
+  callId: string;
+  name: string;
+  /** 工具入参，已序列化的 JSON 字符串（渲染时再做安全解析展示）。 */
+  arguments: string;
+  /** 工具返回结果，已序列化的 JSON 字符串；status 为 calling 时为空。 */
+  result?: string;
+  status: "calling" | "success" | "error";
+}
+
 export interface UseSpringAiStreamOptions {
   /** 后端流式接口地址，默认复用 Spring AI 的 SSE 端点。 */
   endpoint?: string;
@@ -49,6 +60,10 @@ export interface UseSpringAiStreamOptions {
     totalTokens: number;
     estimatedCostRmb?: number;
   }) => void;
+  /** 收到 tool_call 帧（工具开始执行）时的回调 */
+  onToolCall?: (item: ToolCallItem) => void;
+  /** 收到 tool_result 帧（工具执行完成/失败）时的回调 */
+  onToolResult?: (item: ToolCallItem) => void;
   /** 流完整结束后回调（成功完成或异常均触发），参数为最终累计文本、思考过程与 Token 用量。 */
   onFinish?: (
     finalContent: string,
@@ -97,10 +112,17 @@ export interface StreamData {
     totalTokens: number;
     estimatedCostRmb?: number;
   } | null;
+  /** 工具调用列表，以 callId 为唯一 key（Map 结构用普通对象表达以保证快照不可变）。 */
+  toolCalls: Record<string, ToolCallItem>;
 }
 
 export class StreamStore {
-  private data: StreamData = { content: "", thinking: "", usage: null };
+  private data: StreamData = {
+    content: "",
+    thinking: "",
+    usage: null,
+    toolCalls: {},
+  };
   private listeners = new Set<() => void>();
 
   getSnapshot = (): StreamData => {
@@ -115,14 +137,32 @@ export class StreamStore {
   };
 
   update(content: string, thinking: string, usage: StreamData["usage"]) {
-    this.data = { content, thinking, usage };
+    this.data = { ...this.data, content, thinking, usage };
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+
+  /** 以 callId 为 key 增量更新某个工具调用项（保证并行多 tool_call 不互相覆盖、不顺序颠倒）。 */
+  updateToolCall(callId: string, patch: Partial<ToolCallItem>) {
+    const prev = this.data.toolCalls[callId] ?? {
+      callId,
+      name: "",
+      arguments: "",
+      status: "calling" as const,
+    };
+    const next = { ...prev, ...patch, callId };
+    this.data = {
+      ...this.data,
+      toolCalls: { ...this.data.toolCalls, [callId]: next },
+    };
     for (const listener of this.listeners) {
       listener();
     }
   }
 
   reset() {
-    this.data = { content: "", thinking: "", usage: null };
+    this.data = { content: "", thinking: "", usage: null, toolCalls: {} };
     for (const listener of this.listeners) {
       listener();
     }
@@ -193,6 +233,8 @@ export function useSpringAiStream(
     onConversationId,
     onReasoning,
     onUsage,
+    onToolCall,
+    onToolResult,
     onFinish,
   } = options;
 
@@ -338,6 +380,29 @@ export function useSpringAiStream(
                   onReasoning?.(parsed.reasoning);
                   return;
                 }
+                if (parsed?.type === "tool_call") {
+                  const item: ToolCallItem = {
+                    callId: parsed.toolCallId,
+                    name: parsed.toolName ?? "tool",
+                    arguments: parsed.arguments ?? "",
+                    status: "calling",
+                  };
+                  streamStoreRef.current.updateToolCall(item.callId, item);
+                  onToolCall?.(item);
+                  return;
+                }
+                if (parsed?.type === "tool_result") {
+                  const item: ToolCallItem = {
+                    callId: parsed.toolCallId,
+                    name: parsed.toolName ?? "tool",
+                    arguments: "",
+                    result: parsed.result ?? "",
+                    status: parsed.isError ? "error" : "success",
+                  };
+                  streamStoreRef.current.updateToolCall(item.callId, item);
+                  onToolResult?.(item);
+                  return;
+                }
                 if (parsed?.type === "usage" && parsed.usage) {
                   usageRef.current = parsed.usage;
                   setUsage(parsed.usage);
@@ -387,6 +452,8 @@ export function useSpringAiStream(
       onConversationId,
       onReasoning,
       onUsage,
+      onToolCall,
+      onToolResult,
       onFinish,
       flushState,
       scheduleUpdate,

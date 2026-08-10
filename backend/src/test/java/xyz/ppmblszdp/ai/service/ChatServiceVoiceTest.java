@@ -20,6 +20,7 @@ import org.springframework.ai.openai.OpenAiAudioSpeechModel;
 import org.springframework.beans.factory.ObjectProvider;
 
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
+import xyz.ppmblszdp.ai.tool.ToolEventEmitter;
 import xyz.ppmblszdp.ai.dto.TtsRequest;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
 
@@ -34,6 +35,8 @@ class ChatServiceVoiceTest {
 		// 返回真实默认值，避免构造器内 resolveMemory().isEnabled() 出现 NPE
 		when(properties.resolveMemory())
 				.thenReturn(AiProviderProperties.MemoryConfig.defaults());
+		when(properties.resolveAgent())
+				.thenReturn(AiProviderProperties.AgentConfig.defaults());
 		return properties;
 	}
 
@@ -42,7 +45,7 @@ class ChatServiceVoiceTest {
 		ObjectProvider<OpenAiAudioSpeechModel> provider = mock(ObjectProvider.class);
 		when(provider.getIfAvailable()).thenReturn(speech);
 		return new ChatService(null, null, null, null, null, null, null, null, null,
-				null, null, null, null, mockProperties(), provider);
+				null, null, null, null, mockProperties(), provider, new ToolEventEmitter(mockProperties()), null);
 	}
 
 	@Test
@@ -70,7 +73,7 @@ class ChatServiceVoiceTest {
 		ObjectProvider<OpenAiAudioSpeechModel> provider = mock(ObjectProvider.class);
 		when(provider.getIfAvailable()).thenReturn(null);
 		ChatService svc = new ChatService(null, null, null, null, null, null, null, null, null,
-				null, null, null, null, mockProperties(), provider);
+				null, null, null, null, mockProperties(), provider, new ToolEventEmitter(mockProperties()), null);
 		assertThrows(IllegalStateException.class,
 				() -> svc.synthesizeSpeech("hi", null, "u1").block());
 	}

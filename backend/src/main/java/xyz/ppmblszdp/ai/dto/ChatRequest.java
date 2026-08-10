@@ -21,6 +21,7 @@ import java.util.List;
  * @param systemPrompt  本次请求覆盖的系统提示词（可选）
  * @param conversationId 会话 id（可选）；有值时走记忆驱动路径
  * @param userId        用户 id（可选）；长期记忆隔离维度
+ * @param agentEnabled  Agent 模式开关（可选）；为 true 时装配工具调用并推送 tool_call/tool_result 帧
  */
 public record ChatRequest(
 		String message,
@@ -30,7 +31,8 @@ public record ChatRequest(
 		String systemPrompt,
 		String conversationId,
 		String userId,
-		List<MediaDto> media
+		List<MediaDto> media,
+		Boolean agentEnabled
 ) {
 	public List<MediaDto> media() {
 		return media == null ? List.of() : media;
@@ -54,7 +56,7 @@ public record ChatRequest(
 
 	/** 返回一个带指定 conversationId 的副本（record 不可变，用于后端生成后回填）。 */
 	public ChatRequest withConversationId(String id) {
-		return new ChatRequest(message, history, provider, model, systemPrompt, id, userId, media);
+		return new ChatRequest(message, history, provider, model, systemPrompt, id, userId, media, agentEnabled);
 	}
 
 	/**

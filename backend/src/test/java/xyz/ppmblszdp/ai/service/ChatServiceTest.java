@@ -14,6 +14,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
+import xyz.ppmblszdp.ai.config.AiProviderProperties.MemoryConfig;
 import xyz.ppmblszdp.ai.context.ContextAssembler;
 import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
@@ -26,10 +27,12 @@ import xyz.ppmblszdp.ai.memory.ChatRateLimiter.RateLimiter;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryAdvisorFactory;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryWriter;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryProcessor;
-import xyz.ppmblszdp.ai.memory.UsageQuotaChecker;
-import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig;
+import xyz.ppmblszdp.ai.memory.UsageQuotaChecker.UsageQuota;
+import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig.RagAdvisorFactory;
 import xyz.ppmblszdp.ai.repository.UsageRepository;
 import xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor;
+import xyz.ppmblszdp.ai.tool.ToolEventEmitter;
+import org.springframework.ai.tool.ToolCallback;
 
 import java.util.List;
 import java.util.concurrent.TimeoutException;
@@ -79,6 +82,10 @@ class ChatServiceTest {
 		when(memoryConfig.isEnabled()).thenReturn(false);
 		when(properties.resolveMemory()).thenReturn(memoryConfig);
 
+		AiProviderProperties.AgentConfig agentConfig = mock(AiProviderProperties.AgentConfig.class);
+		when(agentConfig.isEnabled()).thenReturn(false);
+		when(properties.resolveAgent()).thenReturn(agentConfig);
+
 		chatModel = mock(ChatModel.class);
 		when(chatModel.getOptions()).thenReturn(OpenAiChatOptions.builder().build());
 
@@ -97,8 +104,8 @@ class ChatServiceTest {
 		when(registry.resolve(any(), any())).thenReturn(resolved);
 
 		ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor = mock(ObjectProvider.class);
-		ObjectProvider<RagAdvisorConfig.RagAdvisorFactory> ragAdvisorFactory = mock(ObjectProvider.class);
-		ObjectProvider<UsageQuotaChecker.UsageQuota> usageQuota = mock(ObjectProvider.class);
+		ObjectProvider<RagAdvisorFactory> ragAdvisorFactory = mock(ObjectProvider.class);
+		ObjectProvider<UsageQuota> usageQuota = mock(ObjectProvider.class);
 		UsageRepository usageRepository = mock(UsageRepository.class);
 
 		chatService = new ChatService(
@@ -116,7 +123,9 @@ class ChatServiceTest {
 				new ModelHealthTracker(),
 				sessionService,
 				properties,
-				speechModelProvider);
+				speechModelProvider,
+				new ToolEventEmitter(properties),
+				new ToolCallback[0]);
 	}
 
 	@Test
@@ -124,7 +133,7 @@ class ChatServiceTest {
 		ChatResponse chatResponse = new ChatResponse(List.of(new Generation(new AssistantMessage("Hello, world!"))));
 		when(chatModel.call(any(Prompt.class))).thenReturn(chatResponse);
 
-		ChatRequest request = new ChatRequest("Hello", null, "openai", "gpt-4o", null, null, null, null);
+		ChatRequest request = new ChatRequest("Hello", null, "openai", "gpt-4o", null, null, null, null, null);
 		Mono<ChatResponseDto> resultMono = chatService.chat(request, "user-1");
 
 		StepVerifier.create(resultMono)
@@ -144,7 +153,7 @@ class ChatServiceTest {
 			throw new TimeoutException("Read timed out");
 		});
 
-		ChatRequest request = new ChatRequest("Hello", null, "openai", "gpt-4o", null, null, null, null);
+		ChatRequest request = new ChatRequest("Hello", null, "openai", "gpt-4o", null, null, null, null, null);
 		Mono<ChatResponseDto> resultMono = chatService.chat(request, "user-1");
 
 		StepVerifier.create(resultMono)
@@ -189,7 +198,7 @@ class ChatServiceTest {
 				List.of(new Generation(new AssistantMessage("Fallback success!"))));
 		when(fallbackModel.call(any(Prompt.class))).thenReturn(fallbackResp);
 
-		ChatRequest request = new ChatRequest("Hi", null, "deepseek", "deepseek-chat", null, null, null, null);
+		ChatRequest request = new ChatRequest("Hi", null, "deepseek", "deepseek-chat", null, null, null, null, null);
 		Mono<ChatResponseDto> resultMono = chatService.chat(request, "user-1");
 
 		StepVerifier.create(resultMono)
@@ -204,7 +213,7 @@ class ChatServiceTest {
 
 	@Test
 	void testChatWithLongTermMemoryExceptionDoesNotFailMainFlow() throws InterruptedException {
-		AiProviderProperties.MemoryConfig memoryConfig = mock(AiProviderProperties.MemoryConfig.class);
+		MemoryConfig memoryConfig = mock(MemoryConfig.class);
 		when(memoryConfig.isEnabled()).thenReturn(true);
 		when(properties.resolveMemory()).thenReturn(memoryConfig);
 
@@ -220,9 +229,9 @@ class ChatServiceTest {
 		@SuppressWarnings("unchecked")
 		ObjectProvider<SafeGuardAdvisor> mockSafeGuardAdvisor = mock(ObjectProvider.class);
 		@SuppressWarnings("unchecked")
-		ObjectProvider<RagAdvisorConfig.RagAdvisorFactory> mockRagAdvisorFactory = mock(ObjectProvider.class);
+		ObjectProvider<RagAdvisorFactory> mockRagAdvisorFactory = mock(ObjectProvider.class);
 		@SuppressWarnings("unchecked")
-		ObjectProvider<UsageQuotaChecker.UsageQuota> usageQuota = mock(ObjectProvider.class);
+		ObjectProvider<UsageQuota> usageQuota = mock(ObjectProvider.class);
 		UsageRepository usageRepository = mock(UsageRepository.class);
 
 		ChatService enabledChatService = new ChatService(
@@ -240,12 +249,14 @@ class ChatServiceTest {
 				new ModelHealthTracker(),
 				sessionService,
 				properties,
-				speechModelProvider);
+				speechModelProvider,
+				new ToolEventEmitter(properties),
+				new ToolCallback[0]);
 
 		ChatResponse chatResponse = new ChatResponse(List.of(new Generation(new AssistantMessage("Hello!"))));
 		when(chatModel.call(any(Prompt.class))).thenReturn(chatResponse);
 
-		ChatRequest request = new ChatRequest("Hi", null, "openai", "gpt-4o", null, "conv-1", "user-1", null);
+		ChatRequest request = new ChatRequest("Hi", null, "openai", "gpt-4o", null, "conv-1", "user-1", null, null);
 		Mono<ChatResponseDto> resultMono = enabledChatService.chat(request, "user-1");
 
 		StepVerifier.create(resultMono)

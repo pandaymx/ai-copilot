@@ -34,6 +34,7 @@ import { type ChatSession, Sidebar } from "@/components/chat/sidebar";
 import { VoiceRecorderButton } from "@/components/chat/voice-recorder-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { useSpringAiStream } from "@/hooks/useSpringAiStream";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import {
@@ -245,6 +246,7 @@ export default function Home() {
   });
 
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+  const [agentEnabled, setAgentEnabled] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 语音录制：录音停止后自动上传转写并回填输入框
@@ -612,6 +614,7 @@ export default function Home() {
         conversationId: currentConvId,
         history: historyPayload,
         media: mediaPayload.length > 0 ? mediaPayload : undefined,
+        agentEnabled,
       });
     },
     [
@@ -622,6 +625,7 @@ export default function Home() {
       model.model,
       model.provider,
       send,
+      agentEnabled,
       activeId,
     ],
   );
@@ -850,6 +854,15 @@ export default function Home() {
             )}
 
             <div className="flex items-end gap-2">
+              <div className="flex h-9 shrink-0 items-center rounded-xl border border-zinc-200/80 bg-zinc-50/60 px-2.5 transition-colors dark:border-zinc-800/80 dark:bg-zinc-800/50">
+                <Switch
+                  checked={agentEnabled}
+                  onCheckedChange={setAgentEnabled}
+                  label="Agent"
+                  badge="Agent"
+                  id="agent-mode-switch"
+                />
+              </div>
               <textarea
                 ref={textareaRef}
                 value={input}

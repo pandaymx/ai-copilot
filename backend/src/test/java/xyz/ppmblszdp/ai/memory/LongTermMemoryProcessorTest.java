@@ -26,7 +26,7 @@ class LongTermMemoryProcessorTest {
 		properties = new AiProviderProperties(
 				null, null, null, null, null, null,
 				new AiProviderProperties.MemoryConfig(true, 20, 5, true, 0.85d, 15, true, 5, 14, null, null),
-				null, null, null
+				null, null, null, null
 		);
 		processor = new LongTermMemoryProcessor(mockVectorStore, null, properties);
 	}
