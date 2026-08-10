@@ -27,6 +27,12 @@ public class UserIdentityFilter implements WebFilter {
 	public static final String ATTR_HEADER_PRESENT = "userId.from.header";
 	public static final String ATTR_HEADER_VALUE = "userId.header.value";
 
+	/**
+	 * 缺真实身份（无 X-User-Id 头且非 strict）时的默认身份。
+	 * 集中定义以确保入库（RagController.ingest）与检索（RagAdvisorConfig /search）口径一致。
+	 */
+	public static final String DEFAULT_USER_ID = "system";
+
 	private final AuthProperties authProperties;
 
 	public UserIdentityFilter(AuthProperties authProperties) {

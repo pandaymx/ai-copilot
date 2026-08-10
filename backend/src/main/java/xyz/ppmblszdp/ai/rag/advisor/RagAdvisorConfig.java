@@ -15,6 +15,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import xyz.ppmblszdp.ai.identity.UserIdentityFilter;
 import xyz.ppmblszdp.ai.memory.SafeVectorStore;
 import xyz.ppmblszdp.ai.rag.RagProperties;
 
@@ -53,7 +54,7 @@ public class RagAdvisorConfig {
 
         return (userId, sourceType) -> {
             FilterExpressionBuilder feb = new FilterExpressionBuilder();
-            var op = feb.eq("userId", (userId != null && !userId.isBlank()) ? userId : "system");
+            var op = feb.eq("userId", (userId != null && !userId.isBlank()) ? userId : UserIdentityFilter.DEFAULT_USER_ID);
             Filter.Expression filter;
             if (sourceType != null && !sourceType.isBlank()) {
                 filter = feb.and(op, feb.eq("sourceType", sourceType)).build();

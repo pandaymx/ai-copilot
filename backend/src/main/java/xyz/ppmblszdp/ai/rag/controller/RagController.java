@@ -5,6 +5,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ServerWebExchange;
+import xyz.ppmblszdp.ai.identity.AuthProperties;
+import xyz.ppmblszdp.ai.identity.UserIdentityFilter;
 import xyz.ppmblszdp.ai.rag.reader.SourceType;
 import xyz.ppmblszdp.ai.rag.security.SsrfBlockedException;
 import xyz.ppmblszdp.ai.rag.service.RagIngestionService;
@@ -32,10 +35,13 @@ public class RagController {
 
     private final RagIngestionService ingestionService;
     private final RagQueryService queryService;
+    private final AuthProperties authProperties;
 
-    public RagController(RagIngestionService ingestionService, RagQueryService queryService) {
+    public RagController(RagIngestionService ingestionService, RagQueryService queryService,
+                         AuthProperties authProperties) {
         this.ingestionService = ingestionService;
         this.queryService = queryService;
+        this.authProperties = authProperties;
     }
 
     /**
@@ -45,7 +51,7 @@ public class RagController {
      */
     @PostMapping("/ingest")
     public ResponseEntity<Map<String, Object>> ingest(
-            @RequestBody IngestRequest request) {
+            @RequestBody IngestRequest request, ServerWebExchange exchange) {
 
         SourceType sourceType;
         try {
@@ -80,8 +86,8 @@ public class RagController {
         };
 
         String fileName = (request.fileName() != null) ? request.fileName() : source;
-        // userId 暂时用 system；后续扩展可从认证上下文提取
-        String userId = "system";
+        // 取真实身份（与 ChatController 检索口径一致），缺真实身份时回退到 DEFAULT_USER_ID
+        String userId = UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
 
         try {
             int chunks = ingestionService.ingest(sourceType, source, fileName, userId);
@@ -108,14 +114,14 @@ public class RagController {
      * 语义相似检索。
      *
      * @param query      查询文本（必填）
-     * @param userId     用户 ID（可选，默认 "system"）
+     * @param userId     用户 ID（可选，默认 {@code UserIdentityFilter.DEFAULT_USER_ID}）
      * @param sourceType 来源类型过滤（可选）
      * @param topK       Top-K（可选，默认使用配置值）
      */
     @GetMapping("/search")
     public ResponseEntity<Map<String, Object>> search(
             @RequestParam String query,
-            @RequestParam(defaultValue = "system") String userId,
+            @RequestParam(defaultValue = UserIdentityFilter.DEFAULT_USER_ID) String userId,
             @RequestParam(required = false) String sourceType,
             @RequestParam(defaultValue = "0") int topK) {
 
