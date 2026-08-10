@@ -275,6 +275,8 @@ data: [DONE]
 
 > 流末补发 `[DONE]`；中途异常转为一条错误事件后正常结束，不会让前端只见网络错误。
 
+完整的帧类型（含 `tool_call` / `tool_result` / `artifact`）、字段定义、发送顺序约定与前端消费指引，见独立协议文档 [SSE 流式协议说明](docs/sse-protocol.md)。
+
 ### 5.2 非流式对话 `POST /api/chat`
 
 请求体同上，一次性返回：
