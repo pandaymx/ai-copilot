@@ -51,10 +51,10 @@ class RagIngestionServiceTest {
                 .thenReturn(List.of(rawDoc));
 
         // 执行入库
-        int chunks = ingestionService.ingest(SourceType.TEXT, rawText, "inline.txt", "user-001");
+        var result = ingestionService.ingest(SourceType.TEXT, rawText, "inline.txt", "user-001");
 
         // 断言返回的 chunk 数 >= 1
-        assertThat(chunks).isGreaterThanOrEqualTo(1);
+        assertThat(result.ingested()).isGreaterThanOrEqualTo(1);
 
         // 断言 VectorStore.add 至少被调用一次
         @SuppressWarnings("unchecked")
@@ -90,12 +90,14 @@ class RagIngestionServiceTest {
         // 此处验证：当 DB 异常时，IngestionService 应捕获并记录日志（调用层面应抛异常）
         assertThat(assertThrowsRuntime(() -> ingestionService.ingest(SourceType.TEXT, rawText, "test.txt", "user-x")))
                 .isTrue();
+        verify(mockVectorStore, atLeastOnce()).add(any());
     }
 
     @Test
     void ingest_shouldSkipEmptySource() {
-        int chunks = ingestionService.ingest(SourceType.TEXT, "", "", "user-x");
-        assertThat(chunks).isZero();
+        var result = ingestionService.ingest(SourceType.TEXT, "", "", "user-x");
+        assertThat(result.ingested()).isZero();
+        assertThat(result.skipped()).isZero();
         verifyNoInteractions(mockVectorStore);
         verifyNoInteractions(mockReaderFactory);
     }

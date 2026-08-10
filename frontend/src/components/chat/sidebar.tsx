@@ -4,6 +4,7 @@ import {
   Calendar,
   Check,
   CloudOff,
+  Database,
   Edit2,
   MessageSquare,
   PanelLeftClose,
@@ -13,6 +14,7 @@ import {
   Trash2,
   User,
 } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -177,6 +179,17 @@ export function Sidebar({
                 <Search className="size-4 text-zinc-500 dark:text-zinc-400" />
               </button>
             )}
+          </div>
+
+          {/* 知识库管理入口（任务 7.4） */}
+          <div className="px-0.5 pt-1">
+            <Link
+              href="/knowledge"
+              className="group flex items-center gap-2 rounded-xl border border-zinc-200/70 bg-white/70 px-3 py-2.5 text-xs font-semibold text-zinc-700 shadow-xs transition-all duration-200 hover:border-indigo-500/40 hover:bg-white hover:text-indigo-600 hover:shadow-md hover:shadow-indigo-500/10 dark:border-zinc-800/70 dark:bg-zinc-900/50 dark:text-zinc-200 dark:hover:border-indigo-500/50 dark:hover:bg-zinc-900 dark:hover:text-indigo-400"
+            >
+              <Database className="size-4 text-indigo-500 transition-transform duration-200 group-hover:scale-110" />
+              <span>知识库管理</span>
+            </Link>
           </div>
         </div>
 

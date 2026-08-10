@@ -122,3 +122,181 @@ export async function searchChatHistoryApi(
     return null;
   }
 }
+
+// ====================== 知识库（RAG）管理 API ======================
+
+export interface RagDocumentMeta {
+  docId: string;
+  source: string;
+  sourceType: string;
+  fileName: string;
+  title: string;
+  userId: string;
+  chunkCount: number;
+  ingestedAt: string;
+  contentHash: string;
+}
+
+export interface RagListResponse {
+  items: RagDocumentMeta[];
+  total: number;
+  sourceTypeCounts: Record<string, number>;
+}
+
+export interface RagStatus {
+  enabled: boolean;
+  available: boolean;
+  collectionName: string;
+  documentCount: number;
+  vectorCount: number;
+}
+
+export interface RagIngestResult {
+  success: boolean;
+  sourceType: string;
+  source: string;
+  ingested: number;
+  skipped: number;
+  /** 重新入库（reingest）时返回，表示被移除的旧向量条数。 */
+  removed?: number;
+  error?: string;
+  detail?: string;
+}
+
+export interface RagDeleteResult {
+  success: boolean;
+  source: string;
+  userId: string;
+  removed: number;
+  error?: string;
+  detail?: string;
+}
+
+/** 拉取已入库文档列表（按 source 聚合）。 */
+export async function ragListApi(
+  userId?: string,
+  sourceType?: string,
+  limit = 50,
+  signal?: AbortSignal,
+): Promise<RagListResponse | null> {
+  const params = new URLSearchParams();
+  if (userId) params.set("userId", userId);
+  if (sourceType) params.set("sourceType", sourceType);
+  params.set("limit", String(limit));
+  try {
+    const res = await fetch(`/api/rag/documents?${params.toString()}`, {
+      signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as RagListResponse;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}
+
+/** 上传入库（多源联合 DTO）。 */
+export async function ragUploadApi(payload: {
+  sourceType: string;
+  rawText?: string;
+  targetUrl?: string;
+  fileStoragePath?: string;
+  fileName?: string;
+}): Promise<RagIngestResult | null> {
+  try {
+    const res = await fetch("/api/rag/ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = (await res.json()) as RagIngestResult;
+    if (!res.ok) {
+      return {
+        success: false,
+        sourceType: payload.sourceType,
+        source: "",
+        ingested: 0,
+        skipped: 0,
+        error: data.error,
+        detail: data.detail,
+      };
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/** 覆盖更新（重新入库）。 */
+export async function ragReingestApi(payload: {
+  sourceType: string;
+  rawText?: string;
+  targetUrl?: string;
+  fileStoragePath?: string;
+  fileName?: string;
+}): Promise<RagIngestResult | null> {
+  try {
+    const res = await fetch("/api/rag/reingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = (await res.json()) as RagIngestResult;
+    if (!res.ok) {
+      return {
+        success: false,
+        sourceType: payload.sourceType,
+        source: "",
+        ingested: 0,
+        skipped: 0,
+        error: data.error,
+        detail: data.detail,
+      };
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/** 按 source 删除文档。 */
+export async function ragDeleteApi(
+  source: string,
+  userId?: string,
+): Promise<RagDeleteResult | null> {
+  const params = new URLSearchParams({ source });
+  if (userId) params.set("userId", userId);
+  try {
+    const res = await fetch(`/api/rag/documents?${params.toString()}`, {
+      method: "DELETE",
+    });
+    const data = (await res.json()) as RagDeleteResult;
+    if (!res.ok) {
+      return {
+        success: false,
+        source,
+        userId: userId ?? "",
+        removed: 0,
+        error: data.error,
+        detail: data.detail,
+      };
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/** 向量库状态统计。 */
+export async function ragStatusApi(
+  signal?: AbortSignal,
+): Promise<RagStatus | null> {
+  try {
+    const res = await fetch("/api/rag/status", { signal });
+    if (!res.ok) return null;
+    return (await res.json()) as RagStatus;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}

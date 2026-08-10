@@ -112,6 +112,42 @@ function getClientIp(req: NextRequest): string {
   );
 }
 
+// RAG 入库/重入库涉及文本切块与多次 Embedding 请求，耗时较长，给予更长超时。
+const RAG_INGEST_TIMEOUT_MS = 60_000;
+
+function isRagIngestPath(path: string[]): boolean {
+  return (
+    path.length >= 2 &&
+    path[0] === "rag" &&
+    (path[1] === "ingest" || path[1] === "reingest")
+  );
+}
+
+/**
+ * 合并「客户端断开」与「长时间未响应超时」两个信号。
+ * RAG 入库等耗时端点超时后中止后端请求，避免代理连接长期挂死。
+ */
+function createProxySignal(
+  req: NextRequest,
+  timeoutMs?: number,
+): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController();
+  const onClientAbort = () => controller.abort();
+  req.signal.addEventListener("abort", onClientAbort);
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  if (timeoutMs && timeoutMs > 0) {
+    timer = setTimeout(() => controller.abort(), timeoutMs);
+  }
+
+  const cleanup = () => {
+    req.signal.removeEventListener("abort", onClientAbort);
+    if (timer) clearTimeout(timer);
+  };
+
+  return { signal: controller.signal, cleanup };
+}
+
 function getTargetUrl(pathSegments: string[], search: string): string {
   const cleanBase = BACKEND_BASE_URL.replace(/\/api\/:path\*/, "")
     .replace(/\/api$/, "")
@@ -176,17 +212,18 @@ export async function POST(
 
   try {
     const bodyText = await req.text();
-    // 客户端断开（如用户取消 SSE 流）时主动 abort 后端请求，
-    // 让后端 stream 感知取消并释放上游连接，避免空转产生 token 浪费资源。
-    const abortController = new AbortController();
-    const onClientAbort = () => abortController.abort();
-    req.signal.addEventListener("abort", onClientAbort);
+    // 合并「客户端断开」与「耗时超时」信号：RAG 入库给予更长超时，
+    // 避免大文件切块 + 多次 Embedding 期间代理连接长期挂死。
+    const { signal, cleanup } = createProxySignal(
+      req,
+      isRagIngestPath(path) ? RAG_INGEST_TIMEOUT_MS : undefined,
+    );
 
     const backendRes = await fetch(targetUrl, {
       method: "POST",
       headers: getForwardHeaders(req),
       body: bodyText,
-      signal: abortController.signal,
+      signal,
     });
 
     const isSse =
@@ -195,13 +232,11 @@ export async function POST(
 
     if (isSse && backendRes.body) {
       const { readable, writable } = new TransformStream();
-      // 代理写端关闭（客户端已断开）时取消监听并中止后端请求，释放上游资源。
+      // 代理写端关闭（客户端已断开或超时）时取消监听并中止后端请求，释放上游资源。
       const pipeDone = backendRes.body.pipeTo(writable);
-      pipeDone
-        .catch(() => abortController.abort())
-        .finally(() => req.signal.removeEventListener("abort", onClientAbort));
+      pipeDone.catch(() => cleanup()).finally(cleanup);
       if (req.signal.aborted) {
-        abortController.abort();
+        cleanup();
       }
 
       return new Response(readable, {
@@ -216,8 +251,33 @@ export async function POST(
       });
     }
 
-    req.signal.removeEventListener("abort", onClientAbort);
+    cleanup();
 
+    return new Response(backendRes.body, {
+      status: backendRes.status,
+      headers: copyBackendHeaders(backendRes),
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { error: true, message: (err as Error).message },
+      { status: 500, headers: fallbackCors },
+    );
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> },
+) {
+  const fallbackCors = getFallbackCorsHeaders(req);
+  const { path } = await params;
+  const targetUrl = getTargetUrl(path, req.nextUrl.search);
+
+  try {
+    const backendRes = await fetch(targetUrl, {
+      method: "DELETE",
+      headers: getForwardHeaders(req),
+    });
     return new Response(backendRes.body, {
       status: backendRes.status,
       headers: copyBackendHeaders(backendRes),

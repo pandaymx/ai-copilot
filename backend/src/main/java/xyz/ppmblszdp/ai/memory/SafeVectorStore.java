@@ -90,4 +90,12 @@ public class SafeVectorStore implements VectorStore {
 	public String getName() {
 		return (delegate != null) ? delegate.getName() : "SafeVectorStore";
 	}
+
+	/**
+	 * 底层向量库是否可用（delegate 非 null 视为已装配）。
+	 * 供管理类状态端点判断可用性，而不依赖会被静默吞掉的检索调用。
+	 */
+	public boolean isAvailable() {
+		return delegate != null;
+	}
 }
