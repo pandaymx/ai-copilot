@@ -1,12 +1,15 @@
 package xyz.ppmblszdp.ai.controller;
 
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.test.StepVerifier;
 import xyz.ppmblszdp.ai.dto.ChatFeedbackRequest;
 import xyz.ppmblszdp.ai.dto.SessionDto;
+import xyz.ppmblszdp.ai.dto.TitleRequest;
 import xyz.ppmblszdp.ai.identity.AuthProperties;
 import xyz.ppmblszdp.ai.identity.UserIdentityFilter;
 import xyz.ppmblszdp.ai.service.ChatService;
@@ -88,19 +91,19 @@ class MultiTenantAuthTest {
 
 	@Test
 	void strictModeMissingHeaderReturns401() {
-		org.springframework.web.server.ResponseStatusException ex = org.junit.jupiter.api.Assertions.assertThrows(
-				org.springframework.web.server.ResponseStatusException.class,
+		ResponseStatusException ex = Assertions.assertThrows(
+				ResponseStatusException.class,
 				() -> sessionController.getSessions(exchangeWithoutHeader()));
 		assertEquals(HttpStatus.UNAUTHORIZED, ex.getStatusCode());
 	}
 
 	@Test
-	void devModeMissingHeaderFallsBackToAnonymous() {
+	void devModeMissingHeaderFallsBackToDefaultUser() {
 		SessionController devController = new SessionController(sessionService, devAuth);
-		when(sessionService.getAllSessions("anonymous")).thenReturn(List.of());
+		when(sessionService.getAllSessions(UserIdentityFilter.DEFAULT_USER_ID)).thenReturn(List.of());
 		var resp = devController.getSessions(exchangeWithoutHeader());
 		assertEquals(0, resp.getBody().size());
-		verify(sessionService).getAllSessions("anonymous");
+		verify(sessionService).getAllSessions(UserIdentityFilter.DEFAULT_USER_ID);
 	}
 
 	@Test
@@ -137,10 +140,10 @@ class MultiTenantAuthTest {
 
 	@Test
 	void titleEndpointCrossUserReturns404() {
-		xyz.ppmblszdp.ai.dto.TitleRequest req = new xyz.ppmblszdp.ai.dto.TitleRequest("Hi", "Hello", "openai", "gpt-4o", "conv-other");
+		TitleRequest req = new TitleRequest("Hi", "Hello", "openai", "gpt-4o", "conv-other");
 		when(sessionService.findSession("conv-other", "alice")).thenReturn(Optional.empty());
 		StepVerifier.create(chatController.title(req, exchangeWithUser("alice")))
-				.expectErrorMatches(t -> t instanceof org.springframework.web.server.ResponseStatusException ex
+				.expectErrorMatches(t -> t instanceof ResponseStatusException ex
 						&& ex.getStatusCode() == HttpStatus.NOT_FOUND)
 				.verify();
 	}

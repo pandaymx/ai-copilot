@@ -65,6 +65,6 @@ public class UserIdentityFilter implements WebFilter {
 		if (authProperties.isStrict()) {
 			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing " + authProperties.headerName() + " header");
 		}
-		return (dtoUserId != null && !dtoUserId.isBlank()) ? dtoUserId : "anonymous";
+		return (dtoUserId != null && !dtoUserId.isBlank()) ? dtoUserId : DEFAULT_USER_ID;
 	}
 }
