@@ -45,7 +45,7 @@ class ChatServiceVoiceTest {
 		ObjectProvider<OpenAiAudioSpeechModel> provider = mock(ObjectProvider.class);
 		when(provider.getIfAvailable()).thenReturn(speech);
 		return new ChatService(null, null, null, null, null, null, null, null, null,
-				null, null, null, null, mockProperties(), provider, new ToolEventEmitter(mockProperties()), null);
+				null, null, null, null, mockProperties(), provider, new ToolEventEmitter(mockProperties()), null, null);
 	}
 
 	@Test
@@ -73,7 +73,7 @@ class ChatServiceVoiceTest {
 		ObjectProvider<OpenAiAudioSpeechModel> provider = mock(ObjectProvider.class);
 		when(provider.getIfAvailable()).thenReturn(null);
 		ChatService svc = new ChatService(null, null, null, null, null, null, null, null, null,
-				null, null, null, null, mockProperties(), provider, new ToolEventEmitter(mockProperties()), null);
+				null, null, null, null, mockProperties(), provider, new ToolEventEmitter(mockProperties()), null, null);
 		assertThrows(IllegalStateException.class,
 				() -> svc.synthesizeSpeech("hi", null, "u1").block());
 	}

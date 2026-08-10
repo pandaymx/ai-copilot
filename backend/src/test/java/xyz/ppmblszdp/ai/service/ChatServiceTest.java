@@ -32,6 +32,7 @@ import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig.RagAdvisorFactory;
 import xyz.ppmblszdp.ai.repository.UsageRepository;
 import xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor;
 import xyz.ppmblszdp.ai.tool.ToolEventEmitter;
+import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
 
 import java.util.List;
@@ -63,6 +64,8 @@ class ChatServiceTest {
 	private ChatService chatService;
 	@SuppressWarnings("unchecked")
 	private ObjectProvider<OpenAiAudioSpeechModel> speechModelProvider = mock(ObjectProvider.class);
+	@SuppressWarnings("unchecked")
+	private ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider = mock(ObjectProvider.class);
 
 	@BeforeEach
 	@SuppressWarnings("unchecked")
@@ -125,7 +128,8 @@ class ChatServiceTest {
 				properties,
 				speechModelProvider,
 				new ToolEventEmitter(properties),
-				new ToolCallback[0]);
+				new ToolCallback[0],
+				mcpToolProvider);
 	}
 
 	@Test
@@ -232,6 +236,8 @@ class ChatServiceTest {
 		ObjectProvider<RagAdvisorFactory> mockRagAdvisorFactory = mock(ObjectProvider.class);
 		@SuppressWarnings("unchecked")
 		ObjectProvider<UsageQuota> usageQuota = mock(ObjectProvider.class);
+		@SuppressWarnings("unchecked")
+		ObjectProvider<SyncMcpToolCallbackProvider> mockMcpToolProvider = mock(ObjectProvider.class);
 		UsageRepository usageRepository = mock(UsageRepository.class);
 
 		ChatService enabledChatService = new ChatService(
@@ -251,7 +257,8 @@ class ChatServiceTest {
 				properties,
 				speechModelProvider,
 				new ToolEventEmitter(properties),
-				new ToolCallback[0]);
+				new ToolCallback[0],
+				mockMcpToolProvider);
 
 		ChatResponse chatResponse = new ChatResponse(List.of(new Generation(new AssistantMessage("Hello!"))));
 		when(chatModel.call(any(Prompt.class))).thenReturn(chatResponse);

@@ -29,6 +29,8 @@ dependencies {
 	implementation("org.springframework.ai:spring-ai-starter-model-google-genai")
 	implementation("org.springframework.ai:spring-ai-starter-model-ollama")
 	implementation("org.springframework.ai:spring-ai-starter-model-openai")
+	// MCP Client（消费侧）：自动发现并暴露远程 MCP server 工具为 SyncMcpToolCallbackProvider
+	implementation("org.springframework.ai:spring-ai-starter-mcp-client")
 	// 记忆子系统：会话记忆(JDBC/pgvector) + 向量长期记忆 + Redis 热缓存/限流
 	implementation("org.springframework.ai:spring-ai-starter-model-chat-memory-repository-jdbc")
 	implementation("org.springframework.ai:spring-ai-starter-vector-store-pgvector")

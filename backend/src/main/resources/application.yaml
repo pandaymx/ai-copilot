@@ -92,6 +92,61 @@ spring:
         repository:
           jdbc:
             initialize-schema: always
+    # ---------------------------------------------------------------------
+    # MCP Client（消费侧）：自动发现并暴露远程 MCP server 提供的工具。
+    # 默认关闭（enabled:false），不连接任何 server，不影响现有无 MCP 启动。
+    # 开启某个 server 后，其工具由 spring-ai-starter-mcp-client 自动装配为
+    # SyncMcpToolCallbackProvider bean，并在 ChatService 中合并注入 Agent 路径。
+    # ---------------------------------------------------------------------
+    mcp:
+      client:
+        enabled: ${MCP_CLIENT_ENABLED:false}        # MCP 总开关；true 时才会连接下方已 enabled 的 server
+        name: ${MCP_CLIENT_NAME:ai-copilot-mcp-client}
+        type: SYNC                                  # SYNC/ASYNC；本服务统一用同步回调（SyncMcpToolCallbackProvider）
+        request-timeout: ${MCP_CLIENT_REQUEST_TIMEOUT:30s}
+        # 多个 server 出现同名工具时，由 DefaultMcpToolNamePrefixGenerator 自动加
+        # <serverName>_ 前缀避免冲突，无需额外编码。
+        # ---- SSE（HTTP）连接：spring.ai.mcp.client.sse.connections.<name> ----
+        sse:
+          connections:
+            # 官方参考 SSE server 示例（默认关闭）
+            # websearch:
+            #   url: ${MCP_SSE_WEBSEARCH_URL:http://localhost:8081}
+            #   enabled: ${MCP_SSE_WEBSEARCH_ENABLED:false}
+            # server1:
+            #   url: http://localhost:9000
+            #   enabled: true
+        # ---- stdio 连接：spring.ai.mcp.client.stdio.servers[]（严格数组） ----
+        stdio:
+          servers:
+            # filesystem：本地文件系统读写（npx 拉起 @modelcontextprotocol/server-filesystem）
+            # - name: filesystem
+            #   command: npx
+            #   args:
+            #     - "-y"
+            #     - "@modelcontextprotocol/server-filesystem"
+            #     - "/path/to/allowed/dir"
+            #   enabled: false
+            # github：仓库操作（需 GITHUB_PERSONAL_ACCESS_TOKEN 环境变量透传给子进程）
+            # - name: github
+            #   command: npx
+            #   args:
+            #     - "-y"
+            #     - "@modelcontextprotocol/server-github"
+            #   env:
+            #     GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:your_github_token_here}
+            #   enabled: false
+            # slack：工作区消息（需 SLACK_BOT_TOKEN / SLACK_TEAM_ID）
+            # - name: slack
+            #   command: npx
+            #   args:
+            #     - "-y"
+            #     - "@modelcontextprotocol/server-slack"
+            #   env:
+            #     SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:your_slack_bot_token_here}
+            #     SLACK_TEAM_ID: ${SLACK_TEAM_ID:your_slack_team_id_here}
+            #   enabled: false
+
     vectorstore:
       pgvector:
         initialize-schema: true

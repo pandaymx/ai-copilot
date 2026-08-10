@@ -54,6 +54,7 @@ import xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor;
 import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig;
 import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig.RagAdvisorFactory;
 import xyz.ppmblszdp.ai.tool.ToolEventEmitter;
+import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
 import reactor.core.publisher.Sinks.Many;
 
@@ -114,6 +115,8 @@ public class ChatService implements DisposableBean {
 	private final boolean agentEnabled;
 	private final ToolEventEmitter toolEventEmitter;
 	private final ToolCallback[] toolCallbacks;
+	/** 远程 MCP server 工具提供者（弱依赖）。MCP 关闭或未配置时 ObjectProvider 为空。 */
+	private final ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider;
 
 	/**
 	 * 持有所有「即发即弃」订阅（touchSession / 长期记忆写入等）返回的 Disposable，
@@ -139,7 +142,8 @@ public class ChatService implements DisposableBean {
 			AiProviderProperties properties,
 			ObjectProvider<OpenAiAudioSpeechModel> speechModelProvider,
 			ToolEventEmitter toolEventEmitter,
-			@Qualifier("agentToolCallbacks") ToolCallback[] toolCallbacks) {
+			@Qualifier("agentToolCallbacks") ToolCallback[] toolCallbacks,
+			ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider) {
 		this.registry = registry;
 		this.contextAssembler = contextAssembler;
 		this.sessionChatMemory = sessionChatMemory;
@@ -159,6 +163,43 @@ public class ChatService implements DisposableBean {
 		this.agentEnabled = properties.resolveAgent().isEnabled();
 		this.toolEventEmitter = toolEventEmitter;
 		this.toolCallbacks = toolCallbacks;
+		this.mcpToolProvider = mcpToolProvider;
+	}
+
+	/**
+	 * 解析远程 MCP server 提供的工具回调。对 null/空做防御性处理，
+	 * 确保不会因 provider 缺失或 server 无工具而返回 null，从而污染 .tools(...) 调用。
+	 *
+	 * @return 非空（可能为空数组）的远程工具回调
+	 */
+	private ToolCallback[] resolveMcpToolCallbacks() {
+		SyncMcpToolCallbackProvider provider = mcpToolProvider.getIfAvailable();
+		if (provider == null) {
+			return new ToolCallback[0];
+		}
+		ToolCallback[] mcpTools = provider.getToolCallbacks();
+		if (mcpTools == null || mcpTools.length == 0) {
+			return new ToolCallback[0];
+		}
+		log.info("已加载远程 MCP 工具 {} 个", mcpTools.length);
+		return mcpTools;
+	}
+
+	/**
+	 * 合并本地工具与远程 MCP 工具。任一为空时直接返回另一者，避免无谓拷贝；
+	 * 两者皆非空时合并为一个 ToolCallback[]，供 .tools(...) 注入。
+	 */
+	private ToolCallback[] mergeTools(ToolCallback[] local, ToolCallback[] remote) {
+		if (remote == null || remote.length == 0) {
+			return local;
+		}
+		if (local == null || local.length == 0) {
+			return remote;
+		}
+		ToolCallback[] merged = new ToolCallback[local.length + remote.length];
+		System.arraycopy(local, 0, merged, 0, local.length);
+		System.arraycopy(remote, 0, merged, local.length, remote.length);
+		return merged;
 	}
 
 	/** Agent 模式是否启用：服务端正总开关 + 请求级开关二者皆为真。 */
@@ -288,7 +329,8 @@ public class ChatService implements DisposableBean {
 					.advisors(a -> applyRagAdvisor(a, userId))
 					.options(options.mutate());
 			if (agentPath) {
-				requestSpec = requestSpec.tools((Object[]) toolCallbacks)
+				ToolCallback[] mergedTools = mergeTools(toolCallbacks, resolveMcpToolCallbacks());
+				requestSpec = requestSpec.tools((Object[]) mergedTools)
 						.toolContext(Map.of(
 								"eventSink", toolSink,
 								ToolEventEmitter.CTX_EMITTER, toolEventEmitter,
@@ -391,7 +433,8 @@ public class ChatService implements DisposableBean {
 
 		ChatClientRequestSpec requestSpec = resolved.chatClient().prompt(prompt);
 		if (agentPath) {
-			requestSpec = requestSpec.tools((Object[]) toolCallbacks)
+			ToolCallback[] mergedTools = mergeTools(toolCallbacks, resolveMcpToolCallbacks());
+			requestSpec = requestSpec.tools((Object[]) mergedTools)
 					.toolContext(Map.of(
 							"eventSink", toolSink,
 							ToolEventEmitter.CTX_EMITTER, toolEventEmitter,
