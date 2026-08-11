@@ -241,7 +241,7 @@ app:
             name: gpt-4o
             display-name: GPT-4o
             description: OpenAI 多模态旗舰模型
-            tags: [multimodal]
+            tags: [multimodal, vision]
             max-context-tokens: 128000
             default: true
             input-price-per-k: 0.0180
@@ -253,7 +253,7 @@ app:
             name: gemini-3.6-flash
             display-name: Gemini 3.6 Flash
             description: Google 轻量高速多模态模型（新版）
-            tags: [multimodal]
+            tags: [multimodal, vision]
             max-context-tokens: 1048576
             default: true
             input-price-per-k: 0.0005
@@ -262,7 +262,7 @@ app:
             name: gemini-3.5-flash
             display-name: Gemini 3.5 Flash
             description: Google 轻量高速多模态模型
-            tags: [multimodal]
+            tags: [multimodal, vision]
             max-context-tokens: 1048576
             input-price-per-k: 0.0005
             output-price-per-k: 0.0020
@@ -270,7 +270,7 @@ app:
             name: gemini-3.5-flash-lite
             display-name: Gemini 3.5 Flash Lite
             description: Google 轻量低成本多模态模型
-            tags: [multimodal]
+            tags: [multimodal, vision]
             max-context-tokens: 1048576
             input-price-per-k: 0.0002
             output-price-per-k: 0.0008
@@ -278,7 +278,7 @@ app:
             name: gemini-3.1-pro-preview
             display-name: Gemini 3.1 Pro Preview
             description: Google 旗舰多模态模型预览版
-            tags: [multimodal]
+            tags: [multimodal, vision]
             max-context-tokens: 2097152
             input-price-per-k: 0.0090
             output-price-per-k: 0.0360
@@ -286,7 +286,7 @@ app:
             name: gemini-3.1-flash-lite
             display-name: Gemini 3.1 Flash Lite
             description: Google 轻量低成本多模态模型
-            tags: [multimodal]
+            tags: [multimodal, vision]
             max-context-tokens: 1048576
             input-price-per-k: 0.0002
             output-price-per-k: 0.0008

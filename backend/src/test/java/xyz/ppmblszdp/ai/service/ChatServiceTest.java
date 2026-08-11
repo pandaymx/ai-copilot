@@ -1,5 +1,9 @@
 package xyz.ppmblszdp.ai.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -18,6 +22,7 @@ import xyz.ppmblszdp.ai.config.AiProviderProperties.MemoryConfig;
 import xyz.ppmblszdp.ai.context.ContextAssembler;
 import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
+import xyz.ppmblszdp.ai.dto.MediaDto;
 import xyz.ppmblszdp.ai.registry.ModelDescriptor;
 import xyz.ppmblszdp.ai.registry.ModelHealthTracker;
 import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
@@ -68,7 +73,8 @@ class ChatServiceTest {
 	@SuppressWarnings("unchecked")
 	private ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider = mock(ObjectProvider.class);
 	@SuppressWarnings("unchecked")
-	private ObjectProvider<ToolSearchAdvisorConfig.ToolSearchAdvisorFactory> toolSearchFactory = mock(ObjectProvider.class);
+	private ObjectProvider<ToolSearchAdvisorConfig.ToolSearchAdvisorFactory> toolSearchFactory = mock(
+			ObjectProvider.class);
 
 	@BeforeEach
 	@SuppressWarnings("unchecked")
@@ -281,5 +287,64 @@ class ChatServiceTest {
 		// 给足时间等待异步重试完成，并验证重试了 2 次 (1 首次 + 1 重试)
 		Thread.sleep(2500);
 		verify(processor, times(2)).processTurn(eq("user-1"), eq("conv-1"), eq("Hi"), eq("Hello!"));
+	}
+
+	@Test
+	void testNonVisionModelWithMediaReturnsFriendlyError() {
+		ModelDescriptor nonVisionModel = ModelDescriptor.builder()
+				.id("deepseek-chat")
+				.modelName("deepseek-chat")
+				.tags(List.of("chat"))
+				.build();
+		ProviderDescriptor provider = ProviderDescriptor.builder()
+				.providerId("deepseek")
+				.chatModel(chatModel)
+				.build();
+		ResolvedModel resolved = new ResolvedModel(chatModel, provider, nonVisionModel);
+		when(registry.resolve("deepseek", "deepseek-chat")).thenReturn(resolved);
+
+		MediaDto mediaDto = new MediaDto("image/png",
+				"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==");
+		ChatRequest request = new ChatRequest("描述这张图片", null, "deepseek", "deepseek-chat", null, null, "user-1",
+				List.of(mediaDto), null);
+
+		Mono<ChatResponseDto> mono = chatService.chat(request, "user-1");
+		StepVerifier.create(mono)
+				.assertNext(dto -> {
+					assertNotNull(dto);
+					assertEquals("当前模型不支持图片，请切换到支持图片的模型", dto.content());
+				})
+				.verifyComplete();
+
+		verify(chatModel, never()).call(any(Prompt.class));
+	}
+
+	@Test
+	void testNonVisionModelWithEmptyMediaProceedsNormally() {
+		ModelDescriptor nonVisionModel = ModelDescriptor.builder()
+				.id("deepseek-chat")
+				.modelName("deepseek-chat")
+				.tags(List.of("chat"))
+				.build();
+		ProviderDescriptor provider = ProviderDescriptor.builder()
+				.providerId("deepseek")
+				.chatModel(chatModel)
+				.build();
+		ResolvedModel resolved = new ResolvedModel(chatModel, provider, nonVisionModel);
+		when(registry.resolve("deepseek", "deepseek-chat")).thenReturn(resolved);
+
+		ChatResponse chatResponse = new ChatResponse(List.of(new Generation(new AssistantMessage("Hello text!"))));
+		when(chatModel.call(any(Prompt.class))).thenReturn(chatResponse);
+
+		ChatRequest request = new ChatRequest("Hello", null, "deepseek", "deepseek-chat", null, null, "user-1",
+				List.of(), null);
+
+		Mono<ChatResponseDto> mono = chatService.chat(request, "user-1");
+		StepVerifier.create(mono)
+				.assertNext(dto -> {
+					assertNotNull(dto);
+					assertEquals("Hello text!", dto.content());
+				})
+				.verifyComplete();
 	}
 }

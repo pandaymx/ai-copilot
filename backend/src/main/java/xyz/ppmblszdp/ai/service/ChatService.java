@@ -261,6 +261,12 @@ public class ChatService implements DisposableBean {
 	/** 非流式：一次性返回完整回复。userId 来自服务端受信任身份，用于限流/记忆隔离。 */
 	public Mono<ChatResponseDto> chat(ChatRequest request, String userId) {
 		ResolvedModel resolved = registry.resolve(request.provider(), request.model());
+		if (hasMedia(request) && !resolved.model().supportsVision()) {
+			log.warn("模型 [{}] 不支持图片 (Vision)，拦截并返回明确提示", resolved.model().id());
+			return Mono.just(new ChatResponseDto(
+					"当前模型不支持图片，请切换到支持图片的模型", resolved.provider().providerId(),
+					resolved.model().id(), request.conversationId(), null, null));
+		}
 		RateLimiter limiter = rateLimiter.getIfAvailable();
 		if (limiter != null && !limiter.tryAcquire(userId)) {
 			log.warn("非流式请求被限流 → 用户={}", userId);
@@ -333,6 +339,10 @@ public class ChatService implements DisposableBean {
 	/** 流式：结构化 ChatChunkDto Flux（包含思考过程 reasoning 与 token 用量）。userId 来自服务端受信任身份。 */
 	public Flux<ChatChunkDto> streamChatChunks(ChatRequest request, String userId) {
 		ResolvedModel resolved = registry.resolve(request.provider(), request.model());
+		if (hasMedia(request) && !resolved.model().supportsVision()) {
+			log.warn("模型 [{}] 不支持图片 (Vision)，流式拦截并返回明确提示", resolved.model().id());
+			return Flux.just(ChatChunkDto.error("INVALID_ARGUMENT", "当前模型不支持图片，请切换到支持图片的模型"));
+		}
 		RateLimiter limiter = rateLimiter.getIfAvailable();
 		if (limiter != null && !limiter.tryAcquire(userId)) {
 			log.warn("流式请求被限流 → 用户={}", userId);
@@ -746,6 +756,17 @@ public class ChatService implements DisposableBean {
 				properties.fallbackProvider(),
 				properties.fallbackModel());
 		if (fallbackResolved != null) {
+			if (hasMedia(request) && !fallbackResolved.model().supportsVision()) {
+				log.warn("主供应商 [{}] 调用失败，备用模型 [{}] 不支持 Vision 能力，无法转发 media",
+						primaryResolved.provider().providerId(), fallbackResolved.model().id());
+				return Mono.just(new ChatResponseDto(
+						"当前模型及降级模型均不支持图片，请切换到支持图片的模型",
+						primaryResolved.provider().providerId(),
+						primaryResolved.model().id(),
+						request.conversationId(),
+						null,
+						null));
+			}
 			log.warn("主供应商 [{}] 调用失败 ({})，无缝降级切换至备用供应商 [{}], 模型 [{}]",
 					primaryResolved.provider().providerId(), error.getMessage(),
 					fallbackResolved.provider().providerId(), fallbackResolved.model().id());
@@ -784,6 +805,10 @@ public class ChatService implements DisposableBean {
 				request.conversationId(),
 				null,
 				null));
+	}
+
+	private boolean hasMedia(ChatRequest request) {
+		return request != null && request.media() != null && !request.media().isEmpty();
 	}
 
 	private List<Media> convertMediaList(List<MediaDto> dtos) {

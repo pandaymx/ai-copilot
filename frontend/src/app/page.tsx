@@ -26,6 +26,8 @@ import {
   MessageBubble,
 } from "@/components/chat/message-bubble";
 import {
+  type BackendProviderEntry,
+  isVisionModel,
   ModelSelector,
   type SelectedModel,
 } from "@/components/chat/model-selector";
@@ -244,6 +246,19 @@ export default function Home() {
     provider: "deepseek",
     model: "deepseek-chat",
   });
+  const [catalog, setCatalog] = useState<BackendProviderEntry[]>([]);
+
+  // 计算当前选中的模型是否支持视觉图片处理
+  const currentProviderObj = catalog.find((p) => p.id === model.provider);
+  const currentModelObj = currentProviderObj?.models.find(
+    (m) => m.id === model.model,
+  );
+  const currentSupportsVision = currentModelObj
+    ? isVisionModel(currentModelObj)
+    : model.provider === "openai" ||
+      model.provider === "google" ||
+      model.model.includes("gpt-4") ||
+      model.model.includes("gemini");
 
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [agentEnabled, setAgentEnabled] = useState<boolean>(false);
@@ -265,50 +280,57 @@ export default function Home() {
   const isStreaming = loading;
   const hasError = Boolean(error);
 
-  const processFiles = useCallback(async (files: FileList | File[]) => {
-    const fileList = Array.from(files);
-    if (fileList.length === 0) return;
+  const processFiles = useCallback(
+    async (files: FileList | File[]) => {
+      const fileList = Array.from(files);
+      if (fileList.length === 0) return;
 
-    const newAttachments: AttachmentItem[] = [];
-    for (const file of fileList) {
-      if (file.size > 10 * 1024 * 1024) {
-        alert(`文件 "${file.name}" 超过 10MB 限制`);
-        continue;
+      const newAttachments: AttachmentItem[] = [];
+      for (const file of fileList) {
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`文件 "${file.name}" 超过 10MB 限制`);
+          continue;
+        }
+
+        if (file.type.startsWith("image/")) {
+          if (!currentSupportsVision) {
+            alert("当前模型不支持图片，请切换到支持图片的模型");
+            continue;
+          }
+          const dataUrl = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.readAsDataURL(file);
+          });
+          newAttachments.push({
+            id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            name: file.name,
+            type: "image",
+            mimeType: file.type || "image/png",
+            url: dataUrl,
+            size: file.size,
+          });
+        } else {
+          // 非图片文件：读取文本内容，存储为 AttachmentItem
+          const textContent = await file.text();
+          newAttachments.push({
+            id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            name: file.name,
+            type: "file",
+            mimeType: file.type || "text/plain",
+            url: "",
+            size: file.size,
+            textContent,
+          });
+        }
       }
 
-      if (file.type.startsWith("image/")) {
-        const dataUrl = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
-        });
-        newAttachments.push({
-          id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          name: file.name,
-          type: "image",
-          mimeType: file.type || "image/png",
-          url: dataUrl,
-          size: file.size,
-        });
-      } else {
-        // 非图片文件：读取文本内容，存储为 AttachmentItem
-        const textContent = await file.text();
-        newAttachments.push({
-          id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          name: file.name,
-          type: "file",
-          mimeType: file.type || "text/plain",
-          url: "",
-          size: file.size,
-          textContent,
-        });
+      if (newAttachments.length > 0) {
+        setAttachments((prev) => [...prev, ...newAttachments].slice(0, 4));
       }
-    }
-
-    if (newAttachments.length > 0) {
-      setAttachments((prev) => [...prev, ...newAttachments].slice(0, 4));
-    }
-  }, []);
+    },
+    [currentSupportsVision],
+  );
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -328,6 +350,10 @@ export default function Home() {
       );
       if (imageFiles.length > 0) {
         e.preventDefault();
+        if (!currentSupportsVision) {
+          alert("当前模型不支持图片，请切换到支持图片的模型");
+          return;
+        }
         void processFiles(imageFiles);
       }
     }
@@ -539,6 +565,11 @@ export default function Home() {
         .filter((att) => att.type === "image")
         .map((att) => ({ mimeType: att.mimeType, data: att.url }));
 
+      if (mediaPayload.length > 0 && !currentSupportsVision) {
+        alert("当前模型不支持图片，请切换到支持图片的模型");
+        return;
+      }
+
       // 将非图片文件的文本内容拼接为上下文前缀，确保后端能收到文件内容
       const fileAttachments = currentAttachments.filter(
         (att) => att.type === "file" && att.textContent,
@@ -627,6 +658,7 @@ export default function Home() {
       send,
       agentEnabled,
       activeId,
+      currentSupportsVision,
     ],
   );
 
@@ -914,13 +946,24 @@ export default function Home() {
                   variant="ghost"
                   size="icon-sm"
                   onClick={() => fileInputRef.current?.click()}
-                  className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+                  className={cn(
+                    "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors",
+                    !currentSupportsVision && "opacity-80",
+                  )}
                   aria-label="添加文件"
-                  title="上传图片或代码/文本文件"
+                  title={
+                    currentSupportsVision
+                      ? "上传图片或代码/文本文件"
+                      : "当前模型不支持图片处理，仅可上传代码/文本文件"
+                  }
                 >
                   <Paperclip className="size-4" />
                 </Button>
-                <ModelSelector value={model} onChange={setModel} />
+                <ModelSelector
+                  value={model}
+                  onChange={setModel}
+                  onCatalogChange={setCatalog}
+                />
               </div>
               <span className="select-none font-mono text-[11px] text-zinc-400 dark:text-zinc-500">
                 ⌘ + Enter 发送

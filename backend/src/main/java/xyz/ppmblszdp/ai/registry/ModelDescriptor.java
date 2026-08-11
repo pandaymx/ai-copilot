@@ -18,6 +18,10 @@ public final class ModelDescriptor {
 	public static final BigDecimal DEFAULT_INPUT_PRICE = new BigDecimal("0.0015");
 	public static final BigDecimal DEFAULT_OUTPUT_PRICE = new BigDecimal("0.0030");
 
+	/** 能力标签常量 */
+	public static final String TAG_VISION = "vision";
+	public static final String TAG_MULTIMODAL = "multimodal";
+
 	private final String id;
 	private final String modelName;
 	private final String displayName;
@@ -84,6 +88,13 @@ public final class ModelDescriptor {
 
 	public List<String> tags() {
 		return tags;
+	}
+
+	/**
+	 * 是否支持视觉/多模态图片理解。
+	 */
+	public boolean supportsVision() {
+		return tags != null && (tags.contains(TAG_VISION) || tags.contains(TAG_MULTIMODAL));
 	}
 
 	public int maxContextTokens() {

@@ -35,6 +35,14 @@ export interface BackendProviderEntry {
   models: BackendModelEntry[];
 }
 
+export const TAG_VISION = "vision";
+export const TAG_MULTIMODAL = "multimodal";
+
+export function isVisionModel(entry?: BackendModelEntry | null): boolean {
+  if (!entry?.tags) return false;
+  return entry.tags.some((t) => t === TAG_VISION || t === TAG_MULTIMODAL);
+}
+
 export interface SelectedModel {
   provider: string;
   model: string;
@@ -44,6 +52,7 @@ interface ModelSelectorProps {
   value: SelectedModel;
   onChange: (selected: SelectedModel) => void;
   providers?: BackendProviderEntry[];
+  onCatalogChange?: (catalog: BackendProviderEntry[]) => void;
 }
 
 const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
@@ -78,7 +87,7 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         displayName: "GPT-4o",
         description: "OpenAI 多模态旗舰模型，强表达与代码构建能力",
         badge: "全能",
-        tags: ["multimodal"],
+        tags: ["multimodal", "vision"],
         maxContextTokens: 128000,
         status: "UP",
         healthy: true,
@@ -97,7 +106,7 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         displayName: "Gemini 3.6 Flash",
         description: "Google 最新一代轻量高速多模态推理模型",
         badge: "极速",
-        tags: ["multimodal"],
+        tags: ["multimodal", "vision"],
         maxContextTokens: 1048576,
         status: "UP",
         healthy: true,
@@ -106,7 +115,7 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         id: "gemini-3.5-flash",
         displayName: "Gemini 3.5 Flash",
         description: "Google 稳定版轻量多模态模型",
-        tags: ["multimodal"],
+        tags: ["multimodal", "vision"],
         maxContextTokens: 1048576,
         status: "UP",
         healthy: true,
@@ -116,7 +125,7 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         displayName: "Gemini 3.1 Pro",
         description: "Google 旗舰深度推理多模态预览版模型",
         badge: "预览",
-        tags: ["multimodal"],
+        tags: ["multimodal", "vision"],
         maxContextTokens: 2097152,
         status: "UP",
         healthy: true,
