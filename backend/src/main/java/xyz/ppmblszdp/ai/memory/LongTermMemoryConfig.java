@@ -93,7 +93,7 @@ public class LongTermMemoryConfig {
 				return;
 			}
 			try {
-				processor.dedupAndUpsert(userId, content);
+				processor.dedupAndUpsert(userId, content, null, null);
 			} catch (Exception e) {
 				log.warn("写入长期记忆向量库异常: {}", e.getMessage());
 			}

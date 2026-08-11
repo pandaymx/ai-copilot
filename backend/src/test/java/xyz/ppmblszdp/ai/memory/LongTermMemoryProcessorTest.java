@@ -9,6 +9,7 @@ import org.springframework.ai.vectorstore.VectorStore;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -45,7 +46,7 @@ class LongTermMemoryProcessorTest {
 	void dedupAndUpsert_shouldInsertNewDoc_whenNoSimilarDocExists() {
 		when(mockVectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of());
 
-		processor.dedupAndUpsert("user-123", "用户偏好：使用 PostgreSQL 数据库");
+		processor.dedupAndUpsert("user-123", "用户偏好：使用 PostgreSQL 数据库", null, null);
 
 		@SuppressWarnings("unchecked")
 		ArgumentCaptor<List<Document>> captor = ArgumentCaptor.forClass(List.class);
@@ -56,6 +57,22 @@ class LongTermMemoryProcessorTest {
 		assertThat(added.get(0).getText()).isEqualTo("用户偏好：使用 PostgreSQL 数据库");
 		assertThat(added.get(0).getMetadata()).containsKey("updated_at");
 		assertThat(added.get(0).getMetadata().get("userId")).isEqualTo("user-123");
+		assertThat(added.get(0).getMetadata().get("sourceType")).isEqualTo("long_term_memory");
+	}
+
+	@Test
+	void dedupAndUpsert_shouldPersistStructuredMetadata_whenCategoryAndConfidenceProvided() {
+		when(mockVectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of());
+
+		processor.dedupAndUpsert("user-123", "用户技术栈偏好：Java 25。", "技术栈偏好", 0.92d);
+
+		@SuppressWarnings("unchecked")
+		ArgumentCaptor<List<Document>> captor = ArgumentCaptor.forClass(List.class);
+		verify(mockVectorStore).add(captor.capture());
+
+		Map<String, Object> meta = captor.getValue().get(0).getMetadata();
+		assertThat(meta.get("category")).isEqualTo("技术栈偏好");
+		assertThat(meta.get("confidence")).isEqualTo(0.92d);
 	}
 
 	@Test
@@ -63,7 +80,7 @@ class LongTermMemoryProcessorTest {
 		Document existingDoc = new Document("old-id", "用户偏好：使用 PostgreSQL 数据库", java.util.Map.of("userId", "user-123"));
 		when(mockVectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(existingDoc));
 
-		processor.dedupAndUpsert("user-123", "用户偏好：使用 PostgreSQL 数据库");
+		processor.dedupAndUpsert("user-123", "用户偏好：使用 PostgreSQL 数据库", null, null);
 
 		verify(mockVectorStore).delete(List.of("old-id"));
 

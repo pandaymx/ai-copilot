@@ -3,10 +3,12 @@ package xyz.ppmblszdp.ai.memory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.converter.BeanOutputConverter;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
+import org.springframework.core.ParameterizedTypeReference;
 
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
@@ -33,7 +35,7 @@ public class LongTermMemoryProcessor {
 			Pattern.CASE_INSENSITIVE
 	);
 
-	/** 原子化记忆抽取 System Prompt */
+	/** 原子化记忆抽取 System Prompt（结构化 JSON 输出，供 BeanOutputConverter 绑定） */
 	private static final String FACT_EXTRACTION_SYSTEM_PROMPT = """
 			你是一个无状态的个人信息与偏好抽取助手。
 			请分析给定的用户对话历史，提取用户显性表达或暗示的【持久个人偏好】、【技术栈/背景】、【关键决策/约束】或【项目状态】。
@@ -42,7 +44,11 @@ public class LongTermMemoryProcessor {
 			1. 每一条提取记录必须是【原子化、无上下文依赖、无代词】的独立陈述句（例如：“用户技术栈偏好：Java 25。”、“用户项目需求：全栈 AI 聊天应用”）。
 			2. 严禁提取任何临时对话问候、过渡短语或次要细节（例如：“用户说了你好”）。
 			3. 如果对话中未包含任何有价值的持久信息或偏好，请直接且仅输出：[NONE]。
-			4. 如果有多条信息，每行输出一条。
+			4. 输出必须是 JSON 数组，每个元素包含字段：
+			   - category: 字符串，取值如 "技术栈偏好" / "项目状态" / "关键决策" / "个人背景" / "其他"
+			   - content: 字符串，原子化陈述句
+			   - confidence: 数值，0.0~1.0，表示本条抽取的置信度
+			5. 禁止在 JSON 外输出任何解释性文字。
 			""";
 
 	private final VectorStore vectorStore;
@@ -138,8 +144,14 @@ public class LongTermMemoryProcessor {
 			ChatClient chatClient = resolved.chatClient();
 			String inputContent = "【用户】: " + userMessage + "\n【助手】: " + (assistantReply != null ? assistantReply : "");
 
+			// 强类型结构化输出：使用 ParameterizedTypeReference 规避 List.class 的类型擦除退化
+			BeanOutputConverter<List<MemoryFact>> converter =
+					new BeanOutputConverter<>(new ParameterizedTypeReference<List<MemoryFact>>() {});
+			String formatInstruction = converter.getFormat();
+			String systemPrompt = FACT_EXTRACTION_SYSTEM_PROMPT + "\n" + formatInstruction;
+
 			String extracted = chatClient.prompt()
-					.system(FACT_EXTRACTION_SYSTEM_PROMPT)
+					.system(systemPrompt)
 					.user(inputContent)
 					.call()
 					.content();
@@ -149,11 +161,22 @@ public class LongTermMemoryProcessor {
 				return;
 			}
 
-			String[] lines = extracted.split("\n");
-			for (String line : lines) {
-				String fact = line.trim().replaceAll("^[\\-\\*%\\d\\.\\s]+", "");
-				if (!fact.isBlank() && !fact.contains("[NONE]") && !isTrivialOrNoise(fact)) {
-					dedupAndUpsert(userId, fact);
+			List<MemoryFact> facts;
+			try {
+				facts = converter.convert(extracted);
+			} catch (Exception e) {
+				log.warn("LLM 结构化抽取解析失败（降级忽略）: {}", e.getMessage());
+				return;
+			}
+
+			if (facts == null || facts.isEmpty()) {
+				return;
+			}
+
+			for (MemoryFact fact : facts) {
+				String content = (fact.getContent() != null) ? fact.getContent().trim() : "";
+				if (!content.isBlank() && !content.contains("[NONE]") && !isTrivialOrNoise(content)) {
+					dedupAndUpsert(userId, content, fact.getCategory(), fact.getConfidence());
 				}
 			}
 		} catch (Exception e) {
@@ -169,13 +192,16 @@ public class LongTermMemoryProcessor {
 			return;
 		}
 		String content = "用户偏好/问答: " + userMessage;
-		dedupAndUpsert(userId, content);
+		dedupAndUpsert(userId, content, null, null);
 	}
 
 	/**
 	 * 5. 向量去重与 Upsert / 时间戳刷新逻辑
+	 *
+	 * @param category   事实分类（可空，用于结构化编辑/去重；旧纯文本路径传 null）
+	 * @param confidence 抽取置信度（可空）
 	 */
-	public void dedupAndUpsert(String userId, String content) {
+	public void dedupAndUpsert(String userId, String content, String category, Double confidence) {
 		if (vectorStore == null || userId == null || userId.isBlank() || content == null || content.isBlank()) {
 			return;
 		}
@@ -207,14 +233,21 @@ public class LongTermMemoryProcessor {
 				}
 			}
 
-			// 构建带有 userId 与 updated_at 时间戳的全新/已更新 Document
+			// 构建带有 userId、updated_at 与结构化字段的全新/已更新 Document
 			Map<String, Object> metadata = new HashMap<>();
 			metadata.put("userId", userId);
 			metadata.put("updated_at", Instant.now().toString());
+			metadata.put("sourceType", "long_term_memory");
+			if (category != null && !category.isBlank()) {
+				metadata.put("category", category);
+			}
+			if (confidence != null) {
+				metadata.put("confidence", confidence);
+			}
 
 			Document newDoc = new Document(content, metadata);
 			vectorStore.add(List.of(newDoc));
-			log.info("长期记忆已成功写入 pgvector (Upsert) → userId={}, content='{}'", userId, content);
+			log.info("长期记忆已成功写入 pgvector (Upsert) → userId={}, category={}, content='{}'", userId, category, content);
 
 		} catch (Exception e) {
 			log.warn("长期记忆向量去重/写入异常（已降级）: {}", e.getMessage());

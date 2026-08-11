@@ -300,3 +300,71 @@ export async function ragStatusApi(
     return null;
   }
 }
+
+// ====================== 长期记忆管理 API ======================
+
+export interface MemoryItem {
+  id: string;
+  content: string;
+  category: string | null;
+  confidence: number | null;
+  updatedAt: string | null;
+}
+
+export interface MemoryListResponse {
+  items: MemoryItem[];
+  total: number;
+}
+
+/** 拉取当前用户的全部长期记忆（分页 + 关键字过滤）。 */
+export async function memoryListApi(
+  keyword?: string,
+  limit = 50,
+  offset = 0,
+  signal?: AbortSignal,
+): Promise<MemoryListResponse | null> {
+  const params = new URLSearchParams();
+  const kw = keyword?.trim();
+  if (kw) params.set("keyword", kw);
+  params.set("limit", String(limit));
+  params.set("offset", String(offset));
+  try {
+    const res = await fetch(`/api/memory?${params.toString()}`, { signal });
+    if (!res.ok) return null;
+    return (await res.json()) as MemoryListResponse;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}
+
+/** 编辑单条记忆（内容 + 分类）。 */
+export async function memoryUpdateApi(
+  id: string,
+  content: string,
+  category: string | null,
+): Promise<MemoryItem | null> {
+  try {
+    const res = await fetch(`/api/memory/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content, category }),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as MemoryItem;
+  } catch {
+    return null;
+  }
+}
+
+/** 删除单条记忆。 */
+export async function memoryDeleteApi(id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/memory/${id}`, {
+      method: "DELETE",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
