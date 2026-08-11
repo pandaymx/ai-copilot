@@ -1,7 +1,17 @@
 "use client";
 
-import { Check, Copy, Terminal } from "lucide-react";
-import { memo, useState } from "react";
+import {
+  AlertCircle,
+  Check,
+  Code2,
+  Copy,
+  Loader2,
+  Network,
+  Terminal,
+} from "lucide-react";
+import mermaid from "mermaid";
+import { useTheme } from "next-themes";
+import { memo, useEffect, useId, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { PrismLight as SyntaxHighlighter } from "react-syntax-highlighter";
 import bash from "react-syntax-highlighter/dist/esm/languages/prism/bash";
@@ -23,8 +33,9 @@ import tsx from "react-syntax-highlighter/dist/esm/languages/prism/tsx";
 import typescript from "react-syntax-highlighter/dist/esm/languages/prism/typescript";
 import yaml from "react-syntax-highlighter/dist/esm/languages/prism/yaml";
 import oneDark from "react-syntax-highlighter/dist/esm/styles/prism/one-dark";
-
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import { cn } from "@/lib/utils";
 
 // 注册常用编程语言语法
@@ -54,6 +65,44 @@ SyntaxHighlighter.registerLanguage("xml", xml);
 SyntaxHighlighter.registerLanguage("html", xml);
 SyntaxHighlighter.registerLanguage("docker", docker);
 SyntaxHighlighter.registerLanguage("dockerfile", docker);
+
+/**
+ * 流式 Markdown 补全防抖预处理
+ * 解决流式输出中代码块未闭合、表格半截导致的破版与频繁重排
+ */
+function preprocessStreamingMarkdown(content: string): string {
+  if (!content) return "";
+
+  let processed = content;
+
+  // 1. 代码块未闭合防抖 (``` 或 ~~~)
+  const backtickMatches = processed.match(/^```/gm) || [];
+  const tildeMatches = processed.match(/^~~~/gm) || [];
+
+  if (backtickMatches.length % 2 !== 0) {
+    processed += "\n```";
+  } else if (tildeMatches.length % 2 !== 0) {
+    processed += "\n~~~";
+  }
+
+  // 2. 流式表格破版防抖：若最后一行包含 | 且未以 \n 结尾
+  const lines = processed.split("\n");
+  const lastLine = lines[lines.length - 1];
+  if (lastLine?.includes("|") && !processed.endsWith("\n")) {
+    if (!lastLine.trim().endsWith("|")) {
+      processed += " |";
+    }
+    processed += "\n";
+  }
+
+  // 3. 块级数学公式 $$ 闭合防抖
+  const mathBlockMatches = processed.match(/\$\$/g) || [];
+  if (mathBlockMatches.length % 2 !== 0) {
+    processed += "\n$$";
+  }
+
+  return processed;
+}
 
 /** Mac 风格代码块：红黄绿小圆点 + 语言 Badge + 一键复制 */
 function CodeBlock({
@@ -150,12 +199,260 @@ function CodeBlock({
   );
 }
 
+/** Mermaid 图表渲染组件：结合 next-themes 暗色模式适配与渲染/代码视图切换 */
+function MermaidBlock({
+  code,
+  isStreaming,
+}: {
+  code: string;
+  isStreaming?: boolean;
+}) {
+  const { resolvedTheme, theme } = useTheme();
+  const isDark = resolvedTheme === "dark" || theme === "dark";
+  const rawId = useId();
+  const containerId = useMemo(
+    () => `mermaid-${rawId.replace(/[^a-zA-Z0-9_-]/g, "_")}`,
+    [rawId],
+  );
+
+  const [svg, setSvg] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [showCode, setShowCode] = useState<boolean>(false);
+  const [copied, setCopied] = useState<boolean>(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const cleanCode = code.trim();
+    if (!cleanCode) return;
+
+    const renderDiagram = async () => {
+      setLoading(true);
+      try {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: isDark ? "dark" : "default",
+          securityLevel: "loose",
+          fontFamily: "var(--font-sans), system-ui, sans-serif",
+        });
+
+        // 唯一渲染元素 key 避免冲突
+        const renderKey = `svg-${containerId}-${Math.random().toString(36).substring(2, 7)}`;
+        const { svg: renderedSvg } = await mermaid.render(renderKey, cleanCode);
+
+        if (isMounted) {
+          setSvg(renderedSvg);
+          setError(null);
+          setLoading(false);
+        }
+      } catch (err: unknown) {
+        if (isMounted) {
+          const message = err instanceof Error ? err.message : String(err);
+          setError(message);
+          setLoading(false);
+        }
+      }
+    };
+
+    renderDiagram();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [code, isDark, containerId]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // 忽略复制失败
+    }
+  };
+
+  return (
+    <div className="not-prose group/mermaid relative my-4 w-full min-w-0 overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950/95 shadow-xl shadow-black/20">
+      {/* 顶栏控制条 */}
+      <div className="flex items-center justify-between border-b border-zinc-800/80 bg-zinc-900/90 px-3.5 py-2">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <span className="size-2.5 rounded-full bg-rose-500/80" />
+            <span className="size-2.5 rounded-full bg-amber-500/80" />
+            <span className="size-2.5 rounded-full bg-emerald-500/80" />
+          </div>
+          <span className="ml-2 flex items-center gap-1.5 font-mono text-[11px] font-medium text-zinc-300">
+            <Network className="size-3 text-purple-400" />
+            Mermaid 图表
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          {/* 切换 图表 / 代码 视图 */}
+          <button
+            type="button"
+            onClick={() => setShowCode((prev) => !prev)}
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 font-mono text-[11px] text-zinc-400 hover:bg-white/10 hover:text-zinc-100 transition-colors"
+          >
+            {showCode ? (
+              <>
+                <Network className="size-3 text-purple-400" />
+                <span>图表视图</span>
+              </>
+            ) : (
+              <>
+                <Code2 className="size-3 text-indigo-400" />
+                <span>源码</span>
+              </>
+            )}
+          </button>
+
+          {/* 复制代码 */}
+          <button
+            type="button"
+            onClick={handleCopy}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-lg px-2 py-1 font-mono text-[11px] transition-all duration-200",
+              copied
+                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                : "text-zinc-400 hover:bg-white/10 hover:text-zinc-100",
+            )}
+            aria-label="复制 Mermaid 代码"
+          >
+            {copied ? (
+              <>
+                <Check className="size-3 text-emerald-400" />
+                <span>已复制</span>
+              </>
+            ) : (
+              <>
+                <Copy className="size-3" />
+                <span>复制</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* 主视图区 */}
+      <div className="w-full min-w-0 p-4">
+        {showCode ? (
+          <CodeBlock className="language-mermaid">{code}</CodeBlock>
+        ) : loading && isStreaming && !svg ? (
+          <div className="flex items-center justify-center gap-2 py-8 text-xs text-zinc-400 font-mono">
+            <Loader2 className="size-4 animate-spin text-purple-400" />
+            <span>Mermaid 图表生成中...</span>
+          </div>
+        ) : error ? (
+          isStreaming ? (
+            <div className="flex items-center justify-center gap-2 py-6 text-xs text-zinc-400 font-mono">
+              <Loader2 className="size-4 animate-spin text-purple-400" />
+              <span>接收图表数据中...</span>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2 rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-xs text-rose-300">
+              <div className="flex items-center gap-1.5 font-semibold text-rose-400">
+                <AlertCircle className="size-4" />
+                <span>Mermaid 语法解析失败</span>
+              </div>
+              <p className="font-mono text-[11px] text-rose-200/80 leading-relaxed overflow-x-auto whitespace-pre-wrap">
+                {error}
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowCode(true)}
+                className="mt-1 self-start text-[11px] text-indigo-400 hover:underline"
+              >
+                查看原始 DSL 代码
+              </button>
+            </div>
+          )
+        ) : (
+          <div
+            className="flex justify-center overflow-x-auto rounded-lg bg-zinc-900/60 p-4 backdrop-blur-xs [&_svg]:max-w-full [&_svg]:h-auto"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: Mermaid 渲染出的受控 SVG 字符串
+            dangerouslySetInnerHTML={{ __html: svg }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Markdown 渲染组件 */
 export const Markdown = memo(function Markdown({
   content,
+  isStreaming,
 }: {
   content: string;
+  isStreaming?: boolean;
 }) {
+  // 流式输出时，进行语法防抖与自动闭合补全
+  const processedContent = useMemo(() => {
+    return isStreaming ? preprocessStreamingMarkdown(content) : content;
+  }, [content, isStreaming]);
+
+  const remarkPlugins = useMemo(() => [remarkGfm, remarkMath], []);
+  const rehypePlugins = useMemo(() => [rehypeKatex], []);
+
+  const components = useMemo(
+    () => ({
+      pre: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+      code: ({
+        className,
+        children,
+        ...props
+      }: {
+        className?: string;
+        children?: React.ReactNode;
+      }) => {
+        const match = /language-(\w+)/.exec(className ?? "");
+        const language = match?.[1] ?? "";
+
+        if (language === "mermaid") {
+          return (
+            <MermaidBlock
+              code={String(children).replace(/\n$/, "")}
+              isStreaming={isStreaming}
+            />
+          );
+        }
+
+        const isBlock = Boolean(match);
+        if (isBlock) {
+          return <CodeBlock className={className}>{children}</CodeBlock>;
+        }
+
+        return (
+          <code
+            className={cn(
+              "rounded-md bg-zinc-100 px-1.5 py-0.5 font-mono text-[0.825em] font-medium text-indigo-600 dark:bg-zinc-800/80 dark:text-indigo-300",
+              className,
+            )}
+            {...props}
+          >
+            {children}
+          </code>
+        );
+      },
+      table: ({
+        children,
+        node,
+        ...props
+      }: React.ComponentPropsWithoutRef<"table"> & { node?: unknown }) => (
+        <div className="my-4 w-full overflow-x-auto rounded-xl border border-zinc-200/80 bg-white/40 dark:border-zinc-800/80 dark:bg-zinc-900/40 backdrop-blur-xs">
+          <table
+            className="w-full text-left text-xs border-collapse"
+            {...props}
+          >
+            {children}
+          </table>
+        </div>
+      ),
+    }),
+    [isStreaming],
+  );
+
   return (
     <div
       className={cn(
@@ -170,35 +467,16 @@ export const Markdown = memo(function Markdown({
         "prose-ul:my-2 prose-ul:list-disc prose-ul:pl-5",
         "prose-ol:my-2 prose-ol:list-decimal prose-ol:pl-5",
         "prose-li:my-0.5",
-        "prose-table:my-4 prose-table:w-full prose-table:overflow-hidden prose-table:rounded-xl prose-table:border prose-table:border-zinc-200 dark:prose-table:border-zinc-800",
         "prose-th:bg-zinc-100/80 prose-th:px-3 prose-th:py-2 prose-th:text-left prose-th:text-xs prose-th:font-semibold dark:prose-th:bg-zinc-800/60",
         "prose-td:border-t prose-td:border-zinc-200/60 prose-td:px-3 prose-td:py-2 prose-td:text-xs dark:prose-td:border-zinc-800/60",
       )}
     >
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          pre: ({ children }) => <>{children}</>,
-          code: ({ className, children, ...props }) => {
-            const isBlock = /language-/.test(className ?? "");
-            if (isBlock) {
-              return <CodeBlock className={className}>{children}</CodeBlock>;
-            }
-            return (
-              <code
-                className={cn(
-                  "rounded-md bg-zinc-100 px-1.5 py-0.5 font-mono text-[0.825em] font-medium text-indigo-600 dark:bg-zinc-800/80 dark:text-indigo-300",
-                  className,
-                )}
-                {...props}
-              >
-                {children}
-              </code>
-            );
-          },
-        }}
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
+        components={components}
       >
-        {content}
+        {processedContent}
       </ReactMarkdown>
     </div>
   );

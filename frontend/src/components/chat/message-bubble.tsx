@@ -276,7 +276,7 @@ function MessageBubbleBase({
               </p>
             ) : message.content ? (
               <ChatMessageErrorBoundary>
-                <Markdown content={message.content} />
+                <Markdown content={message.content} isStreaming={streaming} />
               </ChatMessageErrorBoundary>
             ) : streaming ? (
               <BreathingCursor />
