@@ -30,7 +30,7 @@ class RagHybridSearchTest {
 
         properties = new RagProperties(
                 true, 4, 900, 180, "CL100K_BASE", "ai_rag_documents",
-                true, false, 60, 3,
+                true, false, true, 60, 3,
                 new RagProperties.SsrfConfig(5, 10_485_760L));
 
         queryService = new RagQueryService(
@@ -72,7 +72,7 @@ class RagHybridSearchTest {
     void search_shouldFallbackToVectorOnly_whenHybridSearchDisabled() {
         RagProperties disabledProperties = new RagProperties(
                 true, 4, 900, 180, "CL100K_BASE", "ai_rag_documents",
-                false, false, 60, 3,
+                false, false, false, 60, 3,
                 new RagProperties.SsrfConfig(5, 10_485_760L));
 
         RagQueryService fallbackQueryService = new RagQueryService(

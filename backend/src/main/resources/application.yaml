@@ -341,6 +341,7 @@ app:
       collection-name: ${AI_RAG_COLLECTION:ai_rag_documents}    # 独立 pgvector 表名
       hybrid-search-enabled: ${AI_RAG_HYBRID_SEARCH:true}       # 混合检索开关（向量 + tsvector 全文双路召回 + RRF 融合）
       rerank-enabled: ${AI_RAG_RERANK_ENABLED:false}            # Rerank 精排开关
+      extraction-enabled: ${AI_RAG_EXTRACTION_ENABLED:true}     # 结构化抽取开关（文档入库时自动 LLM 结构化抽取）
       rrf-k: ${AI_RAG_RRF_K:60}                                 # RRF 倒数排名融合平滑常数 K
       candidate-pool-multiplier: ${AI_RAG_CANDIDATE_MULTIPLIER:3} # 双路召回候选池放大倍数（topK * multiplier）
       ssrf:

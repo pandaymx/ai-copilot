@@ -19,7 +19,7 @@ class DocumentReaderFactoryTest {
 
     private final RagProperties properties = new RagProperties(
             true, 4, 900, 180, "CL100K_BASE", "ai_rag_documents",
-            true, false, 60, 3,
+            true, false, true, 60, 3,
             new RagProperties.SsrfConfig(5, 10_485_760L)
     );
 

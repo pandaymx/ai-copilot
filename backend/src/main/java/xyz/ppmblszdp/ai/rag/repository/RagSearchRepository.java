@@ -54,9 +54,14 @@ public class RagSearchRepository {
             jdbcTemplate.execute(
                     "CREATE INDEX IF NOT EXISTS idx_" + table + "_content_trgm ON " + table
                             + " USING GIN(content gin_trgm_ops);");
-            log.info("RAG 全文检索扩展与索引初始化成功（表 {}）", table);
+            jdbcTemplate.execute(
+                    "ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS structured_knowledge JSONB;");
+            jdbcTemplate.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_" + table + "_struct_meta ON " + table
+                            + " USING GIN ((metadata->'structuredKnowledge'));");
+            log.info("RAG 全文检索与结构化索引初始化成功（表 {}）", table);
         } catch (Exception ex) {
-            log.warn("初始化 RAG 全文检索索引失败（非 PG 数据库或缺扩展权限时自动降级，不阻断启动）: {}", ex.getMessage());
+            log.warn("初始化 RAG 全文与结构化检索索引失败（非 PG 数据库或缺扩展权限时自动降级，不阻断启动）: {}", ex.getMessage());
         }
     }
 
@@ -112,6 +117,63 @@ public class RagSearchRepository {
             }, params.toArray());
         } catch (Exception e) {
             log.warn("RAG 全文检索查询失败（已降级为空）: query=... error={}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * 执行结构化知识查询（基于 PostgreSQL JSONB 匹配 metadata 中的 structuredKnowledge 实体/摘要/事实）。
+     *
+     * @param query      查询关键词/实体名
+     * @param userId     用户隔离 ID（可选）
+     * @param sourceType 来源类型过滤（可选）
+     * @param limit      召回数量上限
+     * @return 匹配的 Document 列表
+     */
+    public List<Document> searchStructuredKnowledge(String query, String userId, String sourceType, int limit) {
+        if (query == null || query.isBlank()) {
+            return Collections.emptyList();
+        }
+
+        String table = properties.resolveCollectionName();
+        StringBuilder sql = new StringBuilder();
+        List<Object> params = new ArrayList<>();
+
+        sql.append("SELECT id, content, metadata FROM ").append(table).append(" WHERE (")
+                .append("COALESCE(structured_knowledge, metadata->'structuredKnowledge')->>'title' ILIKE '%' || ? || '%' ")
+                .append("OR COALESCE(structured_knowledge, metadata->'structuredKnowledge')->>'summary' ILIKE '%' || ? || '%' ")
+                .append("OR COALESCE(structured_knowledge, metadata->'structuredKnowledge')->'entities'::text ILIKE '%' || ? || '%' ")
+                .append("OR COALESCE(structured_knowledge, metadata->'structuredKnowledge')->'keyFacts'::text ILIKE '%' || ? || '%'")
+                .append(")");
+        params.add(query);
+        params.add(query);
+        params.add(query);
+        params.add(query);
+
+        if (userId != null && !userId.isBlank()) {
+            sql.append(" AND metadata->>'userId' = ?");
+            params.add(userId);
+        }
+
+        if (sourceType != null && !sourceType.isBlank()) {
+            sql.append(" AND metadata->>'sourceType' = ?");
+            params.add(sourceType);
+        }
+
+        int effectiveLimit = limit > 0 ? limit : 20;
+        sql.append(" LIMIT ?");
+        params.add(effectiveLimit);
+
+        try {
+            return jdbcTemplate.query(sql.toString(), (rs, rowNum) -> {
+                String id = rs.getString("id");
+                String content = rs.getString("content");
+                String metaJson = rs.getString("metadata");
+                Map<String, Object> metadata = parseMetadata(metaJson);
+                return new Document(id, content, metadata);
+            }, params.toArray());
+        } catch (Exception e) {
+            log.warn("RAG 结构化知识检索查询失败（已降级为空）: query=... error={}", e.getMessage());
             return Collections.emptyList();
         }
     }

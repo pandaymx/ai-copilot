@@ -207,6 +207,19 @@ public class RagQueryService {
 
         int targetTopK = topK > 0 ? topK : properties.resolveTopK();
 
+        // 0. 优先进行结构化知识查询探查 (若开启 extraction-enabled 且 searchRepository 可用)
+        if (properties.isExtractionEnabled() && searchRepository != null) {
+            try {
+                List<Document> structuredDocs = searchRepository.searchStructuredKnowledge(query, userId, sourceType, targetTopK);
+                if (structuredDocs != null && !structuredDocs.isEmpty()) {
+                    log.info("RAG 结构化查询路由命中: query={} count={} userId={}", query, structuredDocs.size(), userId);
+                    return structuredDocs;
+                }
+            } catch (Exception e) {
+                log.warn("RAG 结构化查询探查失败（平滑降级至混合/向量检索）: query={} error={}", query, e.getMessage());
+            }
+        }
+
         // 仅走单路向量检索逻辑（若关闭混合检索或未注入 RagSearchRepository）
         if (!properties.isHybridSearchEnabled() || searchRepository == null) {
             return searchVectorOnly(query, userId, sourceType, targetTopK);

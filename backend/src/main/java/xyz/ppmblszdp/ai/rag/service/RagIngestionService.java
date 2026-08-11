@@ -7,6 +7,7 @@ import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,8 @@ import xyz.ppmblszdp.ai.rag.RagProperties;
 import xyz.ppmblszdp.ai.rag.chunker.RagTextSplitter;
 import xyz.ppmblszdp.ai.rag.chunker.TokenBasedRagTextSplitter;
 import xyz.ppmblszdp.ai.rag.dto.ConflictPolicy;
+import xyz.ppmblszdp.ai.rag.dto.RagExtractRequest;
+import xyz.ppmblszdp.ai.rag.dto.StructuredKnowledge;
 import xyz.ppmblszdp.ai.rag.metadata.RagMetadataEnricher;
 import xyz.ppmblszdp.ai.rag.reader.DocumentReaderFactory;
 import xyz.ppmblszdp.ai.rag.reader.SourceType;
@@ -22,10 +25,10 @@ import xyz.ppmblszdp.ai.rag.reader.SourceType;
 import java.util.List;
 
 /**
- * RAG 文档入库编排服务：Reader → Splitter → Metadata → VectorStore 端到端管道。
+ * RAG 文档入库编排服务：Reader → Splitter → Metadata → Extraction → VectorStore 端到端管道。
  *
  * <p>
- * 将文档解析、切片（含 overlap）、元数据注入、批量写入串联为单一编排入口。
+ * 将文档解析、切片（含 overlap）、元数据注入、结构化知识抽取、批量写入串联为单一编排入口。
  * 支持三种冲突处理策略（SKIP 去重、OVERWRITE 先删后写、FORCE_ADD 强制新增）。
  */
 @Service
@@ -38,15 +41,34 @@ public class RagIngestionService {
     private final RagTextSplitter splitter;
     private final VectorStore ragVectorStore;
     private final RagProperties properties;
+    private final RagExtractionService extractionService;
 
     public RagIngestionService(DocumentReaderFactory readerFactory,
             TokenBasedRagTextSplitter splitter,
             @Qualifier("ragVectorStore") VectorStore ragVectorStore,
-            RagProperties properties) {
+            RagProperties properties,
+            ObjectProvider<RagExtractionService> extractionServiceProvider) {
+        this(readerFactory, splitter, ragVectorStore, properties,
+                extractionServiceProvider != null ? extractionServiceProvider.getIfAvailable() : null);
+    }
+
+    public RagIngestionService(DocumentReaderFactory readerFactory,
+            TokenBasedRagTextSplitter splitter,
+            VectorStore ragVectorStore,
+            RagProperties properties,
+            RagExtractionService extractionService) {
         this.readerFactory = readerFactory;
         this.splitter = splitter;
         this.ragVectorStore = ragVectorStore;
         this.properties = properties;
+        this.extractionService = extractionService;
+    }
+
+    public RagIngestionService(DocumentReaderFactory readerFactory,
+            TokenBasedRagTextSplitter splitter,
+            VectorStore ragVectorStore,
+            RagProperties properties) {
+        this(readerFactory, splitter, ragVectorStore, properties, (RagExtractionService) null);
     }
 
     /**
@@ -63,7 +85,7 @@ public class RagIngestionService {
     }
 
     /**
-     * 带冲突策略的入库入口：读取 → 切片 → 注入元数据 → 策略处理（SKIP/OVERWRITE/FORCE_ADD） → 写入。
+     * 带冲突策略的入库入口：读取 → 切片 → 注入元数据 → 结构化抽取 → 策略处理（SKIP/OVERWRITE/FORCE_ADD） → 写入。
      *
      * @param sourceType     文档源类型
      * @param source         来源字符串
@@ -113,6 +135,24 @@ public class RagIngestionService {
             }
         }
         RagMetadataEnricher.enrich(chunks, sourceType.name(), source, fileName, url, title, userId);
+
+        // 3.1 结构化知识抽取 (若开启 extraction-enabled 且 extractionService 可用)
+        if (properties.isExtractionEnabled() && extractionService != null) {
+            for (Document chunk : chunks) {
+                try {
+                    String chunkContent = chunk.getText();
+                    if (chunkContent != null && !chunkContent.isBlank()) {
+                        RagExtractRequest request = new RagExtractRequest(null, chunkContent, userId, sourceType.name(), null);
+                        StructuredKnowledge knowledge = extractionService.extract(request);
+                        if (knowledge != null) {
+                            chunk.getMetadata().put("structuredKnowledge", knowledge);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("RAG 结构化抽取降级（不阻断入库）: source={} error={}", source, e.getMessage());
+                }
+            }
+        }
 
         // 4. 根据冲突策略筛选写入列表
         List<Document> toWrite;

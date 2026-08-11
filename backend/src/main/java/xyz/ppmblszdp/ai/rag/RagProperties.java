@@ -28,6 +28,7 @@ public record RagProperties(
         @Name("collection-name") @Nullable String collectionName,
         @Name("hybrid-search-enabled") @Nullable Boolean hybridSearchEnabled,
         @Name("rerank-enabled") @Nullable Boolean rerankEnabled,
+        @Name("extraction-enabled") @Nullable Boolean extractionEnabled,
         @Name("rrf-k") @Nullable Integer rrfK,
         @Name("candidate-pool-multiplier") @Nullable Integer candidatePoolMultiplier,
         @Nullable SsrfConfig ssrf
@@ -43,6 +44,10 @@ public record RagProperties(
 
     public boolean isRerankEnabled() {
         return rerankEnabled != null && rerankEnabled;
+    }
+
+    public boolean isExtractionEnabled() {
+        return extractionEnabled == null || extractionEnabled;
     }
 
     public int resolveRrfK() {
