@@ -37,9 +37,7 @@ import xyz.ppmblszdp.ai.dto.ChatChunkDto;
 import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
 import xyz.ppmblszdp.ai.dto.MediaDto;
-import xyz.ppmblszdp.ai.memory.ChatRateLimiter;
 import xyz.ppmblszdp.ai.memory.ChatRateLimiter.RateLimiter;
-import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryAdvisorFactory;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryWriter;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryProcessor;
@@ -51,9 +49,9 @@ import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
 import xyz.ppmblszdp.ai.repository.UsageRepository;
 import xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor;
-import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig;
 import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig.RagAdvisorFactory;
 import xyz.ppmblszdp.ai.tool.ToolEventEmitter;
+import xyz.ppmblszdp.ai.tool.ToolSearchAdvisorConfig.ToolSearchAdvisorFactory;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
 import reactor.core.publisher.Sinks.Many;
@@ -99,14 +97,14 @@ public class ChatService implements DisposableBean {
 	private final ProviderRegistry registry;
 	private final ContextAssembler contextAssembler;
 	private final ObjectProvider<ChatMemory> sessionChatMemory;
-	private final ObjectProvider<LongTermMemoryConfig.LongTermMemoryAdvisorFactory> longTermFactory;
-	private final ObjectProvider<LongTermMemoryConfig.LongTermMemoryWriter> longTermWriter;
+	private final ObjectProvider<LongTermMemoryAdvisorFactory> longTermFactory;
+	private final ObjectProvider<LongTermMemoryWriter> longTermWriter;
 	private final ObjectProvider<LongTermMemoryProcessor> longTermProcessor;
-	private final ObjectProvider<ChatRateLimiter.RateLimiter> rateLimiter;
-	private final ObjectProvider<UsageQuotaChecker.UsageQuota> usageQuota;
+	private final ObjectProvider<RateLimiter> rateLimiter;
+	private final ObjectProvider<UsageQuota> usageQuota;
 	private final UsageRepository usageRepository;
 	private final ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor;
-	private final ObjectProvider<RagAdvisorConfig.RagAdvisorFactory> ragAdvisorFactory;
+	private final ObjectProvider<RagAdvisorFactory> ragAdvisorFactory;
 	private final ModelHealthTracker healthTracker;
 	private final SessionService sessionService;
 	private final AiProviderProperties properties;
@@ -117,6 +115,7 @@ public class ChatService implements DisposableBean {
 	private final ToolCallback[] toolCallbacks;
 	/** 远程 MCP server 工具提供者（弱依赖）。MCP 关闭或未配置时 ObjectProvider 为空。 */
 	private final ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider;
+	private final ObjectProvider<ToolSearchAdvisorFactory> toolSearchFactory;
 
 	/**
 	 * 持有所有「即发即弃」订阅（touchSession / 长期记忆写入等）返回的 Disposable，
@@ -143,7 +142,8 @@ public class ChatService implements DisposableBean {
 			ObjectProvider<OpenAiAudioSpeechModel> speechModelProvider,
 			ToolEventEmitter toolEventEmitter,
 			@Qualifier("agentToolCallbacks") ToolCallback[] toolCallbacks,
-			ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider) {
+			ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider,
+			ObjectProvider<ToolSearchAdvisorFactory> toolSearchFactory) {
 		this.registry = registry;
 		this.contextAssembler = contextAssembler;
 		this.sessionChatMemory = sessionChatMemory;
@@ -164,6 +164,7 @@ public class ChatService implements DisposableBean {
 		this.toolEventEmitter = toolEventEmitter;
 		this.toolCallbacks = toolCallbacks;
 		this.mcpToolProvider = mcpToolProvider;
+		this.toolSearchFactory = toolSearchFactory;
 	}
 
 	/**
@@ -199,6 +200,21 @@ public class ChatService implements DisposableBean {
 		ToolCallback[] merged = new ToolCallback[local.length + remote.length];
 		System.arraycopy(local, 0, merged, 0, local.length);
 		System.arraycopy(remote, 0, merged, local.length, remote.length);
+		return merged;
+	}
+
+	/**
+	 * 准备 Agent 工具：全量本地 Tools + 全量 MCP Tools -> 计算总数 >= Threshold -> (若为真) 交由
+	 * ToolSearchAdvisor 拦截过滤与索引可观测输出。
+	 */
+	private ToolCallback[] prepareAgentTools(String conversationId) {
+		ToolCallback[] local = toolCallbacks != null ? toolCallbacks : new ToolCallback[0];
+		ToolCallback[] remote = resolveMcpToolCallbacks();
+		ToolCallback[] merged = mergeTools(local, remote);
+		ToolSearchAdvisorFactory factory = toolSearchFactory != null ? toolSearchFactory.getIfAvailable() : null;
+		if (factory != null && factory.shouldApply(merged, local.length, remote.length)) {
+			return factory.processTools(merged, local.length, remote.length, conversationId);
+		}
 		return merged;
 	}
 
@@ -329,8 +345,8 @@ public class ChatService implements DisposableBean {
 					.advisors(a -> applyRagAdvisor(a, userId))
 					.options(options.mutate());
 			if (agentPath) {
-				ToolCallback[] mergedTools = mergeTools(toolCallbacks, resolveMcpToolCallbacks());
-				requestSpec = requestSpec.tools((Object[]) mergedTools)
+				ToolCallback[] agentTools = prepareAgentTools(req.conversationId());
+				requestSpec = requestSpec.tools((Object[]) agentTools)
 						.toolContext(Map.of(
 								"eventSink", toolSink,
 								ToolEventEmitter.CTX_EMITTER, toolEventEmitter,
@@ -433,8 +449,8 @@ public class ChatService implements DisposableBean {
 
 		ChatClientRequestSpec requestSpec = resolved.chatClient().prompt(prompt);
 		if (agentPath) {
-			ToolCallback[] mergedTools = mergeTools(toolCallbacks, resolveMcpToolCallbacks());
-			requestSpec = requestSpec.tools((Object[]) mergedTools)
+			ToolCallback[] agentTools = prepareAgentTools(request.conversationId());
+			requestSpec = requestSpec.tools((Object[]) agentTools)
 					.toolContext(Map.of(
 							"eventSink", toolSink,
 							ToolEventEmitter.CTX_EMITTER, toolEventEmitter,

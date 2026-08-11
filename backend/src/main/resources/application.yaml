@@ -84,6 +84,10 @@ spring:
         observations:
           log-prompt: false
           log-completion: false
+        tool-search-advisor:
+          enabled: ${SPRING_AI_TOOL_SEARCH_ADVISOR_ENABLED:${TOOL_SEARCH_ADVISOR_ENABLED:false}}
+          tool-index-type: ${SPRING_AI_TOOL_INDEX_TYPE:${TOOL_INDEX_TYPE:regex}}
+          min-tools-threshold: ${SPRING_AI_MIN_TOOLS_THRESHOLD:${MIN_TOOLS_THRESHOLD:30}}
       observations:
         log-prompt: false
         log-completion: false
@@ -204,6 +208,15 @@ app:
       history-ratio: 0.7                 # 历史消息可占用的上下文预算比例（0~1]
       default-max-context-tokens: 32768  # 模型未声明 maxContextTokens 时的兜底值
       safety-factor: 1.1                 # Token 估算安全系数，>1 表示高估
+
+    agent:
+      enabled: ${AGENT_ENABLED:true}
+      max-tool-calls: ${MAX_TOOL_CALLS:5}
+      timeout-seconds: ${TIMEOUT_SECONDS:30}
+      tool-search-advisor:
+        enabled: ${TOOL_SEARCH_ADVISOR_ENABLED:false}
+        tool-index-type: ${TOOL_INDEX_TYPE:regex}        # regex | lucene | vector
+        min-tools-threshold: ${MIN_TOOLS_THRESHOLD:30}  # 工具总数 >= 30 时开启渐进式检索过滤
 
     # 一等公民：仅需声明「对外暴露哪些模型」及展示元数据。
     # 连接参数（apiKey/baseUrl）仍由上方 spring.ai.* 管理，未配置密钥时由 starter 行为决定。

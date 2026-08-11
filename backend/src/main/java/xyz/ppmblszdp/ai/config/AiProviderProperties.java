@@ -194,18 +194,20 @@ public record AiProviderProperties(
 	/**
 	 * Agent 工具调用子系统配置（绑定 {@code app.ai.agent.*}）。
 	 *
-	 * @param enabled         Agent 模式服务端总开关；false 时即使前端开启 agentEnabled 也不装配工具
-	 * @param maxToolCalls     单次请求内允许连续调用工具的最大次数（防止 LLM 死循环消耗 Token）
-	 * @param timeoutSeconds   单次工具执行的超时上限（秒）
+	 * @param enabled           Agent 模式服务端总开关；false 时即使前端开启 agentEnabled 也不装配工具
+	 * @param maxToolCalls       单次请求内允许连续调用工具的最大次数（防止 LLM 死循环消耗 Token）
+	 * @param timeoutSeconds     单次工具执行的超时上限（秒）
+	 * @param toolSearchAdvisor 渐进式工具披露 / 工具检索 Advisor 配置
 	 */
 	public record AgentConfig(
 			@Nullable Boolean enabled,
 			@Name("max-tool-calls") @Nullable Integer maxToolCalls,
-			@Name("timeout-seconds") @Nullable Integer timeoutSeconds
+			@Name("timeout-seconds") @Nullable Integer timeoutSeconds,
+			@Name("tool-search-advisor") @Nullable ToolSearchAdvisorPropertiesConfig toolSearchAdvisor
 	) {
 
 		public static AgentConfig defaults() {
-			return new AgentConfig(true, 5, 30);
+			return new AgentConfig(true, 5, 30, ToolSearchAdvisorPropertiesConfig.defaults());
 		}
 
 		public boolean isEnabled() {
@@ -218,6 +220,40 @@ public record AiProviderProperties(
 
 		public int resolveTimeoutSeconds() {
 			return (timeoutSeconds != null && timeoutSeconds > 0) ? timeoutSeconds : 30;
+		}
+
+		public ToolSearchAdvisorPropertiesConfig resolveToolSearchAdvisor() {
+			return toolSearchAdvisor != null ? toolSearchAdvisor : ToolSearchAdvisorPropertiesConfig.defaults();
+		}
+	}
+
+	/**
+	 * 渐进式工具披露 Advisor 配置（绑定 {@code app.ai.agent.tool-search-advisor.*}）。
+	 *
+	 * @param enabled           是否开启 ToolSearchAdvisor 渐进式工具披露
+	 * @param toolIndexType     工具索引类型：regex | lucene | vector（默认 regex）
+	 * @param minToolsThreshold 工具检索触发阈值：全量工具（本地+MCP）大于等于此值时激活过滤
+	 */
+	public record ToolSearchAdvisorPropertiesConfig(
+			@Nullable Boolean enabled,
+			@Name("tool-index-type") @Nullable String toolIndexType,
+			@Name("min-tools-threshold") @Nullable Integer minToolsThreshold
+	) {
+
+		public static ToolSearchAdvisorPropertiesConfig defaults() {
+			return new ToolSearchAdvisorPropertiesConfig(false, "regex", 30);
+		}
+
+		public boolean isEnabled() {
+			return enabled != null && enabled;
+		}
+
+		public String resolveToolIndexType() {
+			return (toolIndexType != null && !toolIndexType.isBlank()) ? toolIndexType.toLowerCase().trim() : "regex";
+		}
+
+		public int resolveMinToolsThreshold() {
+			return (minToolsThreshold != null && minToolsThreshold > 0) ? minToolsThreshold : 30;
 		}
 	}
 

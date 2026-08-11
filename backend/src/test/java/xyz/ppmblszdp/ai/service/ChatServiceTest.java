@@ -32,6 +32,7 @@ import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig.RagAdvisorFactory;
 import xyz.ppmblszdp.ai.repository.UsageRepository;
 import xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor;
 import xyz.ppmblszdp.ai.tool.ToolEventEmitter;
+import xyz.ppmblszdp.ai.tool.ToolSearchAdvisorConfig;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
 
@@ -66,6 +67,8 @@ class ChatServiceTest {
 	private ObjectProvider<OpenAiAudioSpeechModel> speechModelProvider = mock(ObjectProvider.class);
 	@SuppressWarnings("unchecked")
 	private ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider = mock(ObjectProvider.class);
+	@SuppressWarnings("unchecked")
+	private ObjectProvider<ToolSearchAdvisorConfig.ToolSearchAdvisorFactory> toolSearchFactory = mock(ObjectProvider.class);
 
 	@BeforeEach
 	@SuppressWarnings("unchecked")
@@ -129,7 +132,8 @@ class ChatServiceTest {
 				speechModelProvider,
 				new ToolEventEmitter(properties),
 				new ToolCallback[0],
-				mcpToolProvider);
+				mcpToolProvider,
+				toolSearchFactory);
 	}
 
 	@Test
@@ -258,7 +262,8 @@ class ChatServiceTest {
 				speechModelProvider,
 				new ToolEventEmitter(properties),
 				new ToolCallback[0],
-				mockMcpToolProvider);
+				mockMcpToolProvider,
+				toolSearchFactory);
 
 		ChatResponse chatResponse = new ChatResponse(List.of(new Generation(new AssistantMessage("Hello!"))));
 		when(chatModel.call(any(Prompt.class))).thenReturn(chatResponse);
