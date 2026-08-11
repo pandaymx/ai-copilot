@@ -9,9 +9,12 @@ import org.springframework.web.server.ServerWebExchange;
 import xyz.ppmblszdp.ai.identity.AuthProperties;
 import xyz.ppmblszdp.ai.identity.UserIdentityFilter;
 import xyz.ppmblszdp.ai.rag.dto.RagDocumentMeta;
+import xyz.ppmblszdp.ai.rag.dto.RagExtractRequest;
 import xyz.ppmblszdp.ai.rag.dto.RagListResponse;
+import xyz.ppmblszdp.ai.rag.dto.StructuredKnowledge;
 import xyz.ppmblszdp.ai.rag.reader.SourceType;
 import xyz.ppmblszdp.ai.rag.security.SsrfBlockedException;
+import xyz.ppmblszdp.ai.rag.service.RagExtractionService;
 import xyz.ppmblszdp.ai.rag.service.RagIngestionService;
 import xyz.ppmblszdp.ai.rag.service.RagQueryService;
 
@@ -21,14 +24,14 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * RAG 文档入库与检索 REST 接口。
+ * RAG 文档入库、检索与结构化抽取 REST 接口。
  *
  * <ul>
- * <li>POST /api/rag/ingest — 多源文档入库（联合 DTO：rawText / targetUrl /
- * fileStoragePath），内置内容去重</li>
- * <li>GET /api/rag/search — 语义相似检索</li>
+ * <li>POST /api/rag/ingest — 多源文档入库（支持 SKIP / OVERWRITE / FORCE_ADD 冲突策略）</li>
+ * <li>GET /api/rag/search — 混合检索（向量 + 全文双路召回 + RRF 融合）</li>
+ * <li>POST /api/rag/extract — 结构化实体与知识提取（BeanOutputConverter 绑定）</li>
  * <li>GET /api/rag/documents — 已入库文档列表（分页/过滤聚合）</li>
- * <li>DELETE /api/rag/documents — 按 source + 用户删除文档</li>
+ * <li>DELETE /api/rag/documents — 按 source / contentHash + 用户精确删除文档</li>
  * <li>POST /api/rag/reingest — 覆盖更新（先删后写）</li>
  * <li>GET /api/rag/status — 向量库状态统计</li>
  * </ul>
@@ -45,21 +48,21 @@ public class RagController {
 
     private final RagIngestionService ingestionService;
     private final RagQueryService queryService;
+    private final RagExtractionService extractionService;
     private final AuthProperties authProperties;
 
-    public RagController(RagIngestionService ingestionService, RagQueryService queryService,
-            AuthProperties authProperties) {
+    public RagController(RagIngestionService ingestionService,
+                         RagQueryService queryService,
+                         RagExtractionService extractionService,
+                         AuthProperties authProperties) {
         this.ingestionService = ingestionService;
         this.queryService = queryService;
+        this.extractionService = extractionService;
         this.authProperties = authProperties;
     }
 
     /**
-     * 多源文档入库。
-     *
-     * <p>
-     * 三选一/多选一联合请求：rawText（纯文本）、targetUrl（网页）、fileStoragePath（文件路径）。
-     * 入库链路内置内容级去重（contentHash），重复内容自动跳过，响应返回新增/跳过计数。
+     * 多源文档入库（支持 ConflictPolicy 冲突策略）。
      */
     @PostMapping("/ingest")
     public ResponseEntity<Map<String, Object>> ingest(
@@ -96,19 +99,18 @@ public class RagController {
                 source = request.fileStoragePath();
             }
         }
-        ;
 
         String fileName = (request.fileName() != null) ? request.fileName() : source;
-        // 取真实身份（与 ChatController 检索口径一致），缺真实身份时回退到 DEFAULT_USER_ID
         String userId = UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
 
         try {
             RagIngestionService.IngestResult result = ingestionService.ingest(
-                    sourceType, source, fileName, userId);
+                    sourceType, source, fileName, userId, request.conflictPolicy());
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("success", true);
             body.put("sourceType", sourceType.name());
             body.put("source", source);
+            body.put("conflictPolicy", request.conflictPolicy() != null ? request.conflictPolicy().name() : "SKIP");
             body.put("ingested", result.ingested());
             body.put("skipped", result.skipped());
             return ResponseEntity.ok(body);
@@ -126,11 +128,20 @@ public class RagController {
     }
 
     /**
+     * 结构化知识提取接口。
+     */
+    @PostMapping("/extract")
+    public ResponseEntity<StructuredKnowledge> extract(
+            @RequestBody RagExtractRequest request, ServerWebExchange exchange) {
+        String resolvedUser = UserIdentityFilter.resolveIdentity(exchange, request.userId(), authProperties);
+        RagExtractRequest effectiveRequest = new RagExtractRequest(
+                request.query(), request.rawText(), resolvedUser, request.sourceType(), request.topK());
+        StructuredKnowledge result = extractionService.extract(effectiveRequest);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
      * 已入库文档列表（聚合视图）。
-     *
-     * @param userId     过滤用户 ID（可选；为空时按调用者真实身份隔离）
-     * @param sourceType 来源类型过滤（可选）
-     * @param limit      最多返回文档数（默认 50，最大 1000）
      */
     @GetMapping("/documents")
     public ResponseEntity<RagListResponse> listDocuments(
@@ -156,26 +167,31 @@ public class RagController {
     }
 
     /**
-     * 按 source 删除文档（幂等：目标不存在时返回 0 不报错）。
-     *
-     * <p>
-     * 删除键为 {@code source + 真实 userId}，保证多租户隔离，前端传入的 userId 仅用于身份解析上下文。
+     * 按 source 或 contentHash 精确删除文档片段。
      */
     @DeleteMapping("/documents")
     public ResponseEntity<Map<String, Object>> deleteDocuments(
-            @RequestParam String source,
+            @RequestParam(required = false) String source,
+            @RequestParam(required = false) String contentHash,
+            @RequestParam(required = false) String sourceType,
             @RequestParam(required = false) String userId,
             ServerWebExchange exchange) {
 
-        if (source == null || source.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "source 不能为空"));
+        if ((source == null || source.isBlank()) && (contentHash == null || contentHash.isBlank())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "source 和 contentHash 不能同时为空"));
         }
         String resolvedUser = UserIdentityFilter.resolveIdentity(exchange, userId, authProperties);
         try {
-            int removed = ingestionService.deleteBySourceAndUser(source, resolvedUser);
+            int removed;
+            if (contentHash != null && !contentHash.isBlank()) {
+                removed = ingestionService.deleteByContentHash(contentHash, resolvedUser);
+            } else {
+                removed = ingestionService.deleteBySourceAndUser(source, sourceType, resolvedUser);
+            }
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("success", true);
             body.put("source", source);
+            body.put("contentHash", contentHash);
             body.put("userId", resolvedUser);
             body.put("removed", removed);
             return ResponseEntity.ok(body);
@@ -190,7 +206,7 @@ public class RagController {
     }
 
     /**
-     * 覆盖更新（重新入库）：先删后写，返回删除旧数与新增/跳过数。
+     * 覆盖更新（重新入库）。
      */
     @PostMapping("/reingest")
     public ResponseEntity<Map<String, Object>> reingest(
@@ -227,7 +243,6 @@ public class RagController {
                 source = request.fileStoragePath();
             }
         }
-        ;
 
         String fileName = (request.fileName() != null) ? request.fileName() : source;
         String resolvedUser = UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
@@ -257,7 +272,7 @@ public class RagController {
     }
 
     /**
-     * 向量库状态统计：enabled / available / 集合名 / 文档与向量数。
+     * 向量库状态统计。
      */
     @GetMapping("/status")
     public ResponseEntity<Map<String, Object>> status() {
@@ -266,11 +281,6 @@ public class RagController {
 
     /**
      * 语义相似检索。
-     *
-     * @param query      查询文本（必填）
-     * @param userId     用户 ID（可选，默认 {@code UserIdentityFilter.DEFAULT_USER_ID}）
-     * @param sourceType 来源类型过滤（可选）
-     * @param topK       Top-K（可选，默认使用配置值）
      */
     @GetMapping("/search")
     public ResponseEntity<Map<String, Object>> search(

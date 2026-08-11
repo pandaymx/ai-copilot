@@ -7,6 +7,7 @@ import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -14,16 +15,19 @@ import org.springframework.stereotype.Service;
 import xyz.ppmblszdp.ai.memory.SafeVectorStore;
 import xyz.ppmblszdp.ai.rag.RagProperties;
 import xyz.ppmblszdp.ai.rag.dto.RagDocumentMeta;
+import xyz.ppmblszdp.ai.rag.repository.RagSearchRepository;
+import xyz.ppmblszdp.ai.rag.rerank.RagReranker;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * RAG 文档相似检索服务。
+ * RAG 文档相似检索服务（支持双路召回 + RRF 倒数排名融合 + 可选 Rerank 精排）。
  *
  * <p>
  * <b>所有过滤字段强制 String 类型（回应风险3）</b>：
@@ -43,19 +47,37 @@ public class RagQueryService {
 
     private final VectorStore ragVectorStore;
     private final RagProperties properties;
+    private final RagSearchRepository searchRepository;
+    private final RagReranker reranker;
 
-    public RagQueryService(@Qualifier("ragVectorStore") VectorStore ragVectorStore,
-            RagProperties properties) {
+    public RagQueryService(
+            @Qualifier("ragVectorStore") VectorStore ragVectorStore,
+            RagProperties properties,
+            ObjectProvider<RagSearchRepository> searchRepositoryProvider,
+            ObjectProvider<RagReranker> rerankerProvider) {
         this.ragVectorStore = ragVectorStore;
         this.properties = properties;
+        this.searchRepository = searchRepositoryProvider != null ? searchRepositoryProvider.getIfAvailable() : null;
+        this.reranker = rerankerProvider != null ? rerankerProvider.getIfAvailable() : null;
+    }
+
+    public RagQueryService(
+            VectorStore ragVectorStore,
+            RagProperties properties,
+            RagSearchRepository searchRepository,
+            RagReranker reranker) {
+        this.ragVectorStore = ragVectorStore;
+        this.properties = properties;
+        this.searchRepository = searchRepository;
+        this.reranker = reranker;
+    }
+
+    public RagQueryService(VectorStore ragVectorStore, RagProperties properties) {
+        this(ragVectorStore, properties, (RagSearchRepository) null, (RagReranker) null);
     }
 
     /**
      * 列出已入库文档：拉取满足过滤条件的全部向量记录，按 {@code source} 内存聚合为文档视图。
-     *
-     * <p>
-     * 聚合粒度：同一 {@code source} 下的多个 chunk 合并为一条 {@link RagDocumentMeta}，
-     * chunkCount 为该 source 的向量数，ingestedAt 取最新一条，contentHash 取首条。
      *
      * @param userId     用户 ID 过滤（null/空表示不过滤，由上游按身份解析）
      * @param sourceType 来源类型过滤（null/空表示不过滤）
@@ -92,7 +114,6 @@ public class RagQueryService {
             return Collections.emptyList();
         }
 
-        // 内存按 source 聚合（同 source 可能跨 chunk，需保留首条 contentHash / 最新 ingestedAt）
         Map<String, RagDocumentMeta> bySource = new LinkedHashMap<>();
         for (Document doc : records) {
             Map<String, Object> m = doc.getMetadata();
@@ -122,13 +143,14 @@ public class RagQueryService {
     }
 
     /**
-     * 向量库可用性与统计：enabled 来自配置，available 来自底层 VectorStore 装配状态，
-     * estimatedCount 为最佳努力的文档（source）估算。
+     * 向量库可用性与统计。
      */
     public Map<String, Object> collectionStats() {
         List<RagDocumentMeta> all = listDocuments(null, null, LIST_FETCH_LIMIT);
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("enabled", properties.isEnabled());
+        stats.put("hybridSearchEnabled", properties.isHybridSearchEnabled());
+        stats.put("rerankEnabled", properties.isRerankEnabled());
         stats.put("available", ragVectorStore instanceof SafeVectorStore
                 ? ((SafeVectorStore) ragVectorStore).isAvailable()
                 : true);
@@ -161,75 +183,167 @@ public class RagQueryService {
         return a.compareTo(b) >= 0 ? a : b;
     }
 
-    /**
-     * 按查询文本和用户 ID 检索相似文档片段。
-     *
-     * @param query  查询文本
-     * @param userId 用户 ID（用于隔离，String 类型）
-     * @return 相似文档列表（按相似度降序）
-     */
     public List<Document> search(String query, String userId) {
         return search(query, userId, properties.resolveTopK());
     }
 
+    public List<Document> search(String query, String userId, int topK) {
+        return search(query, userId, null, topK);
+    }
+
     /**
-     * 按查询文本、用户 ID 和来源类型检索相似文档片段。
+     * 按查询文本、用户 ID 和来源类型检索文档片段（根据配置自动支持单向量 / 双路 RRF 混合检索与精排）。
      *
      * @param query      查询文本
      * @param userId     用户 ID（String）
      * @param sourceType 来源类型过滤，可为 null 表示不过滤
      * @param topK       Top-K
-     * @return 相似文档列表
+     * @return 匹配文档列表
      */
     public List<Document> search(String query, String userId, String sourceType, int topK) {
         if (query == null || query.isBlank()) {
             return Collections.emptyList();
         }
 
+        int targetTopK = topK > 0 ? topK : properties.resolveTopK();
+
+        // 仅走单路向量检索逻辑（若关闭混合检索或未注入 RagSearchRepository）
+        if (!properties.isHybridSearchEnabled() || searchRepository == null) {
+            return searchVectorOnly(query, userId, sourceType, targetTopK);
+        }
+
+        // 双路召回 + RRF 融合逻辑
+        return searchHybridRrf(query, userId, sourceType, targetTopK);
+    }
+
+    private List<Document> searchVectorOnly(String query, String userId, String sourceType, int topK) {
         SearchRequest.Builder builder = SearchRequest.builder()
                 .query(query)
-                .topK(topK > 0 ? topK : properties.resolveTopK());
+                .topK(topK);
 
-        // 构建过滤表达式（全部 String 比较）
         FilterExpressionBuilder feb = new FilterExpressionBuilder();
-        Filter.Expression filter = null;
+        Filter.Expression filter = buildFilter(feb, userId, sourceType);
+        if (filter != null) {
+            builder.filterExpression(filter);
+        }
 
-        // 先用 Op 收集筛选条件，最后统一构建 Expression
+        try {
+            return ragVectorStore.similaritySearch(builder.build());
+        } catch (Exception e) {
+            log.warn("RAG 向量检索异常（已降级为空）: query=... error={}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    private List<Document> searchHybridRrf(String query, String userId, String sourceType, int topK) {
+        int candidateLimit = Math.max(topK * properties.resolveCandidatePoolMultiplier(), 20);
+
+        // 1. 向量召回
+        List<Document> vectorDocs = searchVectorOnly(query, userId, sourceType, candidateLimit);
+
+        // 2. 全文与模糊召回
+        List<Document> fullTextDocs;
+        try {
+            fullTextDocs = searchRepository.searchFullText(query, userId, sourceType, candidateLimit);
+        } catch (Exception e) {
+            log.warn("RAG 全文召回异常（已降级为仅向量）: error={}", e.getMessage());
+            fullTextDocs = Collections.emptyList();
+        }
+
+        if (vectorDocs.isEmpty() && fullTextDocs.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 3. RRF (Reciprocal Rank Fusion) 融合
+        int rrfK = properties.resolveRrfK();
+        Map<String, DocumentRrfScore> scoreMap = new LinkedHashMap<>();
+
+        // 累计向量排名
+        for (int rank = 0; rank < vectorDocs.size(); rank++) {
+            Document doc = vectorDocs.get(rank);
+            String docKey = resolveDocKey(doc);
+            double score = 1.0 / (rrfK + (rank + 1));
+            DocumentRrfScore entry = scoreMap.computeIfAbsent(docKey, k -> new DocumentRrfScore(doc));
+            entry.addVectorScore(score, rank + 1);
+        }
+
+        // 累计全文排名
+        for (int rank = 0; rank < fullTextDocs.size(); rank++) {
+            Document doc = fullTextDocs.get(rank);
+            String docKey = resolveDocKey(doc);
+            double score = 1.0 / (rrfK + (rank + 1));
+            DocumentRrfScore entry = scoreMap.computeIfAbsent(docKey, k -> new DocumentRrfScore(doc));
+            entry.addFullTextScore(score, rank + 1);
+        }
+
+        List<Document> rrfCandidates = new ArrayList<>();
+        for (DocumentRrfScore entry : scoreMap.values()) {
+            Document orig = entry.doc;
+            Map<String, Object> meta = new HashMap<>(orig.getMetadata());
+            meta.put("rrfScore", entry.rrfScore);
+            if (entry.vectorRank > 0) meta.put("vectorRank", entry.vectorRank);
+            if (entry.fullTextRank > 0) meta.put("fullTextRank", entry.fullTextRank);
+            rrfCandidates.add(new Document(orig.getId(), orig.getText(), meta));
+        }
+
+        rrfCandidates.sort((d1, d2) -> Double.compare(
+                (double) d2.getMetadata().getOrDefault("rrfScore", 0.0),
+                (double) d1.getMetadata().getOrDefault("rrfScore", 0.0)));
+
+        // 4. 可选 Rerank 精排
+        if (properties.isRerankEnabled() && reranker != null) {
+            return reranker.rerank(query, rrfCandidates, topK);
+        }
+
+        return rrfCandidates.size() > topK ? rrfCandidates.subList(0, topK) : rrfCandidates;
+    }
+
+    private String resolveDocKey(Document doc) {
+        if (doc.getId() != null && !doc.getId().isBlank()) {
+            return doc.getId();
+        }
+        Object hash = doc.getMetadata().get("contentHash");
+        if (hash != null) {
+            return hash.toString();
+        }
+        return String.valueOf(doc.getText().hashCode());
+    }
+
+    private Filter.Expression buildFilter(FilterExpressionBuilder feb, String userId, String sourceType) {
+        Filter.Expression filter = null;
         if (userId != null && !userId.isBlank()) {
             filter = feb.eq("userId", userId).build();
         }
-
         if (sourceType != null && !sourceType.isBlank()) {
             var srcOp = feb.eq("sourceType", sourceType);
             if (filter != null) {
-                // 重新构造 and compound；feb.and() 返回 Op → .build() 得到 Expression
                 var userOp = feb.eq("userId", userId);
                 filter = feb.and(userOp, srcOp).build();
             } else {
                 filter = srcOp.build();
             }
         }
-
-        if (filter != null) {
-            builder.filterExpression(filter);
-        }
-
-        try {
-            SearchRequest request = builder.build();
-            List<Document> results = ragVectorStore.similaritySearch(request);
-            log.debug("RAG 检索完成: query=... userId={} sourceType={} topK={} hits={}",
-                    userId, sourceType, topK, results.size());
-            return results;
-        } catch (Exception e) {
-            log.warn("RAG 检索异常（已降级为空结果）: query=... error={}", e.getMessage());
-            return Collections.emptyList();
-        }
+        return filter;
     }
 
-    /**
-     * 基础检索（按查询文本 + userId）。
-     */
-    public List<Document> search(String query, String userId, int topK) {
-        return search(query, userId, null, topK);
+    private static class DocumentRrfScore {
+        final Document doc;
+        double rrfScore = 0.0;
+        int vectorRank = -1;
+        int fullTextRank = -1;
+
+        DocumentRrfScore(Document doc) {
+            this.doc = doc;
+        }
+
+        void addVectorScore(double score, int rank) {
+            this.rrfScore += score;
+            this.vectorRank = rank;
+        }
+
+        void addFullTextScore(double score, int rank) {
+            this.rrfScore += score;
+            this.fullTextRank = rank;
+        }
     }
 }

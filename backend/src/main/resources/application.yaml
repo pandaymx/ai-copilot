@@ -326,6 +326,10 @@ app:
       overlap: ${AI_RAG_OVERLAP:180}                            # 相邻切片重叠 Token 数（≈ 20% chunk-size）
       encoding-type: ${AI_RAG_ENCODING:CL100K_BASE}             # TokenTextSplitter 分词编码（CL100K_BASE/P50K_BASE/O200K_BASE）
       collection-name: ${AI_RAG_COLLECTION:ai_rag_documents}    # 独立 pgvector 表名
+      hybrid-search-enabled: ${AI_RAG_HYBRID_SEARCH:true}       # 混合检索开关（向量 + tsvector 全文双路召回 + RRF 融合）
+      rerank-enabled: ${AI_RAG_RERANK_ENABLED:false}            # Rerank 精排开关
+      rrf-k: ${AI_RAG_RRF_K:60}                                 # RRF 倒数排名融合平滑常数 K
+      candidate-pool-multiplier: ${AI_RAG_CANDIDATE_MULTIPLIER:3} # 双路召回候选池放大倍数（topK * multiplier）
       ssrf:
         timeout-seconds: ${AI_RAG_SSRF_TIMEOUT:5}               # URL 抓取连接超时（秒），防 Slowloris
         max-body-bytes: ${AI_RAG_SSRF_MAX_BODY:10485760}        # 响应体上限 10MB，防 Zip Bomb

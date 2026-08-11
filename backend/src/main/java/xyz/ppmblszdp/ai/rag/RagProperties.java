@@ -26,11 +26,31 @@ public record RagProperties(
         @Nullable Integer overlap,
         @Name("encoding-type") @Nullable String encodingType,
         @Name("collection-name") @Nullable String collectionName,
+        @Name("hybrid-search-enabled") @Nullable Boolean hybridSearchEnabled,
+        @Name("rerank-enabled") @Nullable Boolean rerankEnabled,
+        @Name("rrf-k") @Nullable Integer rrfK,
+        @Name("candidate-pool-multiplier") @Nullable Integer candidatePoolMultiplier,
         @Nullable SsrfConfig ssrf
 ) {
 
     public boolean isEnabled() {
         return enabled != null && enabled;
+    }
+
+    public boolean isHybridSearchEnabled() {
+        return hybridSearchEnabled == null || hybridSearchEnabled;
+    }
+
+    public boolean isRerankEnabled() {
+        return rerankEnabled != null && rerankEnabled;
+    }
+
+    public int resolveRrfK() {
+        return (rrfK != null && rrfK > 0) ? rrfK : 60;
+    }
+
+    public int resolveCandidatePoolMultiplier() {
+        return (candidatePoolMultiplier != null && candidatePoolMultiplier > 0) ? candidatePoolMultiplier : 3;
     }
 
     public int resolveTopK() {

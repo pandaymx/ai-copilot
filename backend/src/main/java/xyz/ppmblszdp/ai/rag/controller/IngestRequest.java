@@ -1,6 +1,8 @@
 package xyz.ppmblszdp.ai.rag.controller;
 
+import jakarta.annotation.Nullable;
 import jakarta.validation.constraints.NotBlank;
+import xyz.ppmblszdp.ai.rag.dto.ConflictPolicy;
 
 /**
  * 入库请求联合 DTO（回应风险4：REST 多源扩展性）。
@@ -17,11 +19,13 @@ import jakarta.validation.constraints.NotBlank;
  * @param targetUrl        目标网页 URL（URL 类型）
  * @param fileStoragePath  服务器文件路径（PDF/TIKA/MARKDOWN 类型）
  * @param fileName         文件名标识（供元数据记录用），可为空
+ * @param conflictPolicy   冲突策略（SKIP / OVERWRITE / FORCE_ADD）
  */
 public record IngestRequest(
         @NotBlank String sourceType,
         String rawText,
         String targetUrl,
         String fileStoragePath,
-        String fileName
+        String fileName,
+        @Nullable ConflictPolicy conflictPolicy
 ) {}
