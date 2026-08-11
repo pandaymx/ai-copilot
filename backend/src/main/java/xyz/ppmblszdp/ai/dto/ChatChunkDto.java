@@ -66,7 +66,8 @@ public record ChatChunkDto(
 		String artifactType,
 		String title,
 		String html,
-		String status
+		String status,
+		String mimeType
 ) {
 	public ChatChunkDto(
 			String type,
@@ -78,7 +79,7 @@ public record ChatChunkDto(
 			String message
 	) {
 		this(type, conversationId, content, reasoning, usage, code, message, null, null, null,
-				null, null, null, null, null, null, null, null, null, null, null);
+				null, null, null, null, null, null, null, null, null, null, null, null);
 	}
 	public record UsageDto(
 			int promptTokens,
@@ -89,12 +90,12 @@ public record ChatChunkDto(
 
 	public static ChatChunkDto conversation(String conversationId) {
 		return new ChatChunkDto("conversation", conversationId, null, null, null, null, null, null, null, null,
-				null, null, null, null, null, null, null, null, null, null, null);
+				null, null, null, null, null, null, null, null, null, null, null, null);
 	}
 
 	public static ChatChunkDto conversation(String conversationId, String provider, String model, Boolean isFallback) {
 		return new ChatChunkDto("conversation", conversationId, null, null, null, null, null, provider, model, isFallback,
-				null, null, null, null, null, null, null, null, null, null, null);
+				null, null, null, null, null, null, null, null, null, null, null, null);
 	}
 
 	public static ChatChunkDto content(String content) {
@@ -130,7 +131,7 @@ public record ChatChunkDto(
 	 */
 	public static ChatChunkDto toolCall(String toolCallId, String toolName, String arguments) {
 		return new ChatChunkDto("tool_call", null, null, null, null, null, null, null, null, null,
-				toolName, toolCallId, arguments, null, null, null, null, null, null, null, null);
+				toolName, toolCallId, arguments, null, null, null, null, null, null, null, null, null);
 	}
 
 	/**
@@ -143,7 +144,7 @@ public record ChatChunkDto(
 	 */
 	public static ChatChunkDto toolResult(String toolCallId, String toolName, String result, Boolean isError) {
 		return new ChatChunkDto("tool_result", null, null, null, null, null, null, null, null, null,
-				toolName, toolCallId, null, result, isError, null, null, null, null, null, null);
+				toolName, toolCallId, null, result, isError, null, null, null, null, null, null, null);
 	}
 
 	/**
@@ -156,7 +157,7 @@ public record ChatChunkDto(
 	 */
 	public static ChatChunkDto artifact(String artifactId, String language, String artifactType, String html) {
 		return new ChatChunkDto("artifact", null, null, null, null, null, null, null, null, null,
-				null, null, null, null, null, artifactId, language, artifactType, null, html, null);
+				null, null, null, null, null, artifactId, language, artifactType, null, html, null, null);
 	}
 
 	/**
@@ -172,6 +173,15 @@ public record ChatChunkDto(
 	public static ChatChunkDto artifact(String artifactId, String language, String artifactType,
 	                                    String title, String html, String status) {
 		return new ChatChunkDto("artifact", null, null, null, null, null, null, null, null, null,
-				null, null, null, null, null, artifactId, language, artifactType, title, html, status);
+				null, null, null, null, null, artifactId, language, artifactType, title, html, status, null);
+	}
+
+	/**
+	 * 可渲染产物帧（带标题、状态、MIME 类型）。
+	 */
+	public static ChatChunkDto artifact(String artifactId, String language, String artifactType,
+	                                    String title, String html, String status, String mimeType) {
+		return new ChatChunkDto("artifact", null, null, null, null, null, null, null, null, null,
+				null, null, null, null, null, artifactId, language, artifactType, title, html, status, mimeType);
 	}
 }

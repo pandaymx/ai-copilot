@@ -16,8 +16,10 @@ import {
   Volume2,
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
+import { ImageArtifactViewer } from "@/components/artifacts/image-artifact-viewer";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
+  type ArtifactItem,
   type StreamStore,
   type ToolCallItem,
   useStreamData,
@@ -53,6 +55,8 @@ export interface ChatMessage {
   attachments?: AttachmentItem[];
   /** 工具调用列表（已完成消息持久化用；流式消息由 streamStore.toolCalls 驱动）。 */
   toolCalls?: ToolCallItem[];
+  /** 产物列表（包含图片 artifact 等） */
+  artifacts?: ArtifactItem[];
 }
 
 interface MessageBubbleProps {
@@ -260,6 +264,15 @@ function MessageBubbleBase({
           </div>
         )}
 
+        {/* 可渲染产物卡片区（如图片 artifact） */}
+        {!isUser && message.artifacts && message.artifacts.length > 0 && (
+          <div className="flex w-full flex-col gap-2">
+            {message.artifacts.map((art) => (
+              <ImageArtifactViewer key={art.artifactId} artifact={art} />
+            ))}
+          </div>
+        )}
+
         {/* 气泡本文 */}
         {(isUser || message.content || streaming) && (
           <div
@@ -397,21 +410,23 @@ export function LiveMessageBubble({
   streamStore,
   conversationId,
 }: LiveMessageBubbleProps) {
-  const { content, thinking, usage, toolCalls } = useStreamData(streamStore);
+  const { content, thinking, usage, toolCalls, artifacts } =
+    useStreamData(streamStore);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll into view on streaming content update
   useEffect(() => {
     containerRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [content, thinking, toolCalls]);
+  }, [content, thinking, toolCalls, artifacts]);
 
   const liveMessage: ChatMessage = {
     ...message,
     content: content || message.content,
     thinking: thinking || message.thinking,
     usage: usage ?? message.usage,
-    // 将流式 Map 转为数组（保留 callId 作为 ToolCard key），供气泡内渲染
+    // 将流式 Map 转为数组（保留 callId 作 ToolCard key, artifactId 作 ImageArtifactViewer key）
     toolCalls: Object.values(toolCalls),
+    artifacts: Object.values(artifacts),
   };
 
   return (

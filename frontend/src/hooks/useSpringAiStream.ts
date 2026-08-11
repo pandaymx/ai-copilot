@@ -62,6 +62,8 @@ export interface UseSpringAiStreamOptions {
     totalTokens: number;
     estimatedCostRmb?: number;
   }) => void;
+  /** 收到 artifact 帧（可渲染产物）时的回调 */
+  onArtifact?: (item: ArtifactItem) => void;
   /** 收到 tool_call 帧（工具开始执行）时的回调 */
   onToolCall?: (item: ToolCallItem) => void;
   /** 收到 tool_result 帧（工具执行完成/失败）时的回调 */
@@ -105,6 +107,16 @@ export interface UseSpringAiStreamResult {
   streamStore: StreamStore;
 }
 
+export interface ArtifactItem {
+  artifactId: string;
+  artifactType: "image" | "code" | "html" | "svg" | string;
+  title?: string;
+  content?: string;
+  mimeType?: string;
+  language?: string;
+  status?: "processing" | "complete" | "drafting" | "streaming" | "final";
+}
+
 export interface StreamData {
   content: string;
   thinking: string;
@@ -116,6 +128,8 @@ export interface StreamData {
   } | null;
   /** 工具调用列表，以 callId 为唯一 key（Map 结构用普通对象表达以保证快照不可变）。 */
   toolCalls: Record<string, ToolCallItem>;
+  /** 可渲染产物列表，以 artifactId 为唯一 key。 */
+  artifacts: Record<string, ArtifactItem>;
 }
 
 export class StreamStore {
@@ -124,6 +138,7 @@ export class StreamStore {
     thinking: "",
     usage: null,
     toolCalls: {},
+    artifacts: {},
   };
   private listeners = new Set<() => void>();
 
@@ -145,7 +160,7 @@ export class StreamStore {
     }
   }
 
-  /** 以 callId 为 key 增量更新某个工具调用项（保证并行多 tool_call 不互相覆盖、不顺序颠倒）。 */
+  /** 以 callId 为 key 增量更新某个工具调用项。 */
   updateToolCall(callId: string, patch: Partial<ToolCallItem>) {
     const prev = this.data.toolCalls[callId] ?? {
       callId,
@@ -163,8 +178,32 @@ export class StreamStore {
     }
   }
 
+  /** 以 artifactId 为 key 增量更新某个产物项。 */
+  updateArtifact(artifactId: string, patch: Partial<ArtifactItem>) {
+    const prev = this.data.artifacts[artifactId] ?? {
+      artifactId,
+      artifactType: "image",
+      content: "",
+      status: "processing" as const,
+    };
+    const next = { ...prev, ...patch, artifactId };
+    this.data = {
+      ...this.data,
+      artifacts: { ...this.data.artifacts, [artifactId]: next },
+    };
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+
   reset() {
-    this.data = { content: "", thinking: "", usage: null, toolCalls: {} };
+    this.data = {
+      content: "",
+      thinking: "",
+      usage: null,
+      toolCalls: {},
+      artifacts: {},
+    };
     for (const listener of this.listeners) {
       listener();
     }
@@ -235,6 +274,7 @@ export function useSpringAiStream(
     onConversationId,
     onReasoning,
     onUsage,
+    onArtifact,
     onToolCall,
     onToolResult,
     onFinish,
@@ -382,6 +422,21 @@ export function useSpringAiStream(
                   onReasoning?.(parsed.reasoning);
                   return;
                 }
+                if (parsed?.type === "artifact") {
+                  const item: ArtifactItem = {
+                    artifactId: parsed.artifactId || `art-${Date.now()}`,
+                    artifactType: parsed.artifactType || "image",
+                    title: parsed.title,
+                    content:
+                      parsed.html || parsed.content || parsed.payload || "",
+                    mimeType: parsed.mimeType || "image/png",
+                    language: parsed.language,
+                    status: parsed.status || "complete",
+                  };
+                  streamStoreRef.current.updateArtifact(item.artifactId, item);
+                  onArtifact?.(item);
+                  return;
+                }
                 if (parsed?.type === "tool_call") {
                   const rawArgs = parsed.arguments ?? "";
                   let innerThought: string | undefined;
@@ -479,6 +534,7 @@ export function useSpringAiStream(
       onConversationId,
       onReasoning,
       onUsage,
+      onArtifact,
       onToolCall,
       onToolResult,
       onFinish,

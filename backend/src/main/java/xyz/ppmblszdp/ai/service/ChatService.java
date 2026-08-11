@@ -54,6 +54,8 @@ import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig.RagAdvisorFactory;
 import xyz.ppmblszdp.ai.tool.AugmentedToolCallbackProvider;
 import xyz.ppmblszdp.ai.tool.ToolEventEmitter;
 import xyz.ppmblszdp.ai.tool.ToolSearchAdvisorConfig.ToolSearchAdvisorFactory;
+import xyz.ppmblszdp.ai.dto.ImageGenerationRequestDto;
+import xyz.ppmblszdp.ai.service.ImageGenerationService;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
 import reactor.core.publisher.Sinks.Many;
@@ -119,6 +121,7 @@ public class ChatService implements DisposableBean {
 	private final ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider;
 	private final ObjectProvider<ToolSearchAdvisorFactory> toolSearchFactory;
 	private final AugmentedToolCallbackProvider augmentedToolCallbackProvider;
+	private final ObjectProvider<ImageGenerationService> imageGenerationServiceProvider;
 
 	/**
 	 * 持有所有「即发即弃」订阅（touchSession / 长期记忆写入等）返回的 Disposable，
@@ -150,7 +153,7 @@ public class ChatService implements DisposableBean {
 		this(registry, contextAssembler, sessionChatMemory, longTermFactory, longTermWriter, longTermProcessor,
 				rateLimiter, usageQuota, usageRepository, safeGuardAdvisor, ragAdvisorFactory, healthTracker,
 				sessionService, properties, speechModelProvider, toolEventEmitter, toolCallbacks, mcpToolProvider,
-				toolSearchFactory, null);
+				toolSearchFactory, null, null);
 	}
 
 	@Autowired
@@ -174,7 +177,8 @@ public class ChatService implements DisposableBean {
 			@Qualifier("agentToolCallbacks") ToolCallback[] toolCallbacks,
 			ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider,
 			ObjectProvider<ToolSearchAdvisorFactory> toolSearchFactory,
-			ObjectProvider<AugmentedToolCallbackProvider> augmentedToolProvider) {
+			ObjectProvider<AugmentedToolCallbackProvider> augmentedToolProvider,
+			ObjectProvider<ImageGenerationService> imageGenerationServiceProvider) {
 		this.registry = registry;
 		this.contextAssembler = contextAssembler;
 		this.sessionChatMemory = sessionChatMemory;
@@ -199,6 +203,7 @@ public class ChatService implements DisposableBean {
 		this.augmentedToolCallbackProvider = (augmentedToolProvider != null && augmentedToolProvider.getIfAvailable() != null)
 				? augmentedToolProvider.getIfAvailable()
 				: new AugmentedToolCallbackProvider();
+		this.imageGenerationServiceProvider = imageGenerationServiceProvider;
 	}
 
 	/**
@@ -338,6 +343,15 @@ public class ChatService implements DisposableBean {
 
 	/** 流式：结构化 ChatChunkDto Flux（包含思考过程 reasoning 与 token 用量）。userId 来自服务端受信任身份。 */
 	public Flux<ChatChunkDto> streamChatChunks(ChatRequest request, String userId) {
+		if (isImageGenerationRequest(request)) {
+			ImageGenerationService imgService = imageGenerationServiceProvider != null ? imageGenerationServiceProvider.getIfAvailable() : null;
+			if (imgService != null) {
+				return streamImageGeneration(request, userId, imgService);
+			} else {
+				log.warn("触发图像生成意图，但未找到 ImageGenerationService Bean");
+			}
+		}
+
 		ResolvedModel resolved = registry.resolve(request.provider(), request.model());
 		if (hasMedia(request) && !resolved.model().supportsVision()) {
 			log.warn("模型 [{}] 不支持图片 (Vision)，流式拦截并返回明确提示", resolved.model().id());
@@ -1004,6 +1018,59 @@ public class ChatService implements DisposableBean {
 		}
 		String text = output.getText();
 		return (text == null) ? "" : text;
+	}
+
+	private boolean isImageGenerationRequest(ChatRequest request) {
+		if (request == null || request.message() == null) {
+			return false;
+		}
+		String msg = request.message().trim();
+		if (msg.startsWith("/image") || msg.startsWith("/img")) {
+			return true;
+		}
+		String lower = msg.toLowerCase();
+		return lower.startsWith("画一只") || lower.startsWith("画一个") || lower.startsWith("画一张") || lower.startsWith("画成")
+				|| lower.startsWith("生成图片") || lower.startsWith("生成一张图片") || lower.startsWith("帮我画") || lower.startsWith("画图");
+	}
+
+	private String extractImagePrompt(ChatRequest request) {
+		String msg = request.message().trim();
+		if (msg.startsWith("/image ")) {
+			return msg.substring(7).trim();
+		}
+		if (msg.startsWith("/img ")) {
+			return msg.substring(5).trim();
+		}
+		if (msg.startsWith("/image") || msg.startsWith("/img")) {
+			int spaceIdx = msg.indexOf(' ');
+			return spaceIdx > 0 ? msg.substring(spaceIdx + 1).trim() : msg;
+		}
+		if (msg.startsWith("生成图片：") || msg.startsWith("生成图片:")) {
+			return msg.substring(5).trim();
+		}
+		return msg;
+	}
+
+	private Flux<ChatChunkDto> streamImageGeneration(ChatRequest request, String userId, ImageGenerationService imgService) {
+		String rawPrompt = extractImagePrompt(request);
+		final String prompt = rawPrompt.isBlank() ? "一只可爱的卡通小猫" : rawPrompt;
+		String artifactId = "img-" + java.util.UUID.randomUUID().toString().substring(0, 8);
+
+		ChatChunkDto textChunk = ChatChunkDto.content("正在为你生成图片：" + prompt + "\n\n");
+		ChatChunkDto processingChunk = ChatChunkDto.artifact(
+				artifactId, "image", "image", "正在生成图片: " + prompt, null, "processing", "image/png"
+		);
+
+		ImageGenerationRequestDto genReq = new ImageGenerationRequestDto(
+				prompt, request.provider(), request.model(), null, null, null, null
+		);
+
+		return Flux.just(textChunk, processingChunk)
+				.concatWith(imgService.generateImage(genReq)
+						.map(res -> ChatChunkDto.artifact(
+								artifactId, "image", "image", prompt, res.payload(), "complete", res.mimeType()
+						))
+						.onErrorResume(ex -> Mono.just(ChatChunkDto.error("IMAGE_GEN_FAILED", "图片生成失败: " + ex.getMessage()))));
 	}
 
 	/**

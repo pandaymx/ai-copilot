@@ -35,12 +35,17 @@ public record AiProviderProperties(
 		@Nullable MemoryConfig memory,
 		@Nullable RagConfig rag,
 		@Nullable AgentConfig agent,
+		@Nullable ImageConfig image,
 		@Nullable Map<String, FirstClassConfig> firstClass,
 		@Nullable List<SecondClassConfig> secondClass
 ) {
 
 	/** 兜底的上下文窗口大小，未在任何层级配置时使用。 */
 	public static final int FALLBACK_MAX_CONTEXT_TOKENS = 32768;
+
+	public ImageConfig resolveImage() {
+		return image != null ? image : ImageConfig.defaults();
+	}
 
 	public ContextConfig resolveContext() {
 		return context != null ? context : ContextConfig.defaults();
@@ -474,6 +479,59 @@ public record AiProviderProperties(
 
 		public String resolveCollectionName() {
 			return (collectionName != null && !collectionName.isBlank()) ? collectionName.trim() : "ai_rag_documents";
+		}
+	}
+
+	/**
+	 * 图像生成服务配置（绑定 {@code app.ai.image.*}）。
+	 *
+	 * @param defaultProvider 默认图像生成供应商（如 openai / zhipu / stability / azure）
+	 * @param defaultModel    默认图像生成模型（如 dall-e-3 / cogview-3-plus）
+	 * @param width           生成图片宽度
+	 * @param height          生成图片高度
+	 * @param quality         生成质量（standard / hd）
+	 * @param style           生成风格（vivid / natural）
+	 * @param responseFormat  返回格式（b64_json / url）
+	 */
+	public record ImageConfig(
+			@Name("default-provider") @Nullable String defaultProvider,
+			@Name("default-model") @Nullable String defaultModel,
+			@Nullable Integer width,
+			@Nullable Integer height,
+			@Nullable String quality,
+			@Nullable String style,
+			@Name("response-format") @Nullable String responseFormat
+	) {
+		public static ImageConfig defaults() {
+			return new ImageConfig("openai", "dall-e-3", 1024, 1024, "standard", "vivid", "b64_json");
+		}
+
+		public String resolveDefaultProvider() {
+			return (defaultProvider != null && !defaultProvider.isBlank()) ? defaultProvider.trim() : "openai";
+		}
+
+		public String resolveDefaultModel() {
+			return (defaultModel != null && !defaultModel.isBlank()) ? defaultModel.trim() : "dall-e-3";
+		}
+
+		public int resolveWidth() {
+			return (width != null && width > 0) ? width : 1024;
+		}
+
+		public int resolveHeight() {
+			return (height != null && height > 0) ? height : 1024;
+		}
+
+		public String resolveQuality() {
+			return (quality != null && !quality.isBlank()) ? quality.trim() : "standard";
+		}
+
+		public String resolveStyle() {
+			return (style != null && !style.isBlank()) ? style.trim() : "vivid";
+		}
+
+		public String resolveResponseFormat() {
+			return (responseFormat != null && !responseFormat.isBlank()) ? responseFormat.trim() : "b64_json";
 		}
 	}
 }

@@ -227,6 +227,7 @@ export default function Home() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [imageMode, setImageMode] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -639,7 +640,17 @@ export default function Home() {
       setInput("");
       setAttachments([]);
       liveUserTextRef.current = userMsgText;
-      send(sendText, {
+
+      let payloadText = sendText;
+      if (
+        imageMode &&
+        !payloadText.startsWith("/image ") &&
+        !payloadText.startsWith("/img ")
+      ) {
+        payloadText = `/image ${payloadText}`;
+      }
+
+      send(payloadText, {
         provider: model.provider,
         model: model.model,
         conversationId: currentConvId,
@@ -659,6 +670,7 @@ export default function Home() {
       agentEnabled,
       activeId,
       currentSupportsVision,
+      imageMode,
     ],
   );
 
@@ -958,6 +970,26 @@ export default function Home() {
                   }
                 >
                   <Paperclip className="size-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant={imageMode ? "default" : "ghost"}
+                  size="icon-sm"
+                  onClick={() => setImageMode((prev) => !prev)}
+                  className={cn(
+                    "transition-colors rounded-lg",
+                    imageMode
+                      ? "bg-purple-600 text-white hover:bg-purple-700 dark:bg-purple-600 dark:text-white"
+                      : "text-zinc-400 hover:text-purple-600 dark:hover:text-purple-400",
+                  )}
+                  aria-label="生成图片模式"
+                  title={
+                    imageMode
+                      ? "生成图片模式已开启 (提示词将触发 AI 绘图)"
+                      : "切换为生成图片模式"
+                  }
+                >
+                  <Sparkles className="size-4" />
                 </Button>
                 <ModelSelector
                   value={model}
