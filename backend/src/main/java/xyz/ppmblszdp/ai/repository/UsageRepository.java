@@ -6,11 +6,17 @@ import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
+import xyz.ppmblszdp.ai.dto.QuotaConfigDto;
+import xyz.ppmblszdp.ai.dto.UsageDailySummary;
+import xyz.ppmblszdp.ai.dto.UsageModelDetailSummary;
 import xyz.ppmblszdp.ai.dto.UsageModelSummary;
 import xyz.ppmblszdp.ai.dto.UsageMonthlySummary;
+import xyz.ppmblszdp.ai.dto.UsageUserSummary;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 对话 Token 用量与 Cost 计量 Repository（基于 JdbcTemplate 与 PostgreSQL 落盘存储）。
@@ -44,6 +50,32 @@ public class UsageRepository {
 			rs.getBigDecimal("cost")
 	);
 
+	private static final RowMapper<UsageUserSummary> USER_SUMMARY_ROW_MAPPER = (rs, rowNum) -> new UsageUserSummary(
+			rs.getString("user_id"),
+			rs.getLong("prompt_tokens"),
+			rs.getLong("completion_tokens"),
+			rs.getLong("total_tokens"),
+			rs.getBigDecimal("total_cost"),
+			rs.getLong("request_count")
+	);
+
+	private static final RowMapper<UsageModelDetailSummary> MODEL_DETAIL_ROW_MAPPER = (rs, rowNum) -> new UsageModelDetailSummary(
+			rs.getString("model_id"),
+			rs.getString("provider_id"),
+			rs.getLong("prompt_tokens"),
+			rs.getLong("completion_tokens"),
+			rs.getLong("total_tokens"),
+			rs.getBigDecimal("total_cost"),
+			rs.getLong("request_count")
+	);
+
+	private static final RowMapper<UsageDailySummary> DAILY_SUMMARY_ROW_MAPPER = (rs, rowNum) -> new UsageDailySummary(
+			rs.getString("day"),
+			rs.getLong("total_tokens"),
+			rs.getBigDecimal("total_cost"),
+			rs.getLong("request_count")
+	);
+
 	@PostConstruct
 	public void initSchema() {
 		try {
@@ -63,7 +95,16 @@ public class UsageRepository {
 					);
 					""");
 			jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_usage_user_month ON usage_record(user_id, created_month);");
-			log.info("PostgreSQL 用量计量表 'usage_record' 初始化/校验成功");
+			jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_usage_month ON usage_record(created_month);");
+
+			jdbcTemplate.execute("""
+					CREATE TABLE IF NOT EXISTS usage_quota_config (
+						config_key VARCHAR(64) PRIMARY KEY,
+						config_value TEXT NOT NULL,
+						updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+					);
+					""");
+			log.info("PostgreSQL 用量计量表 'usage_record' 与 'usage_quota_config' 初始化/校验成功");
 		} catch (Exception ex) {
 			log.error("初始化 PostgreSQL 用量计量表失败: {}", ex.getMessage(), ex);
 		}
@@ -155,4 +196,112 @@ public class UsageRepository {
 				""";
 		return jdbcTemplate.query(sql, MODEL_ROW_MAPPER, userId, monthKey);
 	}
+
+	/**
+	 * 看板聚合：按用户汇总指定月份的 Token 与费用排行榜。
+	 */
+	public List<UsageUserSummary> sumByUsersForMonth(String monthKey) {
+		String sql = """
+				SELECT user_id,
+				       COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
+				       COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
+				       COALESCE(SUM(total_tokens), 0) AS total_tokens,
+				       COALESCE(SUM(cost_rmb), 0) AS total_cost,
+				       COUNT(*) AS request_count
+				FROM usage_record
+				WHERE created_month = ?
+				GROUP BY user_id
+				ORDER BY total_tokens DESC;
+				""";
+		return jdbcTemplate.query(sql, USER_SUMMARY_ROW_MAPPER, monthKey);
+	}
+
+	/**
+	 * 看板聚合：按模型与供应商汇总指定月份的 Token 与费用明细。
+	 */
+	public List<UsageModelDetailSummary> sumByModelsForMonth(String monthKey) {
+		String sql = """
+				SELECT COALESCE(model_id, 'unknown') AS model_id,
+				       COALESCE(provider_id, 'unknown') AS provider_id,
+				       COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
+				       COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
+				       COALESCE(SUM(total_tokens), 0) AS total_tokens,
+				       COALESCE(SUM(cost_rmb), 0) AS total_cost,
+				       COUNT(*) AS request_count
+				FROM usage_record
+				WHERE created_month = ?
+				GROUP BY model_id, provider_id
+				ORDER BY total_tokens DESC;
+				""";
+		return jdbcTemplate.query(sql, MODEL_DETAIL_ROW_MAPPER, monthKey);
+	}
+
+	/**
+	 * 看板聚合：按日汇总指定月份的 Token 与费用趋势。
+	 */
+	public List<UsageDailySummary> sumDailyTrendForMonth(String monthKey) {
+		String sql = """
+				SELECT TO_CHAR(created_at, 'YYYY-MM-DD') AS day,
+				       COALESCE(SUM(total_tokens), 0) AS total_tokens,
+				       COALESCE(SUM(cost_rmb), 0) AS total_cost,
+				       COUNT(*) AS request_count
+				FROM usage_record
+				WHERE created_month = ?
+				GROUP BY TO_CHAR(created_at, 'YYYY-MM-DD')
+				ORDER BY day ASC;
+				""";
+		return jdbcTemplate.query(sql, DAILY_SUMMARY_ROW_MAPPER, monthKey);
+	}
+
+	/**
+	 * 获取配额与告警阈值配置（不存在时返回默认配额）。
+	 */
+	public QuotaConfigDto getQuotaConfig(long defaultMonthlyQuota) {
+		try {
+			String sql = "SELECT config_key, config_value FROM usage_quota_config;";
+			List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql);
+			Map<String, String> map = rows.stream().collect(Collectors.toMap(
+					r -> (String) r.get("config_key"),
+					r -> (String) r.get("config_value")
+			));
+
+			long monthlyQuota = map.containsKey("monthlyTokenQuota")
+					? Long.parseLong(map.get("monthlyTokenQuota"))
+					: defaultMonthlyQuota;
+			double alertPercent = map.containsKey("alertThresholdPercent")
+					? Double.parseDouble(map.get("alertThresholdPercent"))
+					: 80.0;
+			BigDecimal costQuota = map.containsKey("monthlyCostQuotaRmb")
+					? new BigDecimal(map.get("monthlyCostQuotaRmb"))
+					: BigDecimal.ZERO;
+
+			return new QuotaConfigDto(monthlyQuota, alertPercent, costQuota);
+		} catch (Exception ex) {
+			log.warn("读取配额阈值配置失败，使用默认配置: {}", ex.getMessage());
+			return new QuotaConfigDto(defaultMonthlyQuota, 80.0, BigDecimal.ZERO);
+		}
+	}
+
+	/**
+	 * 保存/更新配额与告警阈值配置。
+	 */
+	public void saveQuotaConfig(QuotaConfigDto config) {
+		if (config == null) return;
+		String sql = """
+				INSERT INTO usage_quota_config (config_key, config_value, updated_at)
+				VALUES (?, ?, now())
+				ON CONFLICT (config_key) DO UPDATE
+				SET config_value = EXCLUDED.config_value, updated_at = now();
+				""";
+		try {
+			jdbcTemplate.update(sql, "monthlyTokenQuota", String.valueOf(config.monthlyTokenQuota()));
+			jdbcTemplate.update(sql, "alertThresholdPercent", String.valueOf(config.alertThresholdPercent()));
+			jdbcTemplate.update(sql, "monthlyCostQuotaRmb", config.monthlyCostQuotaRmb() != null ? config.monthlyCostQuotaRmb().toString() : "0");
+			log.info("更新配额阈值配置成功: monthlyQuota={}, alertPercent={}, costQuota={}",
+					config.monthlyTokenQuota(), config.alertThresholdPercent(), config.monthlyCostQuotaRmb());
+		} catch (Exception ex) {
+			log.error("保存配额阈值配置失败: {}", ex.getMessage(), ex);
+		}
+	}
 }
+

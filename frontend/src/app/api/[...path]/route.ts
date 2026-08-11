@@ -331,3 +331,47 @@ export async function GET(
     );
   }
 }
+
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> },
+) {
+  const fallbackCors = getFallbackCorsHeaders(req);
+  const clientIp = getClientIp(req);
+  if (isRateLimited(clientIp)) {
+    return NextResponse.json(
+      {
+        error: true,
+        message: "请求过于频繁，请稍后再试 (429 Rate Limit Exceeded)",
+      },
+      {
+        status: 429,
+        headers: {
+          ...fallbackCors,
+          "Retry-After": "60",
+        },
+      },
+    );
+  }
+
+  const { path } = await params;
+  const targetUrl = getTargetUrl(path, req.nextUrl.search);
+
+  try {
+    const bodyText = await req.text();
+    const backendRes = await fetch(targetUrl, {
+      method: "PUT",
+      headers: getForwardHeaders(req),
+      body: bodyText,
+    });
+    return new Response(backendRes.body, {
+      status: backendRes.status,
+      headers: copyBackendHeaders(backendRes),
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { error: true, message: (err as Error).message },
+      { status: 500, headers: fallbackCors },
+    );
+  }
+}

@@ -83,4 +83,29 @@ class UsageRepositoryTest {
 		assertEquals("deepseek-chat", rows.get(0).modelId());
 		assertEquals(100L, rows.get(0).tokens());
 	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void sumByUsersForMonthReturnsAggregatedUsers() {
+		when(jdbcTemplate.query(any(String.class), any(org.springframework.jdbc.core.RowMapper.class), eq("2026-08")))
+				.thenReturn(List.of(new xyz.ppmblszdp.ai.dto.UsageUserSummary("user-1", 100L, 200L, 300L,
+						new BigDecimal("0.50"), 5L)));
+
+		List<xyz.ppmblszdp.ai.dto.UsageUserSummary> users = usageRepository.sumByUsersForMonth("2026-08");
+		assertEquals(1, users.size());
+		assertEquals("user-1", users.get(0).userId());
+		assertEquals(300L, users.get(0).totalTokens());
+		assertEquals(5L, users.get(0).requestCount());
+	}
+
+	@Test
+	void saveQuotaConfigUpdatesDatabase() {
+		xyz.ppmblszdp.ai.dto.QuotaConfigDto config = new xyz.ppmblszdp.ai.dto.QuotaConfigDto(500000L, 85.0,
+				new BigDecimal("100.00"));
+		usageRepository.saveQuotaConfig(config);
+
+		verify(jdbcTemplate).update(any(String.class), eq("monthlyTokenQuota"), eq("500000"));
+		verify(jdbcTemplate).update(any(String.class), eq("alertThresholdPercent"), eq("85.0"));
+		verify(jdbcTemplate).update(any(String.class), eq("monthlyCostQuotaRmb"), eq("100.00"));
+	}
 }

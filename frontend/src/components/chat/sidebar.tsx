@@ -5,6 +5,7 @@ import {
   Calendar,
   Check,
   CloudOff,
+  Coins,
   Database,
   Edit2,
   MessageSquare,
@@ -182,8 +183,19 @@ export function Sidebar({
             )}
           </div>
 
-          {/* 知识库管理入口（任务 7.4） */}
+          {/* 成本看板入口 */}
           <div className="px-0.5 pt-1">
+            <Link
+              href="/usage"
+              className="group flex items-center gap-2 rounded-xl border border-zinc-200/70 bg-white/70 px-3 py-2.5 text-xs font-semibold text-zinc-700 shadow-xs transition-all duration-200 hover:border-emerald-500/40 hover:bg-white hover:text-emerald-600 hover:shadow-md hover:shadow-emerald-500/10 dark:border-zinc-800/70 dark:bg-zinc-900/50 dark:text-zinc-200 dark:hover:border-emerald-500/50 dark:hover:bg-zinc-900 dark:hover:text-emerald-400"
+            >
+              <Coins className="size-4 text-emerald-500 transition-transform duration-200 group-hover:scale-110" />
+              <span>成本看板</span>
+            </Link>
+          </div>
+
+          {/* 知识库管理入口（任务 7.4） */}
+          <div className="px-0.5 pt-0.5">
             <Link
               href="/knowledge"
               className="group flex items-center gap-2 rounded-xl border border-zinc-200/70 bg-white/70 px-3 py-2.5 text-xs font-semibold text-zinc-700 shadow-xs transition-all duration-200 hover:border-indigo-500/40 hover:bg-white hover:text-indigo-600 hover:shadow-md hover:shadow-indigo-500/10 dark:border-zinc-800/70 dark:bg-zinc-900/50 dark:text-zinc-200 dark:hover:border-indigo-500/50 dark:hover:bg-zinc-900 dark:hover:text-indigo-400"
@@ -194,7 +206,7 @@ export function Sidebar({
           </div>
 
           {/* 长期记忆管理入口 */}
-          <div className="px-0.5 pt-1">
+          <div className="px-0.5 pt-0.5">
             <Link
               href="/memory"
               className="group flex items-center gap-2 rounded-xl border border-zinc-200/70 bg-white/70 px-3 py-2.5 text-xs font-semibold text-zinc-700 shadow-xs transition-all duration-200 hover:border-violet-500/40 hover:bg-white hover:text-violet-600 hover:shadow-md hover:shadow-violet-500/10 dark:border-zinc-800/70 dark:bg-zinc-900/50 dark:text-zinc-200 dark:hover:border-violet-500/50 dark:hover:bg-zinc-900 dark:hover:text-violet-400"

@@ -368,3 +368,100 @@ export async function memoryDeleteApi(id: string): Promise<boolean> {
     return false;
   }
 }
+
+// ====================== 成本看板与用量配额 API ======================
+
+export interface QuotaConfig {
+  monthlyTokenQuota: number;
+  alertThresholdPercent: number;
+  monthlyCostQuotaRmb: number;
+}
+
+export interface UsageUserSummary {
+  userId: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  totalCost: number;
+  requestCount: number;
+}
+
+export interface UsageModelDetailSummary {
+  modelId: string;
+  providerId: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  totalCost: number;
+  requestCount: number;
+}
+
+export interface UsageDailySummary {
+  day: string;
+  totalTokens: number;
+  totalCost: number;
+  requestCount: number;
+}
+
+export interface UsageDashboardData {
+  monthKey: string;
+  totalTokens: number;
+  totalCost: number;
+  totalRequests: number;
+  activeUsers: number;
+  activeModels: number;
+  byUser: UsageUserSummary[];
+  byModel: UsageModelDetailSummary[];
+  dailyTrend: UsageDailySummary[];
+  quotaConfig: QuotaConfig;
+  quotaAlertTriggered: boolean;
+}
+
+/** 获取成本看板大盘聚合数据。 */
+export async function fetchUsageDashboardApi(
+  month?: string,
+  signal?: AbortSignal,
+): Promise<UsageDashboardData | null> {
+  const url = month
+    ? `/api/usage/dashboard?month=${encodeURIComponent(month)}`
+    : "/api/usage/dashboard";
+  try {
+    const res = await fetch(url, { signal });
+    if (!res.ok) return null;
+    return (await res.json()) as UsageDashboardData;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}
+
+/** 获取配额与告警阈值配置。 */
+export async function fetchQuotaConfigApi(
+  signal?: AbortSignal,
+): Promise<QuotaConfig | null> {
+  try {
+    const res = await fetch("/api/usage/quota-config", { signal });
+    if (!res.ok) return null;
+    return (await res.json()) as QuotaConfig;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}
+
+/** 管理员更新配额与告警阈值配置。 */
+export async function updateQuotaConfigApi(
+  config: QuotaConfig,
+): Promise<QuotaConfig | null> {
+  try {
+    const res = await fetch("/api/usage/quota-config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(config),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as QuotaConfig;
+  } catch {
+    return null;
+  }
+}
