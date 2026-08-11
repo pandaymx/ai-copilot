@@ -11,11 +11,13 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import xyz.ppmblszdp.ai.rag.security.SsrfGuard;
+
 import java.util.Map;
 
 /**
  * HTTP 请求工具：基于 Spring {@link RestClient} 发起 GET/POST，带连接/读取超时（30s）与响应大小上限（1MB），
- * 防止大响应体或挂死耗尽资源。
+ * 防止大响应体或挂死耗尽资源。集成了 SSRF 安全防护（SsrfGuard），拦截私网 IP 与元数据服务。
  */
 @Component
 public class HttpRequestTool {
@@ -54,6 +56,7 @@ public class HttpRequestTool {
 			if (url == null || !url.matches("^https?://.*")) {
 				throw new IllegalArgumentException("URL 须以 http:// 或 https:// 开头");
 			}
+			SsrfGuard.validate(url);
 			RestClient.RequestHeadersSpec<?> spec;
 			if ("POST".equals(m) && body != null && !body.isBlank()) {
 				spec = restClient.method(HttpMethod.valueOf(m)).uri(url)
