@@ -203,11 +203,12 @@ public record AiProviderProperties(
 			@Nullable Boolean enabled,
 			@Name("max-tool-calls") @Nullable Integer maxToolCalls,
 			@Name("timeout-seconds") @Nullable Integer timeoutSeconds,
+			@Name("augment-mcp-tools") @Nullable Boolean augmentMcpTools,
 			@Name("tool-search-advisor") @Nullable ToolSearchAdvisorPropertiesConfig toolSearchAdvisor
 	) {
 
 		public static AgentConfig defaults() {
-			return new AgentConfig(true, 5, 30, ToolSearchAdvisorPropertiesConfig.defaults());
+			return new AgentConfig(true, 5, 30, false, ToolSearchAdvisorPropertiesConfig.defaults());
 		}
 
 		public boolean isEnabled() {
@@ -220,6 +221,10 @@ public record AiProviderProperties(
 
 		public int resolveTimeoutSeconds() {
 			return (timeoutSeconds != null && timeoutSeconds > 0) ? timeoutSeconds : 30;
+		}
+
+		public boolean isAugmentMcpTools() {
+			return augmentMcpTools != null && augmentMcpTools;
 		}
 
 		public ToolSearchAdvisorPropertiesConfig resolveToolSearchAdvisor() {

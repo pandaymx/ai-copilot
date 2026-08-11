@@ -1,5 +1,8 @@
 package xyz.ppmblszdp.ai.tool;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ToolContext;
@@ -114,24 +117,37 @@ public class ToolEventEmitter {
 		Many<ChatChunkDto> sink = resolveSink(toolContext);
 		String callId = newCallId();
 
-		// Tool Loop 计数：超出上限直接拒绝，避免 LLM 死循环（用 get/put 兼容任意 Map 实现）
-		Map<String, Object> ctx = toolContext.getContext();
-		AtomicInteger stepCounter = (AtomicInteger) ctx.get("__step");
+		// Tool Loop 计数与 innerThought 提取
+		String thought = AugmentedToolCallbackProvider.getInnerThought(toolContext);
+		String effectiveArgsJson = injectInnerThought(argsJson, thought);
+
+		Map<String, Object> ctx = toolContext != null ? toolContext.getContext() : null;
+		AtomicInteger stepCounter = null;
+		if (ctx != null) {
+			try {
+				stepCounter = (AtomicInteger) ctx.get("__step");
+				if (stepCounter == null) {
+					stepCounter = new AtomicInteger(0);
+					ctx.put("__step", stepCounter);
+				}
+			} catch (Exception ignored) {
+			}
+		}
 		if (stepCounter == null) {
 			stepCounter = new AtomicInteger(0);
-			ctx.put("__step", stepCounter);
 		}
 		int step = stepCounter.incrementAndGet();
 		int maxCalls = maxToolCalls();
+
 		if (step > maxCalls) {
 			String errMsg = "工具调用次数超过上限（" + maxCalls + "），已终止 Agent 循环以防止 Token 耗尽";
 			log.warn("[{}] {}", toolName, errMsg);
-			emit(sink, ChatChunkDto.toolCall(callId, toolName, argsJson));
+			emit(sink, ChatChunkDto.toolCall(callId, toolName, effectiveArgsJson));
 			emit(sink, ChatChunkDto.toolResult(callId, toolName, "{\"output\":\"" + escape(errMsg) + "\"}", true));
 			return "{\"output\":\"工具调用被安全限流\"}";
 		}
 
-		emit(sink, ChatChunkDto.toolCall(callId, toolName, argsJson));
+		emit(sink, ChatChunkDto.toolCall(callId, toolName, effectiveArgsJson));
 		log.debug("[{}] tool_call emitted, callId={}, step={}", toolName, callId, step);
 
 		try {
@@ -173,6 +189,26 @@ public class ToolEventEmitter {
 
 	private void emit(Sinks.Many<ChatChunkDto> sink, ChatChunkDto dto) {
 		sink.tryEmitNext(dto);
+	}
+
+	private static final ObjectMapper MAPPER = new ObjectMapper();
+
+	private static String injectInnerThought(String argsJson, String innerThought) {
+		if (argsJson == null || argsJson.isBlank()) {
+			return "{\"" + AugmentedToolCallbackProvider.INNER_THOUGHT_KEY + "\":\"" + escape(innerThought) + "\"}";
+		}
+		try {
+			JsonNode node = MAPPER.readTree(argsJson);
+			if (node instanceof ObjectNode objNode) {
+				if (!objNode.has(AugmentedToolCallbackProvider.INNER_THOUGHT_KEY)) {
+					objNode.put(AugmentedToolCallbackProvider.INNER_THOUGHT_KEY, innerThought);
+					return MAPPER.writeValueAsString(objNode);
+				}
+			}
+		} catch (Exception e) {
+			log.warn("Failed to inject innerThought into argsJson: {}", e.getMessage());
+		}
+		return argsJson;
 	}
 
 	private static String escape(String s) {

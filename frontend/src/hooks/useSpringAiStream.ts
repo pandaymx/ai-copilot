@@ -28,6 +28,8 @@ export interface ToolCallItem {
   name: string;
   /** 工具入参，已序列化的 JSON 字符串（渲染时再做安全解析展示）。 */
   arguments: string;
+  /** 思考过程 / 推理逻辑（由 AugmentedToolCallback 注入并推送）。 */
+  innerThought?: string;
   /** 工具返回结果，已序列化的 JSON 字符串；status 为 calling 时为空。 */
   result?: string;
   status: "calling" | "success" | "error";
@@ -381,10 +383,35 @@ export function useSpringAiStream(
                   return;
                 }
                 if (parsed?.type === "tool_call") {
+                  const rawArgs = parsed.arguments ?? "";
+                  let innerThought: string | undefined;
+                  if (rawArgs) {
+                    try {
+                      const obj = JSON.parse(rawArgs);
+                      if (
+                        typeof obj?.innerThought === "string" &&
+                        obj.innerThought.trim()
+                      ) {
+                        innerThought = obj.innerThought;
+                      }
+                    } catch {
+                      const match =
+                        /"innerThought"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(rawArgs);
+                      if (match?.[1]) {
+                        try {
+                          innerThought = JSON.parse(`"${match[1]}"`);
+                        } catch {
+                          innerThought = match[1];
+                        }
+                      }
+                    }
+                  }
+
                   const item: ToolCallItem = {
                     callId: parsed.toolCallId,
                     name: parsed.toolName ?? "tool",
-                    arguments: parsed.arguments ?? "",
+                    arguments: rawArgs,
+                    innerThought,
                     status: "calling",
                   };
                   streamStoreRef.current.updateToolCall(item.callId, item);

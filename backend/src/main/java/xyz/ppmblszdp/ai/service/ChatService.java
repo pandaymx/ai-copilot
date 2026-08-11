@@ -20,6 +20,7 @@ import org.springframework.ai.openai.OpenAiAudioSpeechModel;
 import org.springframework.ai.openai.OpenAiAudioSpeechOptions;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
@@ -50,6 +51,7 @@ import xyz.ppmblszdp.ai.registry.ResolvedModel;
 import xyz.ppmblszdp.ai.repository.UsageRepository;
 import xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor;
 import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig.RagAdvisorFactory;
+import xyz.ppmblszdp.ai.tool.AugmentedToolCallbackProvider;
 import xyz.ppmblszdp.ai.tool.ToolEventEmitter;
 import xyz.ppmblszdp.ai.tool.ToolSearchAdvisorConfig.ToolSearchAdvisorFactory;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
@@ -116,6 +118,7 @@ public class ChatService implements DisposableBean {
 	/** 远程 MCP server 工具提供者（弱依赖）。MCP 关闭或未配置时 ObjectProvider 为空。 */
 	private final ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider;
 	private final ObjectProvider<ToolSearchAdvisorFactory> toolSearchFactory;
+	private final AugmentedToolCallbackProvider augmentedToolCallbackProvider;
 
 	/**
 	 * 持有所有「即发即弃」订阅（touchSession / 长期记忆写入等）返回的 Disposable，
@@ -144,6 +147,34 @@ public class ChatService implements DisposableBean {
 			@Qualifier("agentToolCallbacks") ToolCallback[] toolCallbacks,
 			ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider,
 			ObjectProvider<ToolSearchAdvisorFactory> toolSearchFactory) {
+		this(registry, contextAssembler, sessionChatMemory, longTermFactory, longTermWriter, longTermProcessor,
+				rateLimiter, usageQuota, usageRepository, safeGuardAdvisor, ragAdvisorFactory, healthTracker,
+				sessionService, properties, speechModelProvider, toolEventEmitter, toolCallbacks, mcpToolProvider,
+				toolSearchFactory, null);
+	}
+
+	@Autowired
+	public ChatService(
+			ProviderRegistry registry,
+			ContextAssembler contextAssembler,
+			ObjectProvider<ChatMemory> sessionChatMemory,
+			ObjectProvider<LongTermMemoryAdvisorFactory> longTermFactory,
+			ObjectProvider<LongTermMemoryWriter> longTermWriter,
+			ObjectProvider<LongTermMemoryProcessor> longTermProcessor,
+			ObjectProvider<RateLimiter> rateLimiter,
+			ObjectProvider<UsageQuota> usageQuota,
+			UsageRepository usageRepository,
+			ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor,
+			ObjectProvider<RagAdvisorFactory> ragAdvisorFactory,
+			ModelHealthTracker healthTracker,
+			SessionService sessionService,
+			AiProviderProperties properties,
+			ObjectProvider<OpenAiAudioSpeechModel> speechModelProvider,
+			ToolEventEmitter toolEventEmitter,
+			@Qualifier("agentToolCallbacks") ToolCallback[] toolCallbacks,
+			ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider,
+			ObjectProvider<ToolSearchAdvisorFactory> toolSearchFactory,
+			ObjectProvider<AugmentedToolCallbackProvider> augmentedToolProvider) {
 		this.registry = registry;
 		this.contextAssembler = contextAssembler;
 		this.sessionChatMemory = sessionChatMemory;
@@ -165,6 +196,9 @@ public class ChatService implements DisposableBean {
 		this.toolCallbacks = toolCallbacks;
 		this.mcpToolProvider = mcpToolProvider;
 		this.toolSearchFactory = toolSearchFactory;
+		this.augmentedToolCallbackProvider = (augmentedToolProvider != null && augmentedToolProvider.getIfAvailable() != null)
+				? augmentedToolProvider.getIfAvailable()
+				: new AugmentedToolCallbackProvider();
 	}
 
 	/**
@@ -174,7 +208,7 @@ public class ChatService implements DisposableBean {
 	 * @return 非空（可能为空数组）的远程工具回调
 	 */
 	private ToolCallback[] resolveMcpToolCallbacks() {
-		SyncMcpToolCallbackProvider provider = mcpToolProvider.getIfAvailable();
+		SyncMcpToolCallbackProvider provider = mcpToolProvider != null ? mcpToolProvider.getIfAvailable() : null;
 		if (provider == null) {
 			return new ToolCallback[0];
 		}
@@ -204,13 +238,14 @@ public class ChatService implements DisposableBean {
 	}
 
 	/**
-	 * 准备 Agent 工具：全量本地 Tools + 全量 MCP Tools -> 计算总数 >= Threshold -> (若为真) 交由
-	 * ToolSearchAdvisor 拦截过滤与索引可观测输出。
+	 * 准备 Agent 工具：注入 innerThought 增强 -> 全量本地 Tools + 全量 MCP Tools ->
+	 * 计算总数 >= Threshold -> (若为真) 交由 ToolSearchAdvisor 拦截过滤与索引可观测输出。
 	 */
 	private ToolCallback[] prepareAgentTools(String conversationId) {
 		ToolCallback[] local = toolCallbacks != null ? toolCallbacks : new ToolCallback[0];
 		ToolCallback[] remote = resolveMcpToolCallbacks();
-		ToolCallback[] merged = mergeTools(local, remote);
+		boolean augmentMcp = properties != null && properties.resolveAgent().isAugmentMcpTools();
+		ToolCallback[] merged = augmentedToolCallbackProvider.wrapTools(local, remote, augmentMcp);
 		ToolSearchAdvisorFactory factory = toolSearchFactory != null ? toolSearchFactory.getIfAvailable() : null;
 		if (factory != null && factory.shouldApply(merged, local.length, remote.length)) {
 			return factory.processTools(merged, local.length, remote.length, conversationId);
