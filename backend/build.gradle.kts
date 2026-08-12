@@ -62,6 +62,13 @@ dependencies {
 dependencyManagement {
 	imports {
 		mavenBom("org.springframework.ai:spring-ai-bom:${property("springAiVersion")}")
+		// 覆盖 Spring Boot 托管的偏旧 netty 版本，修复 Trivy 报告的 HIGH 漏洞
+		// netty 4.2.15.Final -> 4.2.16.Final（CVE-2026-59901/55831/55833/56745/56819/56816）
+		mavenBom("io.netty:netty-bom:4.2.16.Final")
+	}
+	dependencies {
+		// postgresql 42.7.11 -> 42.7.12（CVE-2026-54291 SCRAM 降级攻击）
+		dependency("org.postgresql:postgresql:42.7.12")
 	}
 }
 

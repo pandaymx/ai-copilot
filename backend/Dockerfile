@@ -19,6 +19,10 @@ RUN ./gradlew bootJar --no-daemon -x test
 FROM eclipse-temurin:25-jre-alpine AS runner
 WORKDIR /app
 
+# 升级基础镜像内的 alpine 系统包，消除已知 HIGH 漏洞
+# (libexpat CVE-2026-56408 / p11-kit CVE-2026-2100)
+RUN apk upgrade --no-cache
+
 # Non-root user for security (dedicated group, never root)
 RUN addgroup -g 10001 -S appgroup \
     && adduser -u 10001 -S appuser -G appgroup
