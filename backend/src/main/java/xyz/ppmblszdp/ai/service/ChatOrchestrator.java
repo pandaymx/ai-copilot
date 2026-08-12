@@ -1,0 +1,679 @@
+package xyz.ppmblszdp.ai.service;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.ChatClient.CallResponseSpec;
+import org.springframework.ai.chat.client.ChatClient.ChatClientRequestSpec;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.api.Advisor;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.content.Media;
+import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.DisposableBean;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.stereotype.Service;
+import org.springframework.util.MimeTypeUtils;
+import reactor.core.Disposable;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks.Many;
+import reactor.core.scheduler.Schedulers;
+import reactor.util.retry.Retry;
+import xyz.ppmblszdp.ai.config.AiProviderProperties;
+import xyz.ppmblszdp.ai.context.ContextAssembler;
+import xyz.ppmblszdp.ai.dto.ChatChunkDto;
+import xyz.ppmblszdp.ai.dto.ChatRequest;
+import xyz.ppmblszdp.ai.dto.ChatResponseDto;
+import xyz.ppmblszdp.ai.dto.MediaDto;
+import xyz.ppmblszdp.ai.factory.ChatOptionsFactory;
+import xyz.ppmblszdp.ai.memory.ChatRateLimiter.RateLimiter;
+import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryAdvisorFactory;
+import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryWriter;
+import xyz.ppmblszdp.ai.memory.LongTermMemoryProcessor;
+import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig.RagAdvisorFactory;
+import xyz.ppmblszdp.ai.registry.ModelHealthTracker;
+import xyz.ppmblszdp.ai.registry.ProviderRegistry;
+import xyz.ppmblszdp.ai.registry.ResolvedModel;
+import xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor;
+import xyz.ppmblszdp.ai.tool.AugmentedToolCallbackProvider;
+import xyz.ppmblszdp.ai.tool.ToolEventEmitter;
+import xyz.ppmblszdp.ai.tool.ToolSearchAdvisorConfig.ToolSearchAdvisorFactory;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * 核心对话与 Agent 编排服务。
+ *
+ * <p>负责记忆路径、Agent 工具链与 MCP 聚合、上下文组装、多模型路由与降级熔断编排。
+ */
+@Service
+public class ChatOrchestrator implements DisposableBean {
+
+	private static final Logger log = LoggerFactory.getLogger(ChatOrchestrator.class);
+
+	private static final Duration STREAM_TIMEOUT = Duration.ofMinutes(5);
+	private static final Duration CALL_TIMEOUT = Duration.ofSeconds(60);
+
+	private final ProviderRegistry registry;
+	private final ContextAssembler contextAssembler;
+	private final ObjectProvider<ChatMemory> sessionChatMemory;
+	private final ObjectProvider<LongTermMemoryAdvisorFactory> longTermFactory;
+	private final ObjectProvider<LongTermMemoryWriter> longTermWriter;
+	private final ObjectProvider<LongTermMemoryProcessor> longTermProcessor;
+	private final ObjectProvider<RateLimiter> rateLimiter;
+	private final UsageRecorder usageRecorder;
+	private final ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor;
+	private final ObjectProvider<RagAdvisorFactory> ragAdvisorFactory;
+	private final ModelHealthTracker healthTracker;
+	private final SessionService sessionService;
+	private final AiProviderProperties properties;
+	private final boolean memoryEnabled;
+	private final boolean agentEnabled;
+	private final ToolEventEmitter toolEventEmitter;
+	private final ToolCallback[] toolCallbacks;
+	private final ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider;
+	private final ObjectProvider<ToolSearchAdvisorFactory> toolSearchFactory;
+	private final AugmentedToolCallbackProvider augmentedToolCallbackProvider;
+	private final ImageRouter imageRouter;
+
+	private final ConcurrentLinkedQueue<Disposable> fireAndForgetSubscriptions = new ConcurrentLinkedQueue<>();
+
+	public ChatOrchestrator(
+			ProviderRegistry registry,
+			ContextAssembler contextAssembler,
+			ObjectProvider<ChatMemory> sessionChatMemory,
+			ObjectProvider<LongTermMemoryAdvisorFactory> longTermFactory,
+			ObjectProvider<LongTermMemoryWriter> longTermWriter,
+			ObjectProvider<LongTermMemoryProcessor> longTermProcessor,
+			ObjectProvider<RateLimiter> rateLimiter,
+			UsageRecorder usageRecorder,
+			ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor,
+			ObjectProvider<RagAdvisorFactory> ragAdvisorFactory,
+			ModelHealthTracker healthTracker,
+			SessionService sessionService,
+			AiProviderProperties properties,
+			ToolEventEmitter toolEventEmitter,
+			@Qualifier("agentToolCallbacks") ToolCallback[] toolCallbacks,
+			ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider,
+			ObjectProvider<ToolSearchAdvisorFactory> toolSearchFactory,
+			ObjectProvider<AugmentedToolCallbackProvider> augmentedToolProvider,
+			ImageRouter imageRouter
+	) {
+		this.registry = registry;
+		this.contextAssembler = contextAssembler;
+		this.sessionChatMemory = sessionChatMemory;
+		this.longTermFactory = longTermFactory;
+		this.longTermWriter = longTermWriter;
+		this.longTermProcessor = longTermProcessor;
+		this.rateLimiter = rateLimiter;
+		this.usageRecorder = usageRecorder;
+		this.safeGuardAdvisor = safeGuardAdvisor;
+		this.ragAdvisorFactory = ragAdvisorFactory;
+		this.healthTracker = healthTracker;
+		this.sessionService = sessionService;
+		this.properties = properties;
+		this.memoryEnabled = properties.resolveMemory().isEnabled();
+		this.agentEnabled = properties.resolveAgent().isEnabled();
+		this.toolEventEmitter = toolEventEmitter;
+		this.toolCallbacks = toolCallbacks;
+		this.mcpToolProvider = mcpToolProvider;
+		this.toolSearchFactory = toolSearchFactory;
+		this.augmentedToolCallbackProvider = (augmentedToolProvider != null && augmentedToolProvider.getIfAvailable() != null)
+				? augmentedToolProvider.getIfAvailable()
+				: new AugmentedToolCallbackProvider();
+		this.imageRouter = imageRouter;
+	}
+
+	@Override
+	public void destroy() {
+		Disposable d;
+		int released = 0;
+		while ((d = fireAndForgetSubscriptions.poll()) != null) {
+			if (!d.isDisposed()) {
+				d.dispose();
+				released++;
+			}
+		}
+		if (released > 0) {
+			log.info("ChatOrchestrator 销毁：已释放 {} 个未完成的即发即弃订阅", released);
+		}
+	}
+
+	public String resolveConversationId(ChatRequest request, String userId) {
+		if (request != null && request.hasConversation()) {
+			return request.conversationId();
+		}
+		if (properties.resolveMemory().isEnabled()) {
+			return "conv-" + java.util.UUID.randomUUID().toString().substring(0, 8);
+		}
+		return null;
+	}
+
+	/** 非流式：一次性返回完整回复。 */
+	public Mono<ChatResponseDto> chat(ChatRequest request, String userId) {
+		ResolvedModel resolved = registry.resolve(request.provider(), request.model());
+		if (hasMedia(request) && !resolved.model().supportsVision()) {
+			log.warn("模型 [{}] 不支持图片 (Vision)，拦截并返回明确提示", resolved.model().id());
+			return Mono.just(new ChatResponseDto(
+					"当前模型不支持图片，请切换到支持图片的模型", resolved.provider().providerId(),
+					resolved.model().id(), request.conversationId(), null, null, false));
+		}
+		RateLimiter limiter = rateLimiter.getIfAvailable();
+		if (limiter != null && !limiter.tryAcquire(userId)) {
+			log.warn("非流式请求被限流 → 用户={}", userId);
+			return Mono.just(new ChatResponseDto(
+					"请求过于频繁，请稍后再试。", resolved.provider().providerId(),
+					resolved.model().id(), request.conversationId(), null, null, false));
+		}
+		if (!usageRecorder.tryReserveMonthlyQuota(userId, resolved)) {
+			return Mono.just(usageRecorder.buildMonthlyQuotaExhaustedDto(resolved, request));
+		}
+		log.info("非流式请求 → 供应商={}, 模型={}, 记忆路径={}",
+				resolved.provider().providerId(), resolved.model().id(), useMemory(request));
+
+		boolean memoryPath = useMemory(request);
+		ChatOptions options = buildChatOptions(resolved);
+
+		if (memoryPath) {
+			ChatMemory memory = sessionChatMemory.getIfAvailable();
+			if (memory == null) {
+				log.warn("记忆路径已选但 ChatMemory 不可用，降级为单轮");
+				return callWithoutMemory(resolved, request, options, userId);
+			}
+			ChatRequest req = ensureConversation(request);
+			ChatClient client = resolved.chatClient();
+			MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(memory).build();
+			List<Media> mediaList = convertMediaList(req.media());
+			CallResponseSpec spec = client.prompt()
+					.system(sp -> sp.text(resolveSystemPrompt(req)))
+					.user(u -> {
+						u.text(req.message());
+						if (!mediaList.isEmpty()) {
+							u.media(mediaList.toArray(new Media[0]));
+						}
+					})
+					.advisors(a -> a.param(ChatMemory.CONVERSATION_ID, req.conversationId()))
+					.advisors(memoryAdvisor)
+					.advisors(a -> applyLongTermAdvisor(a, userId))
+					.advisors(a -> applySafeGuardAdvisor(a))
+					.advisors(a -> applyRagAdvisor(a, userId))
+					.options(options.mutate())
+					.call();
+			return Mono.fromCallable(() -> spec.chatResponse())
+					.map(resp -> {
+						String replyText = extractText(resp);
+						healthTracker.recordSuccess(resolved.provider().providerId(), resolved.model().id());
+						touchSessionAsync(userId, req.conversationId(), null);
+						recordLongTermMemoryAsync(userId, req.conversationId(), req.message(), replyText);
+						ChatChunkDto.UsageDto usageDto = usageRecorder.extractUsageDto(resp, resolved);
+						usageRecorder.settleUsage(userId, resolved, req.conversationId(), usageDto, fireAndForgetSubscriptions);
+						return new ChatResponseDto(replyText, resolved.provider().providerId(),
+								resolved.model().id(), req.conversationId(), usageDto, null, false);
+					})
+					.timeout(CALL_TIMEOUT)
+					.onErrorResume(ex -> {
+						log.warn("记忆路径异常，降级为非记忆调用 → 供应商={}, 模型={}: {}",
+								resolved.provider().providerId(), resolved.model().id(), ex.getMessage());
+						return callWithoutMemory(resolved, request, options, userId);
+					})
+					.onErrorResume(ex -> {
+						log.warn("主供应商请求失败 (记忆路径) → 供应商={}, 模型={}: {}",
+								resolved.provider().providerId(), resolved.model().id(), ex.getMessage());
+						healthTracker.recordFailure(resolved.provider().providerId(), resolved.model().id(), ex);
+						return callWithFallback(resolved, request, ex, userId);
+					})
+					.subscribeOn(Schedulers.boundedElastic());
+		}
+
+		return callWithoutMemory(resolved, request, options, userId);
+	}
+
+	/** 流式：结构化 ChatChunkDto Flux。 */
+	public Flux<ChatChunkDto> streamChatChunks(ChatRequest request, String userId) {
+		ResolvedModel resolved = registry.resolve(request.provider(), request.model());
+
+		ImageGenerationService imgService = imageRouter.getAvailableImageService();
+		if (imgService != null) {
+			ImageRouter.ImageIntentResult intent = imageRouter.detectImageIntent(request, resolved);
+			if (intent.isImage()) {
+				return imageRouter.streamImageGeneration(request, userId, imgService, intent.prompt());
+			}
+		}
+
+		if (hasMedia(request) && !resolved.model().supportsVision()) {
+			log.warn("模型 [{}] 不支持图片 (Vision)，流式拦截并返回明确提示", resolved.model().id());
+			return Flux.just(ChatChunkDto.error("INVALID_ARGUMENT", "当前模型不支持图片，请切换到支持图片的模型"));
+		}
+		RateLimiter limiter = rateLimiter.getIfAvailable();
+		if (limiter != null && !limiter.tryAcquire(userId)) {
+			log.warn("流式请求被限流 → 用户={}", userId);
+			return Flux.just(ChatChunkDto.error("RATE_LIMIT", "请求过于频繁，请稍后再试。"));
+		}
+		if (!usageRecorder.tryReserveMonthlyQuota(userId, resolved)) {
+			return Flux.just(ChatChunkDto.error("RATE_LIMIT", "本月对话额度已用尽，请下月再试或联系管理员提升配额。"));
+		}
+
+		boolean memoryPath = useMemory(request);
+		ChatOptions options = buildChatOptions(resolved);
+		boolean agentPath = useAgent(request);
+
+		if (memoryPath) {
+			ChatMemory memory = sessionChatMemory.getIfAvailable();
+			if (memory == null) {
+				return streamChunksWithoutMemory(resolved, request, options, new AtomicReference<>(), userId);
+			}
+			ChatRequest req = ensureConversation(request);
+			ChatClient client = resolved.chatClient();
+			MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(memory).build();
+			StringBuilder fullContent = new StringBuilder();
+			List<Media> mediaList = convertMediaList(req.media());
+
+			boolean[] hasEmittedFirstChunk = new boolean[] { false };
+			AtomicReference<ChatChunkDto.UsageDto> lastUsage = new AtomicReference<>();
+			AtomicBoolean usageSettled = new AtomicBoolean(false);
+
+			Many<ChatChunkDto> toolSink = agentPath ? toolEventEmitter.newSink() : null;
+			ChatClientRequestSpec requestSpec = client.prompt()
+					.system(sp -> sp.text(resolveSystemPrompt(req)))
+					.user(u -> {
+						u.text(req.message());
+						if (!mediaList.isEmpty()) {
+							u.media(mediaList.toArray(new Media[0]));
+						}
+					})
+					.advisors(a -> a.param(ChatMemory.CONVERSATION_ID, req.conversationId()))
+					.advisors(memoryAdvisor)
+					.advisors(a -> applyLongTermAdvisor(a, userId))
+					.advisors(a -> applySafeGuardAdvisor(a))
+					.advisors(a -> applyRagAdvisor(a, userId))
+					.options(options.mutate());
+			if (agentPath) {
+				ToolCallback[] agentTools = prepareAgentTools(req.conversationId());
+				requestSpec = requestSpec.tools((Object[]) agentTools)
+						.toolContext(Map.of(
+								"eventSink", toolSink,
+								ToolEventEmitter.CTX_EMITTER, toolEventEmitter,
+								ToolEventEmitter.CTX_USER_ID, userId));
+			}
+			Flux<ChatChunkDto> contentFlux = requestSpec.stream().chatResponse()
+					.timeout(STREAM_TIMEOUT)
+					.concatMap(resp -> {
+						boolean isFirst = !hasEmittedFirstChunk[0];
+						hasEmittedFirstChunk[0] = true;
+						healthTracker.recordSuccess(resolved.provider().providerId(), resolved.model().id());
+						Flux<ChatChunkDto> chunkFlux = usageRecorder.accumulateUsage(
+								processChatResponseToChunks(resp, fullContent, resolved), lastUsage);
+						if (isFirst) {
+							ChatChunkDto initChunk = ChatChunkDto.conversation(
+									req.conversationId(),
+									resolved.provider().providerId(),
+									resolved.model().id(),
+									false);
+							return Flux.concat(Flux.just(initChunk), chunkFlux);
+						}
+						return chunkFlux;
+					})
+					.doOnComplete(() -> recordLongTermMemoryAsync(userId, req.conversationId(),
+							req.message(), fullContent.toString()))
+					.doOnCancel(() -> {
+						if (fullContent.length() > 0) {
+							recordLongTermMemoryAsync(userId, req.conversationId(), req.message(),
+									fullContent.toString());
+						}
+					})
+					.doFinally(signalType -> {
+						log.debug("流式记忆路径订阅结束 (signal={}) → 供应商={}, 模型={}",
+								signalType, resolved.provider().providerId(), resolved.model().id());
+						if (usageSettled.compareAndSet(false, true)) {
+							usageRecorder.settleUsage(userId, resolved, req.conversationId(), lastUsage.get(), fireAndForgetSubscriptions);
+						}
+					})
+					.onErrorResume(ex -> {
+						log.warn("流式主供应商请求失败 (记忆路径) → 供应商={}, 模型={}, 首帧下发状态={}: {}",
+								resolved.provider().providerId(), resolved.model().id(), hasEmittedFirstChunk[0], ex.getMessage());
+						healthTracker.recordFailure(resolved.provider().providerId(), resolved.model().id(), ex);
+						if (!hasEmittedFirstChunk[0]) {
+							return streamChunksWithoutMemory(resolved, req, options, lastUsage, userId);
+						}
+						return Flux.just(ChatChunkDto.error("STREAM_ERROR", "输出中断：" + ex.getMessage()));
+					});
+
+			if (agentPath && toolSink != null) {
+				return Flux.merge(contentFlux, toolSink.asFlux());
+			}
+			return contentFlux;
+		}
+
+		return streamChunksWithoutMemory(resolved, request, options, new AtomicReference<>(), userId);
+	}
+
+	private Mono<ChatResponseDto> callWithoutMemory(ResolvedModel primaryResolved, ChatRequest request,
+			ChatOptions options, String userId) {
+		List<Media> mediaList = convertMediaList(request.media());
+		List<Message> messages = contextAssembler.assemble(
+				request.message(), request.history(), request.systemPrompt(),
+				null, primaryResolved.model().maxContextTokens(), mediaList);
+		Prompt prompt = new Prompt(messages, options);
+
+		return Mono.fromCallable(() -> {
+			ChatResponse response = primaryResolved.chatModel().call(prompt);
+			healthTracker.recordSuccess(primaryResolved.provider().providerId(), primaryResolved.model().id());
+			ChatChunkDto.UsageDto usageDto = usageRecorder.extractUsageDto(response, primaryResolved);
+			usageRecorder.settleUsage(userId, primaryResolved, request.conversationId(), usageDto, fireAndForgetSubscriptions);
+			return new ChatResponseDto(
+					extractText(response), primaryResolved.provider().providerId(),
+					primaryResolved.model().id(), request.conversationId(), usageDto, null, false);
+		})
+		.timeout(CALL_TIMEOUT)
+		.onErrorResume(ex -> {
+			log.warn("主供应商请求失败 → 供应商={}, 模型={}: {}",
+					primaryResolved.provider().providerId(), primaryResolved.model().id(), ex.getMessage());
+			healthTracker.recordFailure(primaryResolved.provider().providerId(), primaryResolved.model().id(), ex);
+			return callWithFallback(primaryResolved, request, ex, userId);
+		})
+		.subscribeOn(Schedulers.boundedElastic());
+	}
+
+	private Flux<ChatChunkDto> streamChunksWithoutMemory(ResolvedModel primaryResolved, ChatRequest request,
+			ChatOptions options, AtomicReference<ChatChunkDto.UsageDto> sharedUsage, String userId) {
+		List<Media> mediaList = convertMediaList(request.media());
+		List<Message> messages = contextAssembler.assemble(
+				request.message(), request.history(), request.systemPrompt(),
+				null, primaryResolved.model().maxContextTokens(), mediaList);
+		Prompt prompt = new Prompt(messages, options);
+
+		StringBuilder fullContent = new StringBuilder();
+		AtomicReference<ChatChunkDto.UsageDto> usageAccum = (sharedUsage != null) ? sharedUsage : new AtomicReference<>();
+		AtomicBoolean settled = new AtomicBoolean(false);
+
+		boolean agentPath = useAgent(request);
+		Many<ChatChunkDto> toolSink = agentPath ? toolEventEmitter.newSink() : null;
+
+		ChatClientRequestSpec requestSpec = primaryResolved.chatClient().prompt(prompt);
+		if (agentPath) {
+			ToolCallback[] agentTools = prepareAgentTools(request.conversationId());
+			requestSpec = requestSpec.tools((Object[]) agentTools)
+					.toolContext(Map.of(
+							"eventSink", toolSink,
+							ToolEventEmitter.CTX_EMITTER, toolEventEmitter,
+							ToolEventEmitter.CTX_USER_ID, userId));
+		}
+		Flux<ChatChunkDto> contentFlux = requestSpec.stream().chatResponse()
+				.timeout(STREAM_TIMEOUT)
+				.concatMap(resp -> usageRecorder.accumulateUsage(
+						processChatResponseToChunks(resp, fullContent, primaryResolved), usageAccum));
+
+		if (agentPath && toolSink != null) {
+			Flux<ChatChunkDto> merged = Flux.merge(contentFlux, toolSink.asFlux());
+			return merged.doFinally(sig -> {
+				toolSink.tryEmitComplete();
+				if (settled.compareAndSet(false, true)) {
+					usageRecorder.settleUsage(userId, primaryResolved, request.conversationId(), usageAccum.get(), fireAndForgetSubscriptions);
+				}
+			});
+		}
+		return contentFlux.doFinally(signalType -> {
+			if (settled.compareAndSet(false, true)) {
+				usageRecorder.settleUsage(userId, primaryResolved, request.conversationId(), usageAccum.get(), fireAndForgetSubscriptions);
+			}
+		});
+	}
+
+	private Mono<ChatResponseDto> callWithFallback(ResolvedModel primaryResolved, ChatRequest request,
+			Throwable primaryEx, String userId) {
+		String fbProvider = properties != null ? properties.fallbackProvider() : null;
+		String fbModel = properties != null ? properties.fallbackModel() : null;
+		ResolvedModel fallbackResolved = registry.resolveFallback(primaryResolved.provider().providerId(), fbProvider, fbModel);
+		if (fallbackResolved != null) {
+			log.info("触发自动降级熔断机制: [{}] -> [{}]",
+					primaryResolved.provider().providerId(), fallbackResolved.provider().providerId());
+
+			List<Media> mediaList = convertMediaList(request.media());
+			ChatOptions fallbackOpts = ChatOptionsFactory.forProvider(fallbackResolved, 0.2);
+			List<Message> messages = contextAssembler.assemble(
+					request.message(), request.history(), request.systemPrompt(),
+					null, fallbackResolved.model().maxContextTokens(), mediaList);
+			Prompt prompt = new Prompt(messages, fallbackOpts);
+
+			return Mono.fromCallable(() -> {
+				ChatResponse resp = fallbackResolved.chatModel().call(prompt);
+				healthTracker.recordSuccess(fallbackResolved.provider().providerId(), fallbackResolved.model().id());
+				ChatChunkDto.UsageDto usageDto = usageRecorder.extractUsageDto(resp, fallbackResolved);
+				usageRecorder.settleUsage(userId, fallbackResolved, request.conversationId(), usageDto, fireAndForgetSubscriptions);
+				return new ChatResponseDto(
+						extractText(resp), fallbackResolved.provider().providerId(),
+						fallbackResolved.model().id(),
+						request.conversationId(), usageDto, null, true);
+			})
+			.timeout(CALL_TIMEOUT)
+			.onErrorResume(fbEx -> {
+				log.warn("备用供应商 [{}] 调用亦失败: {}", fallbackResolved.provider().providerId(), fbEx.getMessage());
+				return Mono.just(new ChatResponseDto(
+						"上游供应商响应超时/异常，请稍后再试。",
+						primaryResolved.provider().providerId(),
+						primaryResolved.model().id(),
+						request.conversationId(),
+						null,
+						null,
+						false));
+			})
+			.subscribeOn(Schedulers.boundedElastic());
+		}
+		return Mono.just(new ChatResponseDto(
+				"上游供应商响应超时/异常，请稍后再试。",
+				primaryResolved.provider().providerId(),
+				primaryResolved.model().id(),
+				request.conversationId(),
+				null,
+				null,
+				false));
+	}
+
+	private Flux<ChatChunkDto> processChatResponseToChunks(ChatResponse resp, StringBuilder fullContent, ResolvedModel resolved) {
+		if (resp == null) return Flux.empty();
+		List<ChatChunkDto> chunks = new ArrayList<>();
+
+		String reasoning = extractReasoning(resp);
+		if (reasoning != null && !reasoning.isEmpty()) {
+			chunks.add(ChatChunkDto.reasoning(reasoning));
+		}
+
+		String text = extractText(resp);
+		if (text != null && !text.isEmpty()) {
+			fullContent.append(text);
+			chunks.add(ChatChunkDto.content(text));
+		}
+
+		ChatChunkDto.UsageDto usageDto = usageRecorder.extractUsageDto(resp, resolved);
+		if (usageDto != null) {
+			chunks.add(ChatChunkDto.usage(usageDto));
+		}
+
+		return Flux.fromIterable(chunks);
+	}
+
+	private String extractReasoning(ChatResponse resp) {
+		if (resp == null || resp.getResult() == null || resp.getResult().getOutput() == null) return null;
+		Map<String, Object> metadata = resp.getResult().getOutput().getMetadata();
+		if (metadata != null) {
+			Object r = metadata.get("reasoning_content");
+			if (r == null) r = metadata.get("reasoning");
+			if (r == null) r = metadata.get("thinking");
+			if (r instanceof String s && !s.isEmpty()) return s;
+		}
+		return null;
+	}
+
+	private String extractText(ChatResponse result) {
+		if (result == null || result.getResult() == null) return "";
+		var output = result.getResult().getOutput();
+		if (output == null) return "";
+		String text = output.getText();
+		return (text == null) ? "" : text;
+	}
+
+	private ToolCallback[] resolveMcpToolCallbacks() {
+		SyncMcpToolCallbackProvider provider = mcpToolProvider != null ? mcpToolProvider.getIfAvailable() : null;
+		if (provider == null) return new ToolCallback[0];
+		ToolCallback[] mcpTools = provider.getToolCallbacks();
+		if (mcpTools == null || mcpTools.length == 0) return new ToolCallback[0];
+		log.info("已加载远程 MCP 工具 {} 个", mcpTools.length);
+		return mcpTools;
+	}
+
+	private ToolCallback[] prepareAgentTools(String conversationId) {
+		ToolCallback[] local = toolCallbacks != null ? toolCallbacks : new ToolCallback[0];
+		ToolCallback[] remote = resolveMcpToolCallbacks();
+		boolean augmentMcp = properties != null && properties.resolveAgent().isAugmentMcpTools();
+		ToolCallback[] merged = augmentedToolCallbackProvider.wrapTools(local, remote, augmentMcp);
+		ToolSearchAdvisorFactory factory = toolSearchFactory != null ? toolSearchFactory.getIfAvailable() : null;
+		if (factory != null && factory.shouldApply(merged, local.length, remote.length)) {
+			return factory.processTools(merged, local.length, remote.length, conversationId);
+		}
+		return merged;
+	}
+
+	private boolean useAgent(ChatRequest request) {
+		return agentEnabled && Boolean.TRUE.equals(request.agentEnabled());
+	}
+
+	private boolean useMemory(ChatRequest request) {
+		return memoryEnabled && request.hasConversation();
+	}
+
+	private ChatRequest ensureConversation(ChatRequest request) {
+		if (request.hasConversation()) return request;
+		String convId = "conv-" + java.util.UUID.randomUUID().toString().substring(0, 8);
+		return request.withConversationId(convId);
+	}
+
+	private boolean hasMedia(ChatRequest request) {
+		return request != null && request.media() != null && !request.media().isEmpty();
+	}
+
+	private List<Media> convertMediaList(List<MediaDto> dtos) {
+		if (dtos == null || dtos.isEmpty()) return List.of();
+		return dtos.stream()
+				.map(this::toMedia)
+				.filter(Objects::nonNull)
+				.toList();
+	}
+
+	private Media toMedia(MediaDto dto) {
+		if (dto == null || dto.data() == null || dto.data().isBlank()) return null;
+		try {
+			String dataStr = dto.data().trim();
+			String base64Data = dataStr;
+			String mimeTypeStr = dto.mimeType();
+
+			if (dataStr.contains(",") && dataStr.startsWith("data:")) {
+				String[] parts = dataStr.split(",", 2);
+				base64Data = parts[1];
+				String header = parts[0];
+				if (header.contains(":") && header.contains(";")) {
+					mimeTypeStr = header.substring(header.indexOf(":") + 1, header.indexOf(";"));
+				}
+			}
+
+			byte[] bytes = Base64.getDecoder().decode(base64Data.trim());
+			return new Media(MimeTypeUtils.parseMimeType(mimeTypeStr), new ByteArrayResource(bytes));
+		} catch (Exception e) {
+			log.warn("多模态媒体 (Media) 数据解析异常: {}", e.getMessage());
+			return null;
+		}
+	}
+
+	private String resolveSystemPrompt(ChatRequest request) {
+		return (request.systemPrompt() != null && !request.systemPrompt().isBlank())
+				? request.systemPrompt()
+				: contextAssembler.defaultSystemPrompt();
+	}
+
+	private void recordLongTermMemoryAsync(String userId, String conversationId, String userMessage, String assistantReply) {
+		if (!memoryEnabled || userId == null || userId.isBlank() || userMessage == null || userMessage.isBlank()) return;
+
+		LongTermMemoryProcessor processor = longTermProcessor.getIfAvailable();
+		if (processor != null) {
+			Disposable d1 = Mono.fromRunnable(() -> processor.processTurn(userId, conversationId, userMessage, assistantReply))
+					.timeout(Duration.ofSeconds(10))
+					.retryWhen(Retry.fixedDelay(1, Duration.ofSeconds(2)))
+					.doOnError(ex -> log.warn("长期记忆处理写入失败 [userId={}, conversationId={}]: {}", userId, conversationId, ex.getMessage()))
+					.onErrorComplete()
+					.subscribeOn(Schedulers.boundedElastic())
+					.subscribe();
+			fireAndForgetSubscriptions.add(d1);
+			return;
+		}
+
+		LongTermMemoryWriter writer = longTermWriter.getIfAvailable();
+		if (writer == null) return;
+
+		String content = "【用户提问】: " + userMessage + "\n【AI回复】: " + (assistantReply != null ? assistantReply : "");
+		Disposable d2 = Mono.fromRunnable(() -> writer.write(userId, content))
+				.timeout(Duration.ofSeconds(10))
+				.retryWhen(Retry.fixedDelay(1, Duration.ofSeconds(2)))
+				.doOnError(ex -> log.warn("长期记忆写入失败 [userId={}]: {}", userId, ex.getMessage()))
+				.onErrorComplete()
+				.subscribeOn(Schedulers.boundedElastic())
+				.subscribe();
+		fireAndForgetSubscriptions.add(d2);
+	}
+
+	private void touchSessionAsync(String userId, String conversationId, String fallbackTitle) {
+		if (sessionService != null && conversationId != null && !conversationId.isBlank()) {
+			Disposable sub = Mono.fromRunnable(() -> sessionService.touchSession(conversationId, userId, fallbackTitle))
+					.doOnError(ex -> log.warn("更新会话活跃时间失败 [conversationId={}]: {}", conversationId, ex.getMessage()))
+					.onErrorComplete()
+					.subscribeOn(Schedulers.boundedElastic())
+					.subscribe();
+			fireAndForgetSubscriptions.add(sub);
+		}
+	}
+
+	private void applyLongTermAdvisor(ChatClient.AdvisorSpec advisorSpec, String userId) {
+		LongTermMemoryAdvisorFactory factory = longTermFactory.getIfAvailable();
+		if (factory != null) {
+			Advisor advisor = factory.forUser(userId);
+			if (advisor != null) {
+				advisorSpec.advisors(advisor);
+			}
+		}
+	}
+
+	private void applySafeGuardAdvisor(ChatClient.AdvisorSpec advisorSpec) {
+		SafeGuardAdvisor advisor = safeGuardAdvisor.getIfAvailable();
+		if (advisor != null) {
+			advisorSpec.advisors(advisor);
+		}
+	}
+
+	private void applyRagAdvisor(ChatClient.AdvisorSpec advisorSpec, String userId) {
+		RagAdvisorFactory factory = ragAdvisorFactory.getIfAvailable();
+		if (factory != null) {
+			Advisor advisor = factory.forUser(userId, null);
+			if (advisor != null) {
+				advisorSpec.advisors(advisor);
+			}
+		}
+	}
+
+	private ChatOptions buildChatOptions(ResolvedModel resolved) {
+		return ChatOptionsFactory.forProvider(resolved, 0.2);
+	}
+}
