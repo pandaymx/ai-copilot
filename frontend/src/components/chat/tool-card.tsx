@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
+  Sparkles,
   Wrench,
   XCircle,
 } from "lucide-react";
@@ -27,9 +28,10 @@ function tryFormatJson(raw: string): { text: string; isJson: boolean } {
 function extractThoughtAndCleanArgs(
   rawArgs: string,
   itemThought?: string,
-): { thought: string; cleanArgsText: string } {
+): { thought: string; cleanArgsText: string; taskText: string } {
   let thought = itemThought ?? "";
   let cleanArgsObj: Record<string, unknown> | null = null;
+  let taskText = "";
 
   if (rawArgs) {
     try {
@@ -38,8 +40,15 @@ function extractThoughtAndCleanArgs(
         if (!thought && typeof obj.innerThought === "string") {
           thought = obj.innerThought;
         }
+        if (typeof obj.task === "string") {
+          taskText = obj.task;
+        }
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { innerThought: _, ...rest } = obj as Record<string, unknown>;
+        const {
+          innerThought: _i,
+          task: _t,
+          ...rest
+        } = obj as Record<string, unknown>;
         if (Object.keys(rest).length > 0) {
           cleanArgsObj = rest;
         }
@@ -65,19 +74,43 @@ function extractThoughtAndCleanArgs(
     cleanArgsText = tryFormatJson(rawArgs).text;
   }
 
-  return { thought, cleanArgsText };
+  return { thought, cleanArgsText, taskText };
+}
+
+const SUB_AGENT_LABELS: Record<string, string> = {
+  analysis: "数据分析",
+  code: "代码生成",
+  summary: "摘要整合",
+};
+
+function resolveAgentLabel(name: string): string {
+  const type = name.split(":")[1] ?? "";
+  return SUB_AGENT_LABELS[type] ?? type;
+}
+
+function extractOutputText(resultJson: string | undefined): string {
+  if (!resultJson) return "";
+  try {
+    const obj = JSON.parse(resultJson);
+    if (typeof obj?.output === "string") return obj.output;
+    return JSON.stringify(obj, null, 2);
+  } catch {
+    return resultJson;
+  }
 }
 
 /**
  * 单个工具调用卡片。
  *
- * 智能折叠 UX：
- * - calling（执行中）：默认展开，展示正在传入的参数与思考过程；
- * - success（成功）：默认收起为微缩状态，点击可二次展开查看思考过程与结果；
- * - error（失败）：默认展开并用红框高亮错误原因。
- * UI 层以 callId 作为唯一 key（见 message-bubble），保证并行多工具调用不闪烁/不顺序颠倒。
+ * 支持两种渲染模式：
+ * - 普通工具：扳手图标 + 工具名 + 参数/结果折叠展示
+ * - 子代理（toolName 以 sub_agent: 开头）：🤖 紫色渐变徽章 + 任务描述 + 折叠结果卡片
+ *   呈现效果：「🤖 子代理 · 数据分析：分析过去 30 天用户增长趋势（思考中…）」
  */
 export function ToolCard({ item }: { item: ToolCallItem }) {
+  const isSubAgent = item.name.startsWith("sub_agent:");
+  const agentLabel = isSubAgent ? resolveAgentLabel(item.name) : null;
+
   const [expanded, setExpanded] = useState(
     item.status === "calling" || item.status === "error",
   );
@@ -86,28 +119,163 @@ export function ToolCard({ item }: { item: ToolCallItem }) {
   const isError = item.status === "error";
   const isSuccess = item.status === "success";
 
-  const { thought, cleanArgsText } = extractThoughtAndCleanArgs(
+  const { thought, cleanArgsText, taskText } = extractThoughtAndCleanArgs(
     item.arguments,
     item.innerThought,
   );
-  const result = tryFormatJson(item.result ?? "");
 
+  // ---- Sub-Agent Card ----
+  if (isSubAgent) {
+    const resultOutput = extractOutputText(item.result);
+
+    return (
+      <div
+        className={cn(
+          "rounded-xl border backdrop-blur-md transition-all duration-300",
+          isError
+            ? "border-rose-300/70 bg-rose-500/5 shadow-sm shadow-rose-500/10 dark:border-rose-500/40"
+            : "border-purple-300/50 bg-gradient-to-br from-purple-500/8 to-fuchsia-500/8 dark:border-purple-500/30 dark:from-purple-950/20 dark:to-fuchsia-950/20",
+          isSuccess && !expanded && "py-1",
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left outline-none transition-colors hover:bg-purple-500/8 dark:hover:bg-purple-500/10"
+        >
+          {/* Robot emoji badge */}
+          <span
+            className={cn(
+              "flex size-6 shrink-0 items-center justify-center rounded-lg text-sm",
+              isError
+                ? "bg-rose-500/15"
+                : "bg-gradient-to-br from-purple-500/20 to-fuchsia-500/20",
+            )}
+          >
+            🤖
+          </span>
+
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="flex items-center gap-1.5 flex-wrap">
+              {/* Agent type chip */}
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                  isError
+                    ? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+                    : "bg-gradient-to-r from-purple-500/20 to-fuchsia-500/20 text-purple-700 dark:text-purple-300",
+                )}
+              >
+                <Sparkles className="size-2.5" />
+                子代理 · {agentLabel}
+              </span>
+              {isCalling && (
+                <span className="text-[10px] text-muted-foreground animate-pulse">
+                  思考中…
+                </span>
+              )}
+              {isSuccess && (
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                  已完成
+                </span>
+              )}
+              {isError && (
+                <span className="text-[10px] text-rose-500">执行失败</span>
+              )}
+            </span>
+            {/* Task description in header */}
+            {taskText && (
+              <span
+                className={cn(
+                  "truncate text-xs leading-snug",
+                  isCalling
+                    ? "text-purple-800 dark:text-purple-200"
+                    : "text-muted-foreground",
+                )}
+                title={taskText}
+              >
+                {taskText}
+              </span>
+            )}
+          </span>
+
+          <span className="flex items-center gap-1 shrink-0">
+            {isCalling && (
+              <Loader2 className="size-3.5 animate-spin text-purple-500" />
+            )}
+            {isSuccess && (
+              <CheckCircle2 className="size-3.5 text-emerald-500" />
+            )}
+            {isError && <XCircle className="size-3.5 text-rose-500" />}
+            {expanded ? (
+              <ChevronDown className="size-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="size-3.5 text-muted-foreground" />
+            )}
+          </span>
+        </button>
+
+        {expanded && (
+          <div className="space-y-2 px-3 pb-3">
+            {thought && (
+              <div className="rounded-lg border border-purple-500/20 bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-blue-500/10 p-2.5 dark:border-purple-500/30">
+                <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-300">
+                  <Brain className="size-3" />
+                  思考过程
+                </div>
+                <p className="whitespace-pre-wrap text-xs leading-relaxed text-purple-950 dark:text-purple-200 font-sans">
+                  {thought}
+                </p>
+              </div>
+            )}
+            {taskText && (
+              <div>
+                <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  子任务指令
+                </div>
+                <p className="rounded-lg bg-purple-950/10 px-2.5 py-2 text-xs leading-relaxed text-foreground dark:bg-purple-950/30 whitespace-pre-wrap">
+                  {taskText}
+                </p>
+              </div>
+            )}
+            {resultOutput && (
+              <div>
+                <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {isError ? "错误原因" : "子代理回复"}
+                </div>
+                <pre
+                  className={cn(
+                    "max-h-64 overflow-auto rounded-lg p-2.5 text-[11px] leading-relaxed whitespace-pre-wrap",
+                    isError
+                      ? "bg-rose-950/40 text-rose-200"
+                      : "bg-zinc-900/90 text-zinc-100 dark:bg-black/40",
+                  )}
+                >
+                  {resultOutput}
+                </pre>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ---- Regular Tool Card ----
+  const result = tryFormatJson(item.result ?? "");
   const statusMeta = isCalling
     ? {
         icon: <Loader2 className="size-3.5 animate-spin text-violet-500" />,
         label: "正在调用工具",
-        badge: "calling",
       }
     : isError
       ? {
           icon: <XCircle className="size-3.5 text-rose-500" />,
           label: "调用失败",
-          badge: "error",
         }
       : {
           icon: <CheckCircle2 className="size-3.5 text-emerald-500" />,
           label: "调用完成",
-          badge: "success",
         };
 
   return (

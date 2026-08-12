@@ -10,18 +10,21 @@ import java.util.Map;
 /**
  * 多模型供应商抽象层的根配置，绑定 {@code app.ai.*}。
  *
- * <p>刻意与 Spring AI 自身的 {@code spring.ai.*} 命名空间分离：{@code spring.ai.*} 由官方
+ * <p>
+ * 刻意与 Spring AI 自身的 {@code spring.ai.*} 命名空间分离：{@code spring.ai.*} 由官方
  * starter 消费用于自动装配「一等公民」，本配置只负责在其之上补充统一抽象所需的元数据
  * （模型清单、展示信息、上下文预算），以及完整描述「二等公民」。这样即使本模块被移除，
  * 一等公民的原生行为也不受影响。
  *
- * <p>使用 record 做构造器绑定，天然不可变且对 GraalVM Native 友好。
+ * <p>
+ * 使用 record 做构造器绑定，天然不可变且对 GraalVM Native 友好。
  *
  * @param defaultProvider 全局默认供应商 id；请求未指定 provider 时使用
  * @param defaultModel    全局默认模型 id；请求未指定 model 时使用
  * @param systemPrompt    全局系统提示词，会被保底注入且不参与历史裁剪
  * @param context         上下文与 Token 预算相关配置
- * @param firstClass      一等公民的补充配置，key 为供应商 id（如 {@code openai}、{@code deepseek}）
+ * @param firstClass      一等公民的补充配置，key 为供应商 id（如
+ *                        {@code openai}、{@code deepseek}）
  * @param secondClass     二等公民供应商列表，纯配置驱动
  */
 @ConfigurationProperties(prefix = "app.ai")
@@ -37,8 +40,7 @@ public record AiProviderProperties(
 		@Nullable AgentConfig agent,
 		@Nullable ImageConfig image,
 		@Nullable Map<String, FirstClassConfig> firstClass,
-		@Nullable List<SecondClassConfig> secondClass
-) {
+		@Nullable List<SecondClassConfig> secondClass) {
 
 	/** 兜底的上下文窗口大小，未在任何层级配置时使用。 */
 	public static final int FALLBACK_MAX_CONTEXT_TOKENS = 32768;
@@ -87,8 +89,7 @@ public record AiProviderProperties(
 			@Nullable Integer reserveOutputTokens,
 			@Nullable Double historyRatio,
 			@Nullable Integer defaultMaxContextTokens,
-			@Nullable Double safetyFactor
-	) {
+			@Nullable Double safetyFactor) {
 
 		public static ContextConfig defaults() {
 			return new ContextConfig(null, null, null, null);
@@ -119,17 +120,19 @@ public record AiProviderProperties(
 	/**
 	 * 记忆子系统配置。
 	 *
-	 * @param enabled                        记忆路径总开关；false 时 ChatService 退化为旧 history 模式
-	 * @param hotCacheSize                   Redis 热缓存保留最近 N 条；同时作为会话记忆 RETRIEVE_SIZE 上限
-	 * @param longTermTopK                   长期记忆向量检索 Top-K
-	 * @param longTermDedupEnabled           长期记忆落库前是否执行相似度去重
-	 * @param longTermSimilarityThreshold    长期记忆去重判定相似度阈值（0~1]
-	 * @param longTermMinContentLength       写入/抽取的最小字符长度（前置硬规则）
-	 * @param longTermSummarizeEnabled       是否开启会话周期性与会话结束摘要抽取
+	 * @param enabled                       记忆路径总开关；false 时 ChatService 退化为旧 history
+	 *                                      模式
+	 * @param hotCacheSize                  Redis 热缓存保留最近 N 条；同时作为会话记忆 RETRIEVE_SIZE
+	 *                                      上限
+	 * @param longTermTopK                  长期记忆向量检索 Top-K
+	 * @param longTermDedupEnabled          长期记忆落库前是否执行相似度去重
+	 * @param longTermSimilarityThreshold   长期记忆去重判定相似度阈值（0~1]
+	 * @param longTermMinContentLength      写入/抽取的最小字符长度（前置硬规则）
+	 * @param longTermSummarizeEnabled      是否开启会话周期性与会话结束摘要抽取
 	 * @param longTermSummarizeTurnInterval 会话轮次间隔触发值
-	 * @param conversationTtlDays             会话热缓存在 Redis 的 TTL（天），防止冷数据常驻
-	 * @param rateLimit                      基于 Redis 的对话限流配置
-	 * @param usageQuota                     用户级月度 Token 总量配额配置（基于 Redis 累计）
+	 * @param conversationTtlDays           会话热缓存在 Redis 的 TTL（天），防止冷数据常驻
+	 * @param rateLimit                     基于 Redis 的对话限流配置
+	 * @param usageQuota                    用户级月度 Token 总量配额配置（基于 Redis 累计）
 	 */
 	public record MemoryConfig(
 			@Nullable Boolean enabled,
@@ -142,8 +145,7 @@ public record AiProviderProperties(
 			@Name("long-term-summarize-turn-interval") @Nullable Integer longTermSummarizeTurnInterval,
 			@Nullable Integer conversationTtlDays,
 			@Nullable RateLimitConfig rateLimit,
-			@Name("usage-quota") @Nullable UsageQuotaConfig usageQuota
-	) {
+			@Name("usage-quota") @Nullable UsageQuotaConfig usageQuota) {
 
 		public static MemoryConfig defaults() {
 			return new MemoryConfig(false, 20, 5, true, 0.85d, 15, true, 5, 14, null, null);
@@ -166,9 +168,10 @@ public record AiProviderProperties(
 		}
 
 		public double resolveLongTermSimilarityThreshold() {
-			return (longTermSimilarityThreshold != null && longTermSimilarityThreshold > 0 && longTermSimilarityThreshold <= 1.0d)
-					? longTermSimilarityThreshold
-					: 0.85d;
+			return (longTermSimilarityThreshold != null && longTermSimilarityThreshold > 0
+					&& longTermSimilarityThreshold <= 1.0d)
+							? longTermSimilarityThreshold
+							: 0.85d;
 		}
 
 		public int resolveLongTermMinContentLength() {
@@ -180,7 +183,9 @@ public record AiProviderProperties(
 		}
 
 		public int resolveLongTermSummarizeTurnInterval() {
-			return (longTermSummarizeTurnInterval != null && longTermSummarizeTurnInterval > 0) ? longTermSummarizeTurnInterval : 5;
+			return (longTermSummarizeTurnInterval != null && longTermSummarizeTurnInterval > 0)
+					? longTermSummarizeTurnInterval
+					: 5;
 		}
 
 		public int resolveConversationTtlDays() {
@@ -199,21 +204,33 @@ public record AiProviderProperties(
 	/**
 	 * Agent 工具调用子系统配置（绑定 {@code app.ai.agent.*}）。
 	 *
-	 * @param enabled           Agent 模式服务端总开关；false 时即使前端开启 agentEnabled 也不装配工具
-	 * @param maxToolCalls       单次请求内允许连续调用工具的最大次数（防止 LLM 死循环消耗 Token）
-	 * @param timeoutSeconds     单次工具执行的超时上限（秒）
-	 * @param toolSearchAdvisor 渐进式工具披露 / 工具检索 Advisor 配置
+	 * @param enabled             Agent 模式服务端总开关；false 时即使前端开启 agentEnabled 也不装配工具
+	 * @param maxToolCalls        单次请求内允许连续调用工具的最大次数（防止 LLM 死循环消耗 Token）
+	 * @param timeoutSeconds      单次工具执行的超时上限（秒）
+	 * @param augmentMcpTools     是否对 MCP 远程工具也注入 innerThought 增强
+	 * @param toolSearchAdvisor   渐进式工具披露 / 工具检索 Advisor 配置
+	 * @param orchestratorEnabled 调度者-工作者模式总开关；true 时向 Agent 工具集注入 SubAgentTool
+	 * @param workerProvider      Worker ChatClient 使用的供应商 id；空则复用主模型供应商
+	 * @param workerModel         Worker ChatClient 使用的模型 id；空则复用主模型
+	 * @param workerMaxTokens     Worker 单次推理最大输出 token 数（防止失控输出）
+	 * @param maxWorkerDepth      Worker 最大嵌套深度上限（默认 1：仅允许 Orchestrator→Worker 单层派发）
 	 */
 	public record AgentConfig(
 			@Nullable Boolean enabled,
 			@Name("max-tool-calls") @Nullable Integer maxToolCalls,
 			@Name("timeout-seconds") @Nullable Integer timeoutSeconds,
 			@Name("augment-mcp-tools") @Nullable Boolean augmentMcpTools,
-			@Name("tool-search-advisor") @Nullable ToolSearchAdvisorPropertiesConfig toolSearchAdvisor
-	) {
+			@Name("tool-search-advisor") @Nullable ToolSearchAdvisorPropertiesConfig toolSearchAdvisor,
+			@Name("orchestrator-enabled") @Nullable Boolean orchestratorEnabled,
+			@Name("worker-provider") @Nullable String workerProvider,
+			@Name("worker-model") @Nullable String workerModel,
+			@Name("worker-max-tokens") @Nullable Integer workerMaxTokens,
+			@Name("max-worker-depth") @Nullable Integer maxWorkerDepth) {
 
 		public static AgentConfig defaults() {
-			return new AgentConfig(true, 5, 30, false, ToolSearchAdvisorPropertiesConfig.defaults());
+			return new AgentConfig(true, 5, 30, false,
+					ToolSearchAdvisorPropertiesConfig.defaults(),
+					false, null, null, 2048, 1);
 		}
 
 		public boolean isEnabled() {
@@ -235,6 +252,33 @@ public record AiProviderProperties(
 		public ToolSearchAdvisorPropertiesConfig resolveToolSearchAdvisor() {
 			return toolSearchAdvisor != null ? toolSearchAdvisor : ToolSearchAdvisorPropertiesConfig.defaults();
 		}
+
+		/** 调度者-工作者模式是否开启。 */
+		public boolean isOrchestratorEnabled() {
+			return orchestratorEnabled != null && orchestratorEnabled;
+		}
+
+		/** Worker 使用的供应商；null 表示复用主模型供应商。 */
+		@Nullable
+		public String resolveWorkerProvider() {
+			return (workerProvider != null && !workerProvider.isBlank()) ? workerProvider.trim() : null;
+		}
+
+		/** Worker 使用的模型 id；null 表示复用主模型。 */
+		@Nullable
+		public String resolveWorkerModel() {
+			return (workerModel != null && !workerModel.isBlank()) ? workerModel.trim() : null;
+		}
+
+		/** Worker 单次最大输出 token（防失控，默认 2048）。 */
+		public int resolveWorkerMaxTokens() {
+			return (workerMaxTokens != null && workerMaxTokens > 0) ? workerMaxTokens : 2048;
+		}
+
+		/** 允许的最大 Worker 嵌套深度（默认 1，只允许 Orchestrator→Worker 单层）。 */
+		public int resolveMaxWorkerDepth() {
+			return (maxWorkerDepth != null && maxWorkerDepth >= 0) ? maxWorkerDepth : 1;
+		}
 	}
 
 	/**
@@ -247,8 +291,7 @@ public record AiProviderProperties(
 	public record ToolSearchAdvisorPropertiesConfig(
 			@Nullable Boolean enabled,
 			@Name("tool-index-type") @Nullable String toolIndexType,
-			@Name("min-tools-threshold") @Nullable Integer minToolsThreshold
-	) {
+			@Name("min-tools-threshold") @Nullable Integer minToolsThreshold) {
 
 		public static ToolSearchAdvisorPropertiesConfig defaults() {
 			return new ToolSearchAdvisorPropertiesConfig(false, "regex", 30);
@@ -270,17 +313,19 @@ public record AiProviderProperties(
 	/**
 	 * 用户级月度 Token 总量配额配置（基于 Redis 按月累计，保护上游月度成本）。
 	 *
-	 * <p>与 {@code rate-limit} 共享 {@code app.ai.memory.rate-limit.enabled} 开关：
+	 * <p>
+	 * 与 {@code rate-limit} 共享 {@code app.ai.memory.rate-limit.enabled} 开关：
 	 * 限流与配额均在该开关下启用。月度配额默认值 1,000,000 tokens，预扣基础值用于
 	 * 请求发起时无法预知真实 token 数的场景。所有字段支持 {@code ${ENV:默认}} 回退。
 	 *
-	 * @param monthlyTokenQuota 月度 token 上限（≤0 表示无上限）；回退 {@code AI_USAGE_MONTHLY_QUOTA}
-	 * @param reserveTokens     预扣基础 token 数（请求发起时占用，事后校准）；回退 {@code AI_USAGE_RESERVE_TOKENS}
+	 * @param monthlyTokenQuota 月度 token 上限（≤0 表示无上限）；回退
+	 *                          {@code AI_USAGE_MONTHLY_QUOTA}
+	 * @param reserveTokens     预扣基础 token 数（请求发起时占用，事后校准）；回退
+	 *                          {@code AI_USAGE_RESERVE_TOKENS}
 	 */
 	public record UsageQuotaConfig(
 			@Name("monthly-token-quota") @Nullable Long monthlyTokenQuota,
-			@Name("reserve-tokens") @Nullable Long reserveTokens
-	) {
+			@Name("reserve-tokens") @Nullable Long reserveTokens) {
 
 		public static UsageQuotaConfig defaults() {
 			return new UsageQuotaConfig(1_000_000L, 2000L);
@@ -298,15 +343,14 @@ public record AiProviderProperties(
 	/**
 	 * 基于 Redis 的对话限流配置（保护上游 API 配额）；Redis 不可用时降级放行。
 	 *
-	 * @param enabled         是否启用限流
-	 * @param capacity        窗口内最大请求数
-	 * @param refillSeconds   限流窗口（秒）
+	 * @param enabled       是否启用限流
+	 * @param capacity      窗口内最大请求数
+	 * @param refillSeconds 限流窗口（秒）
 	 */
 	public record RateLimitConfig(
 			@Nullable Boolean enabled,
 			@Nullable Integer capacity,
-			@Nullable Integer refillSeconds
-	) {
+			@Nullable Integer refillSeconds) {
 
 		public static RateLimitConfig defaults() {
 			return new RateLimitConfig(false, 20, 60);
@@ -328,7 +372,8 @@ public record AiProviderProperties(
 	/**
 	 * 一等公民的补充配置。
 	 *
-	 * <p>一等公民的连接参数（apiKey / baseUrl）仍由 {@code spring.ai.*} 与官方 starter 负责，
+	 * <p>
+	 * 一等公民的连接参数（apiKey / baseUrl）仍由 {@code spring.ai.*} 与官方 starter 负责，
 	 * 这里只声明「对外暴露哪些模型」及其展示元数据，用于填充 {@code GET /api/models}。
 	 *
 	 * @param enabled     是否启用；缺省为启用
@@ -338,8 +383,7 @@ public record AiProviderProperties(
 	public record FirstClassConfig(
 			@Nullable Boolean enabled,
 			@Nullable String displayName,
-			@Nullable List<ModelConfig> models
-	) {
+			@Nullable List<ModelConfig> models) {
 
 		public boolean isEnabled() {
 			return enabled == null || enabled;
@@ -355,10 +399,12 @@ public record AiProviderProperties(
 	 *
 	 * @param id             供应商唯一标识，例如 {@code qwen}
 	 * @param displayName    供应商展示名，例如「通义千问」
-	 * @param protocol       接入协议：{@code openai} / {@code anthropic} / {@code custom}
+	 * @param protocol       接入协议：{@code openai} / {@code anthropic} /
+	 *                       {@code custom}
 	 * @param baseUrl        API 基础地址
 	 * @param apiKey         API 密钥，建议以 {@code ${ENV_VAR:占位}} 形式引用环境变量
-	 * @param supplier       仅 {@code custom} 协议使用，指向 {@code CustomChatModelSupplier} 的 Bean 名
+	 * @param supplier       仅 {@code custom} 协议使用，指向
+	 *                       {@code CustomChatModelSupplier} 的 Bean 名
 	 * @param systemPrompt   供应商级系统提示词，优先级高于全局
 	 * @param enabled        是否启用；缺省为启用
 	 * @param requiresApiKey 是否强制校验密钥；本地模型（如自建 Ollama 网关）可置为 false
@@ -378,8 +424,7 @@ public record AiProviderProperties(
 			@Nullable Boolean requiresApiKey,
 			@Nullable Integer timeoutSeconds,
 			@Nullable Integer maxRetries,
-			@Nullable List<ModelConfig> models
-	) {
+			@Nullable List<ModelConfig> models) {
 
 		public boolean isEnabled() {
 			return enabled == null || enabled;
@@ -436,7 +481,8 @@ public record AiProviderProperties(
 	/**
 	 * RAG 文档多源解析与检索管道配置（绑定 {@code app.ai.rag.*}）。
 	 *
-	 * <p>独立 pgvector 表 {@code ai_rag_documents}，与长期记忆物理隔离。
+	 * <p>
+	 * 独立 pgvector 表 {@code ai_rag_documents}，与长期记忆物理隔离。
 	 *
 	 * @param enabled        RAG 总开关
 	 * @param topK           文档相似检索 Top-K
@@ -451,8 +497,7 @@ public record AiProviderProperties(
 			@Name("chunk-size") @Nullable Integer chunkSize,
 			@Nullable Integer overlap,
 			@Name("encoding-type") @Nullable String encodingType,
-			@Name("collection-name") @Nullable String collectionName
-	) {
+			@Name("collection-name") @Nullable String collectionName) {
 		public static RagConfig defaults() {
 			return new RagConfig(false, 4, 900, 180, "CL100K_BASE", "ai_rag_documents");
 		}
@@ -500,22 +545,22 @@ public record AiProviderProperties(
 			@Nullable Integer height,
 			@Nullable String quality,
 			@Nullable String style,
-			@Name("response-format") @Nullable String responseFormat,
-			@Nullable List<String> keywords
-	) {
-		public ImageConfig(
-				String defaultProvider,
-				String defaultModel,
-				Integer width,
-				Integer height,
-				String quality,
-				String style,
-				String responseFormat
-		) {
-			this(defaultProvider, defaultModel, width, height, quality, style, responseFormat, null);
-		}
+@Name("response-format") @Nullable String responseFormat,
+@Nullable List<String> keywords
+) {
+public ImageConfig(
+		String defaultProvider,
+		String defaultModel,
+		Integer width,
+		Integer height,
+		String quality,
+		String style,
+		String responseFormat
+) {
+	this(defaultProvider, defaultModel, width, height, quality, style, responseFormat, null);
+}
 
-		public static ImageConfig defaults() {
+public static ImageConfig defaults() {
 			return new ImageConfig("openai", "dall-e-3", 1024, 1024, "standard", "vivid", "b64_json", null);
 		}
 

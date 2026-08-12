@@ -218,6 +218,16 @@ app:
         enabled: ${TOOL_SEARCH_ADVISOR_ENABLED:false}
         tool-index-type: ${TOOL_INDEX_TYPE:regex}        # regex | lucene | vector
         min-tools-threshold: ${MIN_TOOLS_THRESHOLD:30}  # 工具总数 >= 30 时开启渐进式检索过滤
+      # ---- Orchestrator-Worker 子代理调度 ----
+      # orchestrator-enabled=true 时向 Agent 工具集注入 SubAgentTool（三个专用子代理）。
+      # Worker 使用独立虚拟线程执行，与主流式线程隔离，防止阻塞。
+      # 深度保护：max-worker-depth=1 → 只允许 Orchestrator→Worker 单层派发，拒绝递归。
+      orchestrator-enabled: ${ORCHESTRATOR_ENABLED:false}
+      worker-provider: ${WORKER_PROVIDER:}          # 空=复用主模型供应商
+      worker-model: ${WORKER_MODEL:}                # 空=复用主模型
+      worker-max-tokens: ${WORKER_MAX_TOKENS:2048}  # Worker 单次最大输出 token
+      max-worker-depth: ${MAX_WORKER_DEPTH:1}       # Worker 嵌套深度上限（严禁 Worker→Worker 递归）
+
 
     image:
       default-provider: ${AI_IMAGE_DEFAULT_PROVIDER:openai}
