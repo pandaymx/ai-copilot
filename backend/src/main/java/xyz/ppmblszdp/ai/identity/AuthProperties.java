@@ -1,5 +1,7 @@
 package xyz.ppmblszdp.ai.identity;
 
+import java.util.Set;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
@@ -17,10 +19,34 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 @ConfigurationProperties(prefix = "app.auth")
 public record AuthProperties(
 		@DefaultValue("strict") String mode,
-		@DefaultValue("X-User-Id") String headerName
+		@DefaultValue("X-User-Id") String headerName,
+		@DefaultValue("admin") Set<String> adminUsers
 ) {
+	public AuthProperties {
+		if (adminUsers == null || adminUsers.isEmpty()) {
+			adminUsers = Set.of("admin");
+		}
+	}
+
 	/** 严格模式：必须有受信任 Header，否则拒绝请求。 */
 	public boolean isStrict() {
 		return "strict".equalsIgnoreCase(mode);
 	}
+
+	/** 判断给定 userId 是否属于管理员白名单。 */
+	public boolean isAdmin(String userId) {
+		if (userId == null || userId.isBlank()) {
+			return false;
+		}
+		if (adminUsers == null || adminUsers.isEmpty()) {
+			return false;
+		}
+		String target = userId.trim().toLowerCase();
+		return adminUsers.stream()
+				.filter(u -> u != null && !u.isBlank())
+				.map(u -> u.trim().toLowerCase())
+				.anyMatch(target::equals);
+	}
 }
+
+

@@ -44,9 +44,14 @@ public class UserIdentityFilter implements WebFilter {
 		String val = exchange.getRequest().getHeaders().getFirst(authProperties.headerName());
 		boolean present = val != null && !val.isBlank();
 		exchange.getAttributes().put(ATTR_HEADER_PRESENT, present);
-		exchange.getAttributes().put(ATTR_HEADER_VALUE, present ? val : null);
+		if (present) {
+			exchange.getAttributes().put(ATTR_HEADER_VALUE, val);
+		} else {
+			exchange.getAttributes().remove(ATTR_HEADER_VALUE);
+		}
 		return chain.filter(exchange);
 	}
+
 
 	/**
 	 * 从 exchange attribute 解析身份字符串（不读 body）。
@@ -67,4 +72,21 @@ public class UserIdentityFilter implements WebFilter {
 		}
 		return (dtoUserId != null && !dtoUserId.isBlank()) ? dtoUserId : DEFAULT_USER_ID;
 	}
+
+	/**
+	 * 校验当前请求是否为具有管理员身份的用户。
+	 *
+	 * @param exchange 当前请求交换
+	 * @param authProperties 认证配置
+	 * @return 解析后的管理员 userId 字符串
+	 * @throws ResponseStatusException 未认证抛 401 (UNAUTHORIZED)，非管理员抛 403 (FORBIDDEN)
+	 */
+	public static String requireAdmin(ServerWebExchange exchange, AuthProperties authProperties) {
+		String userId = resolveIdentity(exchange, null, authProperties);
+		if (!authProperties.isAdmin(userId)) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
+		}
+		return userId;
+	}
 }
+

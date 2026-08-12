@@ -12,6 +12,7 @@ import xyz.ppmblszdp.ai.service.MemoryService;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.mock;
@@ -33,7 +34,7 @@ class MemoryControllerTest {
 	@BeforeEach
 	void setUp() {
 		memoryService = mock(MemoryService.class);
-		AuthProperties authProperties = new AuthProperties("strict", "X-User-Id");
+		AuthProperties authProperties = new AuthProperties("strict", "X-User-Id", Set.of("admin"));
 		controller = new MemoryController(memoryService, authProperties);
 		// 注册 UserIdentityFilter，补全 X-User-Id Header → exchange attribute 链路
 		// （bindToController 默认不加载任何 WebFilter，否则 resolveIdentity 读不到 attribute 而抛 401）

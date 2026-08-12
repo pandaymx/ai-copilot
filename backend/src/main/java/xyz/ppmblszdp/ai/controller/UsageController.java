@@ -84,7 +84,9 @@ public class UsageController {
 	 */
 	@GetMapping("/dashboard")
 	public ResponseEntity<UsageDashboardDto> getDashboard(
+			ServerWebExchange exchange,
 			@RequestParam(name = "month", required = false) String monthParam) {
+		UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
 		String monthKey = (monthParam != null && !monthParam.isBlank())
 				? monthParam.trim()
 				: UsageQuotaChecker.currentMonthKey();
@@ -137,7 +139,8 @@ public class UsageController {
 	 * 获取当前配额与告警阈值配置（GET /api/usage/quota-config）。
 	 */
 	@GetMapping("/quota-config")
-	public ResponseEntity<QuotaConfigDto> getQuotaConfig() {
+	public ResponseEntity<QuotaConfigDto> getQuotaConfig(ServerWebExchange exchange) {
+		UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
 		long defaultQuota = properties.resolveMemory().resolveUsageQuota().resolveMonthlyTokenQuota();
 		QuotaConfigDto config = usageRepository.getQuotaConfig(defaultQuota);
 		return ResponseEntity.ok(config);
@@ -147,11 +150,15 @@ public class UsageController {
 	 * 管理员更新配额与告警阈值配置（PUT /api/usage/quota-config）。
 	 */
 	@PutMapping("/quota-config")
-	public ResponseEntity<QuotaConfigDto> updateQuotaConfig(@RequestBody QuotaConfigDto config) {
+	public ResponseEntity<QuotaConfigDto> updateQuotaConfig(
+			ServerWebExchange exchange,
+			@RequestBody QuotaConfigDto config) {
+		UserIdentityFilter.requireAdmin(exchange, authProperties);
 		usageRepository.saveQuotaConfig(config);
 		long defaultQuota = properties.resolveMemory().resolveUsageQuota().resolveMonthlyTokenQuota();
 		QuotaConfigDto updated = usageRepository.getQuotaConfig(defaultQuota);
 		return ResponseEntity.ok(updated);
 	}
+
 }
 

@@ -197,6 +197,7 @@ app:
   auth:  # 受信任 Header 身份认证（不引入 Spring Security，认证由前置网关处理）
     mode: ${AUTH_MODE:strict}           # strict=默认安全(fail-closed)，dev=本地开发可 fallback 到请求体 userId
     header-name: ${AUTH_HEADER_NAME:X-User-Id}
+    admin-users: ${AUTH_ADMIN_USERS:admin} # 管理员 User ID 白名单（多用户以逗号分隔）
 
   ai:
     default-provider: ${AI_DEFAULT_PROVIDER:deepseek}
