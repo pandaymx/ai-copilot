@@ -444,7 +444,7 @@ describe("useSpringAiStream SSE Frame Parsing & Behavior", () => {
     unmount();
   });
 
-  it("should parse text chunks, handle error objects, and filter incomplete JSON", async () => {
+  it("should parse text chunks, handle error frames via error state, and filter incomplete JSON", async () => {
     let finalFinishedContent = "";
 
     mockFetchEventSourceImpl = async (_url, options) => {
@@ -454,7 +454,7 @@ describe("useSpringAiStream SSE Frame Parsing & Behavior", () => {
       options.onmessage({ data: JSON.stringify({ content: "world!" }) });
       // Incomplete JSON string -> should be suppressed
       options.onmessage({ data: '{"type": "chat", "content": "partial...' });
-      // Error frame -> should convert to warning message string
+      // Error frame -> should set error state (NOT pollute the reply text)
       options.onmessage({
         data: JSON.stringify({ type: "error", message: "Quota exceeded" }),
       });
@@ -473,9 +473,14 @@ describe("useSpringAiStream SSE Frame Parsing & Behavior", () => {
     });
     await new Promise((r) => setTimeout(r, 20));
 
+    // 正常文本增量仍正确累加
     expect(finalFinishedContent).toContain("Hello, world!");
-    expect(finalFinishedContent).toContain("⚠️ [服务异常]: Quota exceeded");
+    // 不完整 JSON 被忽略（不进入正文）
     expect(finalFinishedContent).not.toContain("partial...");
+    // 业务 error 帧不再作为正文文本追加（修复：改为置位 error 状态）
+    expect(finalFinishedContent).not.toContain("⚠️ [服务异常]");
+    // error 帧通过统一的 error 状态暴露，供错误卡片/重试联动使用
+    expect(result.current.error?.message).toBe("Quota exceeded");
     unmount();
   });
 
