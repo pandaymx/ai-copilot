@@ -6,9 +6,62 @@ on:
   pull_request:
     branches: [ main, master ]
 
+permissions:
+  contents: read
+
 jobs:
+  security-ci:
+    name: Security & Vulnerability Scans (Secrets & SAST & Dependencies)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache Security DB (Semgrep & Trivy)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/semgrep
+            ~/.cache/trivy
+          key: ${{ runner.os }}-security-db-${{ hashFiles('**/package.json', '**/build.gradle*') }}
+          restore-keys: |
+            ${{ runner.os }}-security-db-
+
+      - name: Secret Leak Detection (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Bun for Frontend Audit
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Run Bun Dependency Security Audit
+        run: |
+          cd frontend
+          bun audit
+
+      - name: SAST Code Security Scan (Semgrep)
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: p/default
+          publishResults: false
+
+      - name: Trivy Repository Vulnerability Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          ignore-unfixed: true
+          format: 'table'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '0'
+
   backend-ci:
-    name: Backend CI (Build & Test & Docker)
+    name: Backend CI (Build & Test & Docker & Security Scan)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -69,11 +122,20 @@ jobs:
         with:
           context: ./backend
           file: ./backend/Dockerfile
+          load: true
           push: false
           tags: ai-copilot-backend:test
 
+      - name: Scan Backend Docker Image for Vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'ai-copilot-backend:test'
+          format: 'table'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+
   frontend-ci:
-    name: Frontend CI (Lint & Typecheck & Test & E2E & Build & Docker)
+    name: Frontend CI (Lint & Typecheck & Test & E2E & Build & Docker & Security Scan)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -135,5 +197,14 @@ jobs:
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
+          load: true
           push: false
           tags: ai-copilot-frontend:test
+
+      - name: Scan Frontend Docker Image for Vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'ai-copilot-frontend:test'
+          format: 'table'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
