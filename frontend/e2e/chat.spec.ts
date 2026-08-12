@@ -26,7 +26,7 @@ test.describe("核心聊天交互（Mock）", () => {
     await page.locator(selectors.send).click();
 
     // 用户消息出现在界面
-    await expect(page.getByText("你好", { exact: true })).toBeVisible();
+    await expect(page.locator("main").getByText("你好", { exact: true })).toBeVisible();
 
     // 生成中：停止按钮出现
     await expect(page.locator(selectors.stop)).toBeVisible();
@@ -108,14 +108,14 @@ test.describe("核心聊天交互（Mock）", () => {
     // 先发一条消息以产生内容
     await helpers.sendMessage(page, "测试消息");
     await helpers.waitForStreamDone(page);
-    await expect(page.getByText("测试消息", { exact: true })).toBeVisible();
+    await expect(page.locator("main").getByText("测试消息", { exact: true })).toBeVisible();
 
     // 点击清空（带确认弹窗）
     await page.getByRole("button", { name: "清空" }).click();
     await page.getByRole("button", { name: "确认清空" }).click();
 
     // 清空后回到空白态
-    await expect(page.getByText("测试消息", { exact: true })).toHaveCount(0, {
+    await expect(page.locator("main").getByText("测试消息", { exact: true })).toHaveCount(0, {
       timeout: 5_000,
     });
   });

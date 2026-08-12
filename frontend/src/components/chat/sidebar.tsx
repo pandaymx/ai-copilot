@@ -273,6 +273,7 @@ export function Sidebar({
                   return (
                     <div
                       key={s.id}
+                      data-session-id={s.id}
                       className={cn(
                         "group relative flex items-center rounded-xl transition-all duration-150",
                         active
