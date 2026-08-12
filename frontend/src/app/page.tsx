@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import useSWR from "swr";
 import { ExportDialog } from "@/components/chat/export-dialog";
 import {
   type AttachmentItem,
@@ -49,7 +50,6 @@ import { fetchTitle } from "@/lib/title";
 import { cn } from "@/lib/utils";
 import { transcribe } from "@/lib/voice";
 
-const STORAGE_KEY = "ai-copilot-sessions";
 const ACTIVE_KEY = "ai-copilot-active";
 const MODEL_STORAGE_KEY = "ai-copilot-selected-model";
 
@@ -87,42 +87,6 @@ const SUGGESTED_PROMPTS = [
   },
 ];
 
-/** 从 localStorage 读取会话列表 */
-function loadSessions(): ChatSession[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as ChatSession[];
-    const seen = new Set<string>();
-    const sanitized: ChatSession[] = [];
-    for (const item of parsed) {
-      if (!item.id || seen.has(item.id)) {
-        item.id = nextSessionId();
-      }
-      seen.add(item.id);
-      if (Array.isArray(item.messages)) {
-        const msgSeen = new Set<string>();
-        item.messages = item.messages.map((m) => {
-          if (!m.id || m.id === "assistant-live" || msgSeen.has(m.id)) {
-            m.id = nextId();
-          }
-          msgSeen.add(m.id);
-          return m;
-        });
-      }
-      // 老数据兼容：未定义 isDefaultTitle 视作 false，避免后续多轮冲掉已有标题
-      if (typeof item.isDefaultTitle !== "boolean") {
-        item.isDefaultTitle = false;
-      }
-      sanitized.push(item);
-    }
-    return sanitized;
-  } catch {
-    return [];
-  }
-}
-
 /** 从 localStorage 读取上次使用的模型配置 */
 function loadSavedModel(): SelectedModel {
   if (typeof window === "undefined") {
@@ -143,13 +107,30 @@ function loadSavedModel(): SelectedModel {
 }
 
 export default function Home() {
+  const {
+    data: dbSessions,
+    error: sessionsError,
+    isLoading: loadingSessions,
+    mutate: mutateSessions,
+  } = useSWR<ChatSession[] | null>("/api/chat/sessions", fetchSessionsApi, {
+    revalidateOnFocus: true,
+    dedupingInterval: 2000,
+  });
+
+  const isOfflineFallback = Boolean(sessionsError || dbSessions === null);
+  const sessions = dbSessions ?? [];
+
   const { loading, error, send, stop, streamStore } = useSpringAiStream({
     endpoint: "/api/chat/stream",
     onConversationId: (serverConvId) => {
       if (serverConvId && activeId && serverConvId !== activeId) {
         setActiveId(serverConvId);
-        setSessions((prev) =>
-          prev.map((s) => (s.id === activeId ? { ...s, id: serverConvId } : s)),
+        void mutateSessions(
+          (prev) =>
+            (prev ?? []).map((s) =>
+              s.id === activeId ? { ...s, id: serverConvId } : s,
+            ),
+          false,
         );
         if (typeof window !== "undefined") {
           localStorage.setItem(ACTIVE_KEY, serverConvId);
@@ -176,21 +157,23 @@ export default function Home() {
         ),
       );
 
-      setSessions((prev) =>
-        prev.map((s) => {
-          if (s.id !== activeId) return s;
-          const updatedMessages = (s.messages ?? []).map((m) =>
-            m.id === liveId
-              ? {
-                  ...m,
-                  content: finalContent,
-                  thinking: finalThinking || m.thinking,
-                  usage: finalUsage ?? m.usage,
-                }
-              : m,
-          );
-          return { ...s, messages: updatedMessages, updatedAt: Date.now() };
-        }),
+      void mutateSessions(
+        (prev) =>
+          (prev ?? []).map((s) => {
+            if (s.id !== activeId) return s;
+            const updatedMessages = (s.messages ?? []).map((m) =>
+              m.id === liveId
+                ? {
+                    ...m,
+                    content: finalContent,
+                    thinking: finalThinking || m.thinking,
+                    usage: finalUsage ?? m.usage,
+                  }
+                : m,
+            );
+            return { ...s, messages: updatedMessages, updatedAt: Date.now() };
+          }),
+        false,
       );
 
       // 仅当标题仍为自动生成（未被用户重命名、也未被 AI 改写）时才更新标题
@@ -205,25 +188,13 @@ export default function Home() {
           model: model.model,
           conversationId: activeId,
         });
-        setSessions((prev) =>
-          prev.map((s) => {
-            if (s.id !== activeId || s.isDefaultTitle !== true) return s;
-            const title = aiTitle ?? deriveTitle(finalContent);
-            return {
-              ...s,
-              title,
-              isDefaultTitle: false,
-              updatedAt: Date.now(),
-            };
-          }),
-        );
+        const newTitle = aiTitle ?? deriveTitle(finalContent);
+        await renameSessionApi(activeId, newTitle);
+        void mutateSessions();
       })();
     },
   });
 
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [loadingSessions, setLoadingSessions] = useState<boolean>(true);
-  const [isOfflineFallback, setIsOfflineFallback] = useState<boolean>(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -402,53 +373,46 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, []);
 
-  // 初始化：优先从 PostgreSQL 检索全量历史会话，若无后端数据则降级回 localStorage
+  // 初始化：模型选择与激活会话联动
   useEffect(() => {
     const savedModel = loadSavedModel();
     setModel(savedModel);
+  }, []);
 
-    void (async () => {
-      setLoadingSessions(true);
-      const dbSessions = await fetchSessionsApi();
-      let initialSessions: ChatSession[];
-      if (dbSessions !== null) {
-        initialSessions = dbSessions.length > 0 ? dbSessions : loadSessions();
-        setIsOfflineFallback(false);
-      } else {
-        initialSessions = loadSessions();
-        setIsOfflineFallback(true);
-      }
-      setSessions(initialSessions);
-      setLoadingSessions(false);
+  useEffect(() => {
+    if (loadingSessions) return;
+    const activeRaw =
+      typeof window !== "undefined" ? localStorage.getItem(ACTIVE_KEY) : null;
+    const currentSessions = dbSessions ?? [];
+    const targetId =
+      activeRaw && currentSessions.some((s) => s.id === activeRaw)
+        ? activeRaw
+        : (currentSessions[0]?.id ?? null);
 
-      const activeRaw =
-        typeof window !== "undefined" ? localStorage.getItem(ACTIVE_KEY) : null;
-      const targetId =
-        activeRaw && initialSessions.some((s) => s.id === activeRaw)
-          ? activeRaw
-          : (initialSessions[0]?.id ?? null);
-
-      if (targetId) {
+    if (targetId) {
+      if (targetId !== activeId) {
         setActiveId(targetId);
         if (typeof window !== "undefined") {
           localStorage.setItem(ACTIVE_KEY, targetId);
         }
-        const detail = await fetchSessionDetailApi(targetId);
-        if (detail?.messages && detail.messages.length > 0) {
-          setMessages(detail.messages);
-        } else {
-          const fallback = initialSessions.find((s) => s.id === targetId);
-          setMessages(fallback?.messages ?? []);
-        }
-      } else {
-        setActiveId(null);
-        setMessages([]);
-        if (typeof window !== "undefined") {
-          localStorage.removeItem(ACTIVE_KEY);
-        }
+        void (async () => {
+          const detail = await fetchSessionDetailApi(targetId);
+          if (detail?.messages && detail.messages.length > 0) {
+            setMessages(detail.messages);
+          } else {
+            const fallback = currentSessions.find((s) => s.id === targetId);
+            setMessages(fallback?.messages ?? []);
+          }
+        })();
       }
-    })();
-  }, []);
+    } else if (activeId !== null && currentSessions.length === 0) {
+      setActiveId(null);
+      setMessages([]);
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(ACTIVE_KEY);
+      }
+    }
+  }, [dbSessions, loadingSessions, activeId]);
 
   // 模型选择持久化
   useEffect(() => {
@@ -456,13 +420,6 @@ export default function Home() {
       localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(model));
     }
   }, [model]);
-
-  // 会话持久化
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
-    }
-  }, [sessions]);
 
   // 自动滚动到底部
   // biome-ignore lint/correctness/useExhaustiveDependencies: 副作用触发滚动
@@ -537,19 +494,30 @@ export default function Home() {
   }
 
   function deleteSession(id: string) {
-    void deleteSessionApi(id);
-    setSessions((prev) => prev.filter((s) => s.id !== id));
+    void (async () => {
+      await deleteSessionApi(id);
+      void mutateSessions();
+    })();
+    void mutateSessions(
+      (prev) => (prev ?? []).filter((s) => s.id !== id),
+      false,
+    );
     if (id === activeId) {
       goToRootDraft();
     }
   }
 
   function renameSession(id: string, newTitle: string) {
-    void renameSessionApi(id, newTitle);
-    setSessions((prev) =>
-      prev.map((s) =>
-        s.id === id ? { ...s, title: newTitle, isDefaultTitle: false } : s,
-      ),
+    void (async () => {
+      await renameSessionApi(id, newTitle);
+      void mutateSessions();
+    })();
+    void mutateSessions(
+      (prev) =>
+        (prev ?? []).map((s) =>
+          s.id === id ? { ...s, title: newTitle, isDefaultTitle: false } : s,
+        ),
+      false,
     );
   }
 
@@ -622,17 +590,19 @@ export default function Home() {
           isDefaultTitle: true,
         };
         setActiveId(currentConvId);
-        setSessions((prev) => [newSession, ...prev]);
+        void mutateSessions((prev) => [newSession, ...(prev ?? [])], false);
         if (typeof window !== "undefined") {
           localStorage.setItem(ACTIVE_KEY, currentConvId);
         }
       } else {
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === currentConvId
-              ? { ...s, messages: next, updatedAt: Date.now() }
-              : s,
-          ),
+        void mutateSessions(
+          (prev) =>
+            (prev ?? []).map((s) =>
+              s.id === currentConvId
+                ? { ...s, messages: next, updatedAt: Date.now() }
+                : s,
+            ),
+          false,
         );
       }
 
@@ -671,6 +641,7 @@ export default function Home() {
       activeId,
       currentSupportsVision,
       imageMode,
+      mutateSessions,
     ],
   );
 
