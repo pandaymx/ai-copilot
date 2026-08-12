@@ -321,7 +321,12 @@ export function useSpringAiStream(
 
   const scheduleUpdate = useCallback(() => {
     if (rafRef.current !== null) return;
-    rafRef.current = requestAnimationFrame(() => {
+    // 用 microtask 批处理增量刷新，而非 requestAnimationFrame：
+    // headless/后台标签页下 rAF 会被节流甚至暂停，导致流式内容无法刷新到
+    // streamStore（进而气泡内容永远为空）。microtask 在所有环境下都会执行，
+    // 同时仍能把同一轮同步 deltas 合并到一次刷新。
+    rafRef.current = 1 as unknown as number;
+    queueMicrotask(() => {
       rafRef.current = null;
       streamStoreRef.current.update(
         contentRef.current,

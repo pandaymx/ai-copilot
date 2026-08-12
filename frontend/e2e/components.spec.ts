@@ -42,6 +42,13 @@ test.describe("UI 组件与弹窗（Mock）", () => {
     await helpers.mockApiRoutes(page, { initialSessions: [] });
     await page.goto("/");
 
+    // 等待应用水合完成（快捷键监听器在 effect 中挂载），避免按键早于监听器生效
+    await expect(page.locator(selectors.searchBtn).first()).toBeVisible({
+      timeout: 10_000,
+    });
+    // 确保焦点在页面上，使 window 级 keydown 能可靠接收
+    await page.locator("body").click({ position: { x: 5, y: 5 } });
+
     // page 已统一处理 metaKey/ctrlKey 强制打开，CI（Linux）用 Control+k 稳定触发
     await page.keyboard.press("Control+k");
     const searchBox = page.getByPlaceholder("搜索历史消息内容...");

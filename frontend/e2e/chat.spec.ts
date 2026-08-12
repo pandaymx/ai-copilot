@@ -29,6 +29,9 @@ test.describe("核心聊天交互（Mock）", () => {
     // 用户消息出现在界面
     await expect(page.locator("main").getByText("你好", { exact: true })).toBeVisible();
 
+    // 等待流完成（停止按钮消失 = loading=false）
+    await helpers.waitForStreamDone(page);
+
     // 流式内容逐步累加：等待 mock 回复文本的尾部片段出现（证明逐帧累加完成）
     await expect(
       page.getByText("很高兴为你服务。", { exact: false }),
