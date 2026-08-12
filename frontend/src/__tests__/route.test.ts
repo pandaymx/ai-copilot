@@ -1,12 +1,17 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { NextRequest } from "next/server";
 import { DELETE, GET, OPTIONS, POST, PUT } from "../app/api/[...path]/route";
 
 let mockFetch: ReturnType<typeof mock>;
+const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   mockFetch = mock();
   globalThis.fetch = mockFetch as unknown as typeof fetch;
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
 });
 
 describe("API Proxy Router Unit Tests - app/api/[...path]/route.ts", () => {
@@ -24,6 +29,7 @@ describe("API Proxy Router Unit Tests - app/api/[...path]/route.ts", () => {
       const req = new NextRequest("http://localhost:3000/api/chat/sessions", {
         method: "GET",
         headers: {
+          "x-forwarded-for": "198.51.100.1",
           authorization: "Bearer secret-token",
           "content-type": "application/json",
           "x-user-id": "alice-123",
@@ -119,20 +125,41 @@ describe("API Proxy Router Unit Tests - app/api/[...path]/route.ts", () => {
 
       const req = new NextRequest("http://localhost:3000/api/chat/stream", {
         method: "POST",
+        headers: {
+          "x-forwarded-for": "198.51.100.200",
+          "content-type": "application/json",
+        },
         body: JSON.stringify({ message: "hello" }),
       });
       const params = Promise.resolve({ path: ["chat", "stream"] });
 
-      const res = await POST(req, { params });
-      expect(res.status).toBe(200);
-      expect(res.headers.get("Content-Type")).toBe(
-        "text/event-stream; charset=utf-8",
-      );
-      expect(res.headers.get("Cache-Control")).toBe("no-cache, no-transform");
-      expect(res.headers.get("X-Accel-Buffering")).toBe("no");
+      let res: Response;
+      try {
+        res = await POST(req, { params });
+      } catch (err) {
+        console.error("POST threw error:", err);
+        throw err;
+      }
+      try {
+        expect(res.status).toBe(200);
+        expect(res.headers.get("Content-Type")).toBe(
+          "text/event-stream; charset=utf-8",
+        );
+        expect(res.headers.get("Cache-Control")).toBe("no-cache, no-transform");
+        expect(res.headers.get("X-Accel-Buffering")).toBe("no");
 
-      const text = await res.text();
-      expect(text).toBe("data: Hello SSE\n\n");
+        await new Promise((r) => setTimeout(r, 20));
+        const text = await res.text();
+        expect(text).toBe("data: Hello SSE\n\n");
+      } catch (err) {
+        console.error(
+          "SSE Test Assertion Fail. status:",
+          res.status,
+          "headers:",
+          Object.fromEntries(res.headers.entries()),
+        );
+        throw err;
+      }
     });
   });
 
@@ -150,7 +177,10 @@ describe("API Proxy Router Unit Tests - app/api/[...path]/route.ts", () => {
 
       const req = new NextRequest("http://localhost:3000/api/chat/sessions", {
         method: "OPTIONS",
-        headers: { origin: "http://localhost:3000" },
+        headers: {
+          "x-forwarded-for": "198.51.100.2",
+          origin: "http://localhost:3000",
+        },
       });
       const params = Promise.resolve({ path: ["chat", "sessions"] });
 
@@ -180,6 +210,7 @@ describe("API Proxy Router Unit Tests - app/api/[...path]/route.ts", () => {
 
       const putReq = new NextRequest("http://localhost:3000/api/memory/mem-1", {
         method: "PUT",
+        headers: { "x-forwarded-for": "198.51.100.3" },
         body: JSON.stringify({ content: "updated" }),
       });
       const putParams = Promise.resolve({ path: ["memory", "mem-1"] });
@@ -195,6 +226,7 @@ describe("API Proxy Router Unit Tests - app/api/[...path]/route.ts", () => {
         "http://localhost:3000/api/memory/mem-1",
         {
           method: "DELETE",
+          headers: { "x-forwarded-for": "198.51.100.4" },
         },
       );
       const deleteParams = Promise.resolve({ path: ["memory", "mem-1"] });
@@ -208,7 +240,9 @@ describe("API Proxy Router Unit Tests - app/api/[...path]/route.ts", () => {
         Promise.reject(new Error("Connection refused")),
       );
 
-      const req = new NextRequest("http://localhost:3000/api/chat/sessions");
+      const req = new NextRequest("http://localhost:3000/api/chat/sessions", {
+        headers: { "x-forwarded-for": "198.51.100.5" },
+      });
       const params = Promise.resolve({ path: ["chat", "sessions"] });
 
       const res = await GET(req, { params });

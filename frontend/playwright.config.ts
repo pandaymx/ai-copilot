@@ -11,7 +11,7 @@ import { defineConfig, devices } from "@playwright/test";
  *
  * webServer 由 Playwright 自动拉起本地 Next.js 服务，测试结束后自动回收。
  */
-const PORT = 3000;
+const PORT = process.env.PORT || 3099;
 const baseURL = `http://localhost:${PORT}`;
 const isRealE2E = process.env.TEST_ENV === "e2e";
 
@@ -26,7 +26,7 @@ export default defineConfig({
   reporter: [
     ["html", { open: "never", outputFolder: "playwright-report" }],
     ["list"],
-    ...(process.env.CI ? [["github"]] : []),
+    ...(process.env.CI ? [["github", {}] as const] : []),
   ],
   use: {
     baseURL,
@@ -48,7 +48,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "bun run dev",
+    command: `PORT=${PORT} bun run dev`,
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

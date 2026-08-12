@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   deleteSessionApi,
   fetchQuotaConfigApi,
@@ -20,10 +20,15 @@ import {
 } from "../lib/api";
 
 let mockFetch: ReturnType<typeof mock>;
+const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   mockFetch = mock();
   globalThis.fetch = mockFetch as unknown as typeof fetch;
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
 });
 
 describe("API Layer Unit Tests - lib/api.ts", () => {

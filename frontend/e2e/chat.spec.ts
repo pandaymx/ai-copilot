@@ -52,7 +52,6 @@ test.describe("核心聊天交互（Mock）", () => {
     await helpers.mockApiRoutes(page, {
       initialSessions: [],
       streamText: longText,
-      step: 2,
     });
     await page.goto("/");
 
@@ -151,11 +150,9 @@ test.describe("核心聊天交互（Mock）", () => {
 
   test("sessions 接口失败时降级为本地缓存模式", async ({ mockChat }) => {
     const page = mockChat;
-    // 让 sessions 请求失败 → 进入离线降级
-    await page.route("**/api/chat/sessions", (route) =>
-      route.abort(),
-    );
     await helpers.mockApiRoutes(page, { initialSessions: [] });
+    // 让 sessions 请求失败 → 进入离线降级
+    await page.route("**/api/chat/sessions", (route) => route.abort());
     await page.goto("/");
 
     await expect(page.locator(selectors.offlineBanner)).toBeVisible({

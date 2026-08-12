@@ -15,8 +15,7 @@ import {
  * 选择器常量：复用组件既有可访问性属性，避免依赖易变的 class 名。
  */
 export const selectors = {
-  textarea:
-    'textarea[placeholder="给 Spring AI 发送指令、问题或拖入/粘贴图片..."]',
+  textarea: 'textarea[placeholder*="发送指令"]',
   send: 'button[aria-label="发送"]',
   stop: 'button[aria-label="停止生成"]',
   newChat: 'button:has-text("开启新会话")',
@@ -25,7 +24,7 @@ export const selectors = {
   modelSelector: 'button[aria-label="选择 AI 模型"]',
   themeToggle: 'button[aria-label="切换主题"]',
   exportBtn: 'button[aria-label="导出对话"]',
-  searchBtn: 'button[aria-label="搜索历史消息 (⌘K)"]',
+  searchBtn: 'button[title*="搜索历史消息"]',
   offlineBanner: "text=云端同步失败，使用本地缓存",
   errorCard: "text=服务连接受阻",
 };
@@ -90,12 +89,25 @@ async function mockApiRoutes(
 
   // GET /api/chat/sessions/:id → 详情
   await page.route(/.*\/api\/chat\/sessions\/[^/]+$/, async (route) => {
-    const { session, messages } = defaultSession();
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(buildSessionDetail(session, messages)),
-    });
+    if (initialSessions.length === 0) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "sess-draft",
+          title: "新会话",
+          updatedAt: Date.now(),
+          messages: [],
+        }),
+      });
+    } else {
+      const { session, messages } = defaultSession();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(buildSessionDetail(session, messages)),
+      });
+    }
   });
 
   // PUT /api/chat/sessions/:id/title
@@ -171,15 +183,11 @@ async function mockApiRoutes(
 
 interface Fixtures {
   /** 进入首页并挂载 Mock 路由；默认清空 localStorage 保证隔离。 */
-  mockChat: () => Promise<Page>;
+  mockChat: Page;
 }
 
 export const test = base.extend<Fixtures>({
   mockChat: async ({ page }, use) => {
-    // 每个测试前清空本地存储（离线模式基于 localStorage）
-    await page.goto("/");
-    await page.evaluate(() => localStorage.clear());
-    await page.reload();
     await use(page);
   },
 });

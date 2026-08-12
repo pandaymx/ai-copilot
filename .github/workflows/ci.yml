@@ -73,7 +73,7 @@ jobs:
           tags: ai-copilot-backend:test
 
   frontend-ci:
-    name: Frontend CI (Lint & Build & Docker)
+    name: Frontend CI (Lint & Typecheck & Test & E2E & Build & Docker)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -94,10 +94,33 @@ jobs:
           cd frontend
           bun run lint
 
+      - name: Run TypeScript Typecheck
+        run: |
+          cd frontend
+          bunx tsc --noEmit
+
       - name: Run Frontend Unit Tests
         run: |
           cd frontend
           bun test src
+
+      - name: Cache Playwright Browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright Chromium Browser
+        run: |
+          cd frontend
+          bunx playwright install chromium --with-deps
+
+      - name: Run Playwright E2E Tests (Mock Mode)
+        run: |
+          cd frontend
+          bun run test:e2e
 
       - name: Build Next.js Production App
         run: |

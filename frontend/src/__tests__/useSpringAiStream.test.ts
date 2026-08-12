@@ -7,7 +7,7 @@ if (typeof document === "undefined") {
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, beforeEach, describe, expect, it, mock } from "bun:test";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -16,6 +16,14 @@ import {
   type ToolCallItem,
   useSpringAiStream,
 } from "../hooks/useSpringAiStream";
+
+afterAll(() => {
+  if (typeof document !== "undefined") {
+    try {
+      GlobalRegistrator.unregister();
+    } catch {}
+  }
+});
 
 // Mock @microsoft/fetch-event-source
 let mockFetchEventSourceImpl: (
@@ -290,9 +298,10 @@ describe("useSpringAiStream SSE Frame Parsing & Behavior", () => {
     await new Promise((r) => setTimeout(r, 20));
 
     expect(capturedArtifact).not.toBeNull();
-    expect(capturedArtifact?.artifactId).toBe("art-100");
-    expect(capturedArtifact?.artifactType).toBe("html");
-    expect(capturedArtifact?.title).toBe("Dashboard Mockup");
+    const artifact = capturedArtifact as unknown as ArtifactItem;
+    expect(artifact?.artifactId).toBe("art-100");
+    expect(artifact?.artifactType).toBe("html");
+    expect(artifact?.title).toBe("Dashboard Mockup");
     expect(
       result.current.streamStore.getSnapshot().artifacts["art-100"],
     ).toBeDefined();
@@ -426,7 +435,7 @@ describe("useSpringAiStream SSE Frame Parsing & Behavior", () => {
     });
     await new Promise((r) => setTimeout(r, 20));
 
-    expect(capturedUsage).toEqual({
+    expect(capturedUsage!).toEqual({
       promptTokens: 100,
       completionTokens: 50,
       totalTokens: 150,
