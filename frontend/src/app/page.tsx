@@ -52,6 +52,7 @@ import { transcribe } from "@/lib/voice";
 
 const ACTIVE_KEY = "ai-copilot-active";
 const MODEL_STORAGE_KEY = "ai-copilot-selected-model";
+const SESSIONS_STORAGE_KEY = "ai-copilot-sessions";
 
 let idCounter = 0;
 const nextId = () => `msg-${Date.now()}-${++idCounter}`;
@@ -118,7 +119,22 @@ export default function Home() {
   });
 
   const isOfflineFallback = Boolean(sessionsError || dbSessions === null);
-  const sessions = dbSessions ?? [];
+  const [offlineSessions, setOfflineSessions] = useState<ChatSession[]>([]);
+
+  useEffect(() => {
+    if (isOfflineFallback && typeof window !== "undefined") {
+      try {
+        const raw = localStorage.getItem(SESSIONS_STORAGE_KEY);
+        if (raw) {
+          setOfflineSessions(JSON.parse(raw) as ChatSession[]);
+        }
+      } catch {
+        // 忽略解析错误
+      }
+    }
+  }, [isOfflineFallback]);
+
+  const sessions = dbSessions ?? offlineSessions;
 
   const { loading, error, send, stop, streamStore } = useSpringAiStream({
     endpoint: "/api/chat/stream",
@@ -420,6 +436,27 @@ export default function Home() {
       localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(model));
     }
   }, [model]);
+
+  // 会话列表本地持久化：500ms 防抖，流式传输过程中跳过序列化以提升 UI 性能
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      isStreaming ||
+      !sessions ||
+      sessions.length === 0
+    ) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
+      } catch (err) {
+        console.error("Failed to persist sessions to localStorage:", err);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [sessions, isStreaming]);
 
   // 自动滚动到底部
   // biome-ignore lint/correctness/useExhaustiveDependencies: 副作用触发滚动
