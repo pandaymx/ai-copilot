@@ -7,16 +7,21 @@ import org.springframework.ai.image.ImageModel;
 import org.springframework.ai.image.ImageOptions;
 import org.springframework.ai.image.ImagePrompt;
 import org.springframework.ai.image.ImageResponse;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
+import reactor.netty.http.client.HttpClient;
 import xyz.ppmblszdp.ai.dto.ImageGenerationRequestDto;
 import xyz.ppmblszdp.ai.dto.ImageGenerationResultDto;
 import xyz.ppmblszdp.ai.exception.AiException;
 import xyz.ppmblszdp.ai.exception.ImageGenerationException;
+import xyz.ppmblszdp.ai.rag.security.SsrfBlockedException;
+import xyz.ppmblszdp.ai.rag.security.SsrfGuard;
 import xyz.ppmblszdp.ai.registry.ImageModelRegistry;
 
+import java.time.Duration;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -25,18 +30,40 @@ import java.util.UUID;
  *
  * <p>封装 ImageModel 的分发与调用，并自动将供应商返回的临时 HTTP URL
  * 转换为持久化 / 自包含的 Base64 Data URI。
+ *
+ * <p>安全措施：
+ * <ul>
+ *   <li>SSRF 防护：下载供应商返回的 URL 前调用 {@link SsrfGuard#validate}，
+ *       拦截内网/回环/元数据地址；</li>
+ *   <li>超时控制：WebClient 配置 30s 响应超时 + 10s 连接超时，
+ *       防止上游 URL 无响应时连接池耗尽。</li>
+ * </ul>
  */
 @Service
 public class ImageGenerationService {
 
 	private static final Logger log = LoggerFactory.getLogger(ImageGenerationService.class);
 
+	/** 图像下载响应超时 */
+	private static final Duration DOWNLOAD_RESPONSE_TIMEOUT = Duration.ofSeconds(30);
+
+	/** 图像下载连接超时 */
+	private static final Duration DOWNLOAD_CONNECT_TIMEOUT = Duration.ofSeconds(10);
+
+	/** 图像下载最大体积（1MB） */
+	private static final int MAX_IMAGE_BYTES = 1_048_576;
+
 	private final ImageModelRegistry registry;
 	private final WebClient webClient;
 
 	public ImageGenerationService(ImageModelRegistry registry, WebClient.Builder webClientBuilder) {
 		this.registry = registry;
-		this.webClient = webClientBuilder.build();
+		HttpClient httpClient = HttpClient.create()
+				.responseTimeout(DOWNLOAD_RESPONSE_TIMEOUT)
+				.option(io.netty.channel.ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) DOWNLOAD_CONNECT_TIMEOUT.toMillis());
+		this.webClient = webClientBuilder
+				.clientConnector(new ReactorClientHttpConnector(httpClient))
+				.build();
 	}
 
 	/**
@@ -107,12 +134,39 @@ public class ImageGenerationService {
 		return Mono.error(new ImageGenerationException("IMAGE_GEN_FAILED", "无法解析图像 Base64 或 URL 数据"));
 	}
 
+	/**
+	 * 下载供应商返回的临时图像 URL 并转换为 Base64 Data URI。
+	 *
+	 * <p>安全措施：
+	 * <ol>
+	 *   <li>SSRF 校验：调用 {@link SsrfGuard#validate} 拦截内网/回环/元数据地址；</li>
+	 *   <li>超时控制：WebClient 已配置 30s 响应超时 + 10s 连接超时；</li>
+	 *   <li>体积上限：限制下载内容不超过 1MB，防止内存耗尽。</li>
+	 * </ol>
+	 */
 	private Mono<String> downloadAndConvertToBase64(String url) {
+		try {
+			SsrfGuard.validate(url);
+		} catch (SsrfBlockedException e) {
+			log.warn("[SSRF 防护] 拦截图像下载请求: url={} reason={}", url, e.getMessage());
+			return Mono.error(new ImageGenerationException("SSRF_BLOCKED",
+					"图像 URL 被安全策略拦截: " + e.getMessage()));
+		} catch (IllegalArgumentException e) {
+			return Mono.error(new ImageGenerationException("INVALID_URL",
+					"图像 URL 格式不合法: " + e.getMessage()));
+		}
+
 		return webClient.get()
 				.uri(url)
 				.retrieve()
 				.bodyToMono(byte[].class)
-				.map(bytes -> "data:image/png;base64," + Base64.getEncoder().encodeToString(bytes))
+				.map(bytes -> {
+					if (bytes.length > MAX_IMAGE_BYTES) {
+						throw new ImageGenerationException("IMAGE_TOO_LARGE",
+								"图像体积超过上限 (" + MAX_IMAGE_BYTES + " bytes), 实际: " + bytes.length);
+					}
+					return "data:image/png;base64," + Base64.getEncoder().encodeToString(bytes);
+				})
 				.onErrorResume(e -> {
 					log.warn("从临时 URL 下载图像失败，回落为原始 URL: {}", e.getMessage());
 					return Mono.just(url);
