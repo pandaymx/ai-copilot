@@ -17,7 +17,7 @@ public record CorsProperties(
 		@Nullable String allowedHeaders
 ) {
 	public String resolveAllowedOrigins() {
-		return (allowedOrigins != null && !allowedOrigins.isBlank()) ? allowedOrigins.trim() : "*";
+		return (allowedOrigins != null && !allowedOrigins.isBlank()) ? allowedOrigins.trim() : "http://localhost:3000,http://127.0.0.1:3000";
 	}
 
 	public boolean isAllowCredentials() {
@@ -25,7 +25,7 @@ public record CorsProperties(
 	}
 
 	public String resolveAllowedHeaders() {
-		return (allowedHeaders != null && !allowedHeaders.isBlank()) ? allowedHeaders.trim() : "*";
+		return (allowedHeaders != null && !allowedHeaders.isBlank()) ? allowedHeaders.trim() : "Content-Type,Authorization,X-User-Id,X-Requested-With,Accept,Origin";
 	}
 
 	public boolean hasWildcardOrigin() {
