@@ -27,4 +27,14 @@ public record CorsProperties(
 	public String resolveAllowedHeaders() {
 		return (allowedHeaders != null && !allowedHeaders.isBlank()) ? allowedHeaders.trim() : "*";
 	}
+
+	public boolean hasWildcardOrigin() {
+		String origins = resolveAllowedOrigins();
+		return "*".equals(origins) || origins.contains("*");
+	}
+
+	public boolean hasWildcardHeader() {
+		String headers = resolveAllowedHeaders();
+		return "*".equals(headers) || headers.contains("*");
+	}
 }

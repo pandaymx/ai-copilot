@@ -106,4 +106,24 @@ class CorsConfigurationTest {
 		assertThat(exchange.getResponse().getHeaders().getFirst("Access-Control-Allow-Origin"))
 				.isEqualTo("*");
 	}
+
+	@Test
+	void corsProperties_WildcardCheck_DetectsWildcardsCorrectly() {
+		CorsProperties wildcardProps = new CorsProperties("*", false, "*");
+		assertThat(wildcardProps.hasWildcardOrigin()).isTrue();
+		assertThat(wildcardProps.hasWildcardHeader()).isTrue();
+
+		CorsProperties explicitProps = new CorsProperties("http://example.com", true, "X-User-Id");
+		assertThat(explicitProps.hasWildcardOrigin()).isFalse();
+		assertThat(explicitProps.hasWildcardHeader()).isFalse();
+	}
+
+	@Test
+	void corsWebFilter_WithStrictModeAndWildcard_ConstructsSuccessfullyWithWarning() {
+		CorsProperties corsProperties = new CorsProperties("*", false, "*");
+		xyz.ppmblszdp.ai.identity.AuthProperties strictAuth = new xyz.ppmblszdp.ai.identity.AuthProperties("strict", "X-User-Id", java.util.Set.of("admin"));
+		AiBeansConfiguration beansConfig = new AiBeansConfiguration();
+		CorsWebFilter filter = beansConfig.corsWebFilter(corsProperties, strictAuth);
+		assertThat(filter).isNotNull();
+	}
 }

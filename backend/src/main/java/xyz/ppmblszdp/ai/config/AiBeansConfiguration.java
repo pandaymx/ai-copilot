@@ -48,7 +48,17 @@ import java.util.Map;
 public class AiBeansConfiguration {
 
 	@Bean
-	public CorsWebFilter corsWebFilter(CorsProperties corsProperties) {
+	public CorsWebFilter corsWebFilter(CorsProperties corsProperties, AuthProperties authProperties) {
+		Logger log = LoggerFactory.getLogger(AiBeansConfiguration.class);
+		if (authProperties != null && authProperties.isStrict()) {
+			if (corsProperties.hasWildcardOrigin() || corsProperties.hasWildcardHeader()) {
+				log.warn("【CORS 安全警告】系统当前运行在 strict 严格认证模式 (app.auth.mode=strict)，但 CORS 配置使用了通配符 '*'"
+						+ " [allowed-origins='{}', allowed-headers='{}']。"
+						+ " 忘记配置环境变量可能将 API 暴露给任意跨域 Origin。建议在生产环境中显式配置 CORS_ALLOWED_ORIGINS 与 CORS_ALLOWED_HEADERS 收敛域名白名单！",
+						corsProperties.resolveAllowedOrigins(), corsProperties.resolveAllowedHeaders());
+			}
+		}
+
 		CorsConfiguration corsConfig = new CorsConfiguration();
 		String allowedOriginsStr = corsProperties.resolveAllowedOrigins();
 		boolean allowCredentials = corsProperties.isAllowCredentials();
@@ -92,6 +102,10 @@ public class AiBeansConfiguration {
 		source.registerCorsConfiguration("/**", corsConfig);
 
 		return new CorsWebFilter(source);
+	}
+
+	public CorsWebFilter corsWebFilter(CorsProperties corsProperties) {
+		return corsWebFilter(corsProperties, (AuthProperties) null);
 	}
 
 	@Bean
