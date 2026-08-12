@@ -37,18 +37,17 @@ test.describe("UI 组件与弹窗（Mock）", () => {
       .toBe(!isDarkBefore);
   });
 
-  test("⌘K 打开搜索弹窗并可输入查询", async ({ mockChat }) => {
+  test("⌘K / Ctrl+K 打开搜索弹窗并可输入查询", async ({ mockChat }) => {
     const page = mockChat;
     await helpers.mockApiRoutes(page, { initialSessions: [] });
     await page.goto("/");
 
-    await page.keyboard.press("Meta+k");
-    // 搜索输入出现
+    // page 已统一处理 metaKey/ctrlKey 强制打开，CI（Linux）用 Control+k 稳定触发
+    await page.keyboard.press("Control+k");
     const searchBox = page.getByPlaceholder("搜索历史消息内容...");
     await expect(searchBox).toBeVisible({ timeout: 5_000 });
 
     await searchBox.fill("测试");
-    // 搜索请求已发出（Mock 返回空结果，验证输入可交互）
     await expect(searchBox).toHaveValue("测试");
   });
 

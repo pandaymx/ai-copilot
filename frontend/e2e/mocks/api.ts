@@ -55,13 +55,15 @@ export function buildSessionDetail(session: MockSession, messages: MockMessage[]
 }
 
 /**
- * 将文本按固定步长切片，构造标准 SSE 分帧体。
+ * 将文本按固定步长切片，构造标准 SSE 分帧体数组。
  * 每个 content 帧使用 {content} 结构，前端 defaultParseChunk 才能正确累加。
+ * 返回数组（而非拼接字符串），便于在 route 中按 delay 逐帧 flush，
+ * 从而在测试期间保持 isStreaming=true，使“停止生成”按钮持续可见。
  */
 export function buildStreamFrames(
   text: string,
   opts: { conversationId?: string; reasoning?: string; step?: number } = {},
-): string {
+): string[] {
   const { conversationId = "sess-mock-1", reasoning, step = 4 } = opts;
   const safeText = text || " ";
   const chunks = safeText.match(new RegExp(`.{1,${step}}`, "g")) ?? [safeText];
@@ -88,16 +90,20 @@ export function buildStreamFrames(
   );
   frames.push(`data: [DONE]\n\n`);
 
-  return frames.join("");
+  return frames;
 }
 
-/** 构造错误帧：前端解析为 ⚠️ [服务异常]: <message> 的错误卡片。 */
-export function buildErrorFrames(message = "Mock 服务异常"): string {
+/**
+ * 构造错误帧（业务级 SSE error 帧）。
+ * 前端 useSpringAiStream 会将其识别为 type:"error" 并调用 setError，
+ * 从而渲染“服务连接受阻”错误卡片（而非作为正文文本追加）。
+ */
+export function buildErrorFrames(message = "Mock 服务异常"): string[] {
   return [
     `data: ${JSON.stringify({ type: "conversation", conversationId: "sess-mock-err" })}\n\n`,
     `data: ${JSON.stringify({ type: "error", message })}\n\n`,
     `data: [DONE]\n\n`,
-  ].join("");
+  ];
 }
 
 /** 构造 500 文本错误响应（fetchEventSource onerror 抛出）。 */

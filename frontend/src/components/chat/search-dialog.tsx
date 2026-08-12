@@ -82,10 +82,10 @@ export function SearchDialog({
   const inputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // 打开弹窗时自动聚焦输入框
+  // 打开弹窗时自动聚焦输入框（同步聚焦，去除不确定的 setTimeout 延迟）
   useEffect(() => {
     if (open) {
-      setTimeout(() => inputRef.current?.focus(), 50);
+      inputRef.current?.focus();
     } else {
       setQuery("");
       setResults([]);

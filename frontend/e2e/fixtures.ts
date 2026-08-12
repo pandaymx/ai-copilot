@@ -12,6 +12,38 @@ import {
 } from "./mocks/api";
 
 /**
+ * 将 SSE 帧数组按固定延时逐帧推送，模拟真实流式响应，
+ * 使前端在消费期间保持 isStreaming=true（停止按钮持续可见）。
+ * 使用 start + 递归 setTimeout 主动推送，避免 pull 在某些运行时下不被消费的问题。
+ */
+function createSseStream(
+  frames: string[],
+  delayMs: number,
+): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  let i = 0;
+  return new ReadableStream({
+    start(controller) {
+      const push = () => {
+        if (i >= frames.length) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(encoder.encode(frames[i]));
+        i += 1;
+        if (i < frames.length) {
+          setTimeout(push, delayMs);
+        } else {
+          // 最后一帧后稍作延迟再关闭，确保前端消费到 [DONE]
+          setTimeout(() => controller.close(), delayMs);
+        }
+      };
+      push();
+    },
+  });
+}
+
+/**
  * 选择器常量：复用组件既有可访问性属性，避免依赖易变的 class 名。
  */
 export const selectors = {
@@ -52,6 +84,7 @@ async function mockApiRoutes(
     streamText?: string;
     streamError?: boolean;
     streamStatus?: number;
+    streamDelay?: number;
     searchResults?: Parameters<typeof buildSearchResponse>[1];
   } = {},
 ) {
@@ -60,6 +93,7 @@ async function mockApiRoutes(
     streamText = "这是一段由 Playwright Mock 生成的流式回复内容。",
     streamError = false,
     streamStatus = 200,
+    streamDelay = 60,
     searchResults = [],
   } = opts;
 
@@ -157,7 +191,7 @@ async function mockApiRoutes(
       });
       return;
     }
-    const body = streamError
+    const frames = streamError
       ? buildErrorFrames("Mock SSE 错误事件")
       : buildStreamFrames(streamText);
     await route.fulfill({
@@ -167,7 +201,7 @@ async function mockApiRoutes(
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
       },
-      body,
+      body: frames.join(""),
     });
   });
 
@@ -206,7 +240,7 @@ export const helpers = {
     await page.locator(selectors.send).click();
   },
 
-  /** 等待流式生成结束：停止按钮消失，表示 [DONE] 已消费。 */
+  /** 等待流式生成结束：停止按钮不可见（isStreaming=false），表示 [DONE] 已消费。 */
   async waitForStreamDone(page: Page) {
     await expect(page.locator(selectors.stop)).toHaveCount(0, {
       timeout: 15_000,

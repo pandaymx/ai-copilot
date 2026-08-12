@@ -218,13 +218,16 @@ export default function Home() {
   const [collapsed, setCollapsed] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   // 全局 ⌘K / Ctrl+K 快捷键唤起全盘全文检索
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setSearchOpen((prev) => !prev);
+        // 强制打开搜索框，避免 toggle 在多测试/多快捷键下状态翻转导致的不确定行为
+        setSearchOpen(true);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -718,7 +721,7 @@ export default function Home() {
         isOfflineFallback={isOfflineFallback}
         onSelect={selectSession}
         onNew={goToRootDraft}
-        onDelete={deleteSession}
+        onDelete={(id) => setDeleteTarget(id)}
         onRename={renameSession}
         onToggleCollapsed={() => setCollapsed((c) => !c)}
         onOpenSearch={() => setSearchOpen(true)}
@@ -790,13 +793,39 @@ export default function Home() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleReset}
+                onClick={() => setConfirmClear(true)}
                 disabled={isStreaming || messages.length === 0}
                 className="gap-1.5 text-xs text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
               >
                 <RotateCcw className="size-3.5" />
                 清空
               </Button>
+              {confirmClear && (
+                <div className="flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                  <span className="text-zinc-500 dark:text-zinc-400">
+                    确认清空？
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setConfirmClear(false);
+                      handleReset();
+                    }}
+                    className="h-6 px-2 text-rose-600 hover:text-rose-700 dark:text-rose-400"
+                  >
+                    确认清空
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setConfirmClear(false)}
+                    className="h-6 px-2"
+                  >
+                    取消
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </header>
@@ -810,6 +839,48 @@ export default function Home() {
                 服务连接受阻：{error?.message ?? "后端未能即时响应"}。请确保后端
                 Spring AI 服务已正常启动。
               </span>
+            </div>
+          </div>
+        )}
+
+        {/* 删除会话二次确认（破坏性操作保护） */}
+        {deleteTarget && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center bg-zinc-950/60 px-4 backdrop-blur-sm">
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="delete-dialog-title"
+              className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900"
+            >
+              <h2
+                id="delete-dialog-title"
+                className="text-sm font-semibold text-zinc-900 dark:text-zinc-100"
+              >
+                删除会话
+              </h2>
+              <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                确定删除该会话吗？此操作不可撤销，会话内的全部消息将被永久删除。
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDeleteTarget(null)}
+                >
+                  取消
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    const id = deleteTarget;
+                    setDeleteTarget(null);
+                    deleteSession(id);
+                  }}
+                >
+                  确认删除
+                </Button>
+              </div>
             </div>
           </div>
         )}

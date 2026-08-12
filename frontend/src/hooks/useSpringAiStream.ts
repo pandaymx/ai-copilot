@@ -236,9 +236,10 @@ function defaultParseChunk(data: string): string | null {
       return null;
     }
 
+    // 业务级错误帧（type:"error" / 携带 error 字段）不应作为正文文本追加，
+    // 交由调用方 onmessage 统一通过 setError 处理，以触发错误卡片与重试联动。
     if (parsed?.type === "error" || parsed?.error) {
-      const msg = parsed.message || parsed.code || "后端响应错误";
-      return `\n\n⚠️ [服务异常]: ${msg}`;
+      return null;
     }
 
     const nested =
@@ -414,6 +415,12 @@ export function useSpringAiStream(
                 const parsed = JSON.parse(ev.data);
                 if (parsed?.type === "conversation" && parsed.conversationId) {
                   onConversationId?.(parsed.conversationId);
+                  return;
+                }
+                // 业务级错误帧：统一置位 error，渲染错误卡片并终止后续增量处理。
+                if (parsed?.type === "error" || parsed?.error) {
+                  const msg = parsed?.message || parsed?.code || "后端响应错误";
+                  setError(new Error(msg));
                   return;
                 }
                 if (parsed?.type === "reasoning" && parsed.reasoning) {
