@@ -10,6 +10,7 @@ import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
@@ -55,7 +56,6 @@ import xyz.ppmblszdp.ai.tool.AugmentedToolCallbackProvider;
 import xyz.ppmblszdp.ai.tool.ToolEventEmitter;
 import xyz.ppmblszdp.ai.tool.ToolSearchAdvisorConfig.ToolSearchAdvisorFactory;
 import xyz.ppmblszdp.ai.dto.ImageGenerationRequestDto;
-import xyz.ppmblszdp.ai.service.ImageGenerationService;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
 import reactor.core.publisher.Sinks.Many;
@@ -343,16 +343,16 @@ public class ChatService implements DisposableBean {
 
 	/** 流式：结构化 ChatChunkDto Flux（包含思考过程 reasoning 与 token 用量）。userId 来自服务端受信任身份。 */
 	public Flux<ChatChunkDto> streamChatChunks(ChatRequest request, String userId) {
-		if (isImageGenerationRequest(request)) {
-			ImageGenerationService imgService = imageGenerationServiceProvider != null ? imageGenerationServiceProvider.getIfAvailable() : null;
-			if (imgService != null) {
-				return streamImageGeneration(request, userId, imgService);
-			} else {
-				log.warn("触发图像生成意图，但未找到 ImageGenerationService Bean");
+		ResolvedModel resolved = registry.resolve(request.provider(), request.model());
+
+		ImageGenerationService imgService = imageGenerationServiceProvider != null ? imageGenerationServiceProvider.getIfAvailable() : null;
+		if (imgService != null) {
+			ImageIntentResult intent = detectImageIntent(request, resolved);
+			if (intent.isImage()) {
+				return streamImageGeneration(request, userId, imgService, intent.prompt());
 			}
 		}
 
-		ResolvedModel resolved = registry.resolve(request.provider(), request.model());
 		if (hasMedia(request) && !resolved.model().supportsVision()) {
 			log.warn("模型 [{}] 不支持图片 (Vision)，流式拦截并返回明确提示", resolved.model().id());
 			return Flux.just(ChatChunkDto.error("INVALID_ARGUMENT", "当前模型不支持图片，请切换到支持图片的模型"));
@@ -1020,17 +1020,110 @@ public class ChatService implements DisposableBean {
 		return (text == null) ? "" : text;
 	}
 
-	private boolean isImageGenerationRequest(ChatRequest request) {
-		if (request == null || request.message() == null) {
-			return false;
+	private record ImageIntentResult(boolean isImage, String prompt) {}
+
+	private ImageIntentResult detectImageIntent(ChatRequest request, ResolvedModel resolved) {
+		if (request == null || request.message() == null || request.message().isBlank()) {
+			return new ImageIntentResult(false, "");
 		}
 		String msg = request.message().trim();
-		if (msg.startsWith("/image") || msg.startsWith("/img")) {
-			return true;
+
+		// 1. 显式命令直接触发快速响应 (/image ... 或 /img ...)
+		if (msg.startsWith("/image ") || msg.startsWith("/img ")) {
+			return new ImageIntentResult(true, extractImagePrompt(request));
 		}
+		if (msg.startsWith("/image") || msg.startsWith("/img")) {
+			return new ImageIntentResult(true, extractImagePrompt(request));
+		}
+
+		// 2. 判定文本中是否带有图片创作相关的信号词（避免无相关信号词的普通问答额外调用 LLM）
+		List<String> keywords = properties != null && properties.resolveImage() != null
+				? properties.resolveImage().resolveKeywords()
+				: AiProviderProperties.ImageConfig.defaults().resolveKeywords();
 		String lower = msg.toLowerCase();
-		return lower.startsWith("画一只") || lower.startsWith("画一个") || lower.startsWith("画一张") || lower.startsWith("画成")
-				|| lower.startsWith("生成图片") || lower.startsWith("生成一张图片") || lower.startsWith("帮我画") || lower.startsWith("画图");
+		boolean hasSignal = false;
+		for (String kw : keywords) {
+			if (kw != null && !kw.isBlank() && lower.contains(kw.toLowerCase())) {
+				hasSignal = true;
+				break;
+			}
+		}
+
+		if (!hasSignal) {
+			return new ImageIntentResult(false, "");
+		}
+
+		// 3. 调用 LLM 进行智能意图识别与提示词提炼
+		try {
+			if (resolved != null && resolved.chatModel() != null) {
+				String systemPrompt = """
+						你是一个意图识别助手。判断用户的文本请求是否表达了【希望 AI 绘图/生成图片/生成海报/生成插画/生成照片】的意图。
+						注意：若用户仅要求画架构图、流程图、代码、文字描述等，请判定为 false。
+						请严格返回如下 JSON 格式，不要加入 ```json 标记：
+						{"isImage": true, "prompt": "提炼出的生成图片的提示词"}
+						或
+						{"isImage": false, "prompt": ""}
+						""";
+				Prompt prompt = new Prompt(List.of(
+						new SystemMessage(systemPrompt),
+						new UserMessage(msg)
+				), ChatOptionsFactory.forProvider(resolved, 0.1));
+
+				ChatResponse response = resolved.chatModel().call(prompt);
+				if (response != null && response.getResult() != null && response.getResult().getOutput() != null) {
+					String text = response.getResult().getOutput().getText();
+					if (text != null && !text.isBlank()) {
+						text = text.trim();
+						if (text.startsWith("```json")) {
+							text = text.substring(7);
+						}
+						if (text.startsWith("```")) {
+							text = text.substring(3);
+						}
+						if (text.endsWith("```")) {
+							text = text.substring(0, text.length() - 3);
+						}
+						text = text.trim();
+
+						boolean isImage = text.contains("\"isImage\": true") || text.contains("\"isImage\":true");
+						String extractedPrompt = msg;
+						int promptIdx = text.indexOf("\"prompt\"");
+						if (promptIdx != -1) {
+							int colonIdx = text.indexOf(':', promptIdx);
+							if (colonIdx != -1) {
+								int firstQuote = text.indexOf('"', colonIdx);
+								if (firstQuote != -1) {
+									int secondQuote = text.indexOf('"', firstQuote + 1);
+									if (secondQuote != -1) {
+										extractedPrompt = text.substring(firstQuote + 1, secondQuote).trim();
+									}
+								}
+							}
+						}
+						if (isImage) {
+							return new ImageIntentResult(true, extractedPrompt.isBlank() ? extractImagePrompt(request) : extractedPrompt);
+						}
+						return new ImageIntentResult(false, "");
+					}
+				}
+			}
+		} catch (Exception e) {
+			log.warn("LLM 图像意图识别失败，回退至规则校验: {}", e.getMessage());
+		}
+
+		// 4. LLM 异常时的降级规则校验
+		boolean isReq = isImageGenerationRequestByRule(msg, keywords);
+		return new ImageIntentResult(isReq, isReq ? extractImagePrompt(request) : "");
+	}
+
+	private boolean isImageGenerationRequestByRule(String msg, List<String> keywords) {
+		String lower = msg.toLowerCase();
+		for (String kw : keywords) {
+			if (kw != null && !kw.isBlank() && lower.startsWith(kw.toLowerCase())) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private String extractImagePrompt(ChatRequest request) {
@@ -1045,14 +1138,27 @@ public class ChatService implements DisposableBean {
 			int spaceIdx = msg.indexOf(' ');
 			return spaceIdx > 0 ? msg.substring(spaceIdx + 1).trim() : msg;
 		}
-		if (msg.startsWith("生成图片：") || msg.startsWith("生成图片:")) {
-			return msg.substring(5).trim();
+		List<String> keywords = properties != null && properties.resolveImage() != null
+				? properties.resolveImage().resolveKeywords()
+				: AiProviderProperties.ImageConfig.defaults().resolveKeywords();
+		String lower = msg.toLowerCase();
+		for (String kw : keywords) {
+			if (kw != null && !kw.isBlank()) {
+				String kwLower = kw.toLowerCase();
+				if (lower.startsWith(kwLower)) {
+					String extracted = msg.substring(kw.length()).trim();
+					if (extracted.startsWith(":") || extracted.startsWith("：")) {
+						extracted = extracted.substring(1).trim();
+					}
+					return extracted.isBlank() ? msg : extracted;
+				}
+			}
 		}
 		return msg;
 	}
 
-	private Flux<ChatChunkDto> streamImageGeneration(ChatRequest request, String userId, ImageGenerationService imgService) {
-		String rawPrompt = extractImagePrompt(request);
+	private Flux<ChatChunkDto> streamImageGeneration(ChatRequest request, String userId, ImageGenerationService imgService, String customPrompt) {
+		String rawPrompt = (customPrompt != null && !customPrompt.isBlank()) ? customPrompt : extractImagePrompt(request);
 		final String prompt = rawPrompt.isBlank() ? "一只可爱的卡通小猫" : rawPrompt;
 		String artifactId = "img-" + java.util.UUID.randomUUID().toString().substring(0, 8);
 

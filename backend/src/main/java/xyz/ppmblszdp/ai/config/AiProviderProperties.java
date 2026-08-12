@@ -500,10 +500,23 @@ public record AiProviderProperties(
 			@Nullable Integer height,
 			@Nullable String quality,
 			@Nullable String style,
-			@Name("response-format") @Nullable String responseFormat
+			@Name("response-format") @Nullable String responseFormat,
+			@Nullable List<String> keywords
 	) {
+		public ImageConfig(
+				String defaultProvider,
+				String defaultModel,
+				Integer width,
+				Integer height,
+				String quality,
+				String style,
+				String responseFormat
+		) {
+			this(defaultProvider, defaultModel, width, height, quality, style, responseFormat, null);
+		}
+
 		public static ImageConfig defaults() {
-			return new ImageConfig("openai", "dall-e-3", 1024, 1024, "standard", "vivid", "b64_json");
+			return new ImageConfig("openai", "dall-e-3", 1024, 1024, "standard", "vivid", "b64_json", null);
 		}
 
 		public String resolveDefaultProvider() {
@@ -532,6 +545,18 @@ public record AiProviderProperties(
 
 		public String resolveResponseFormat() {
 			return (responseFormat != null && !responseFormat.isBlank()) ? responseFormat.trim() : "b64_json";
+		}
+
+		public List<String> resolveKeywords() {
+			if (keywords != null && !keywords.isEmpty()) {
+				return keywords;
+			}
+			return List.of(
+					"/image", "/img",
+					"画一只", "画一个", "画一张", "画成",
+					"生成图片", "生成一张图片", "帮我画", "画图", "绘制",
+					"generate image", "draw a", "draw an", "draw "
+			);
 		}
 	}
 }

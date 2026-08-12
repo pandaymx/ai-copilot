@@ -15,13 +15,16 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.OpenAiAudioSpeechModel;
 import org.springframework.beans.factory.ObjectProvider;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.config.AiProviderProperties.MemoryConfig;
 import xyz.ppmblszdp.ai.context.ContextAssembler;
+import xyz.ppmblszdp.ai.dto.ChatChunkDto;
 import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
+import xyz.ppmblszdp.ai.dto.ImageGenerationResultDto;
 import xyz.ppmblszdp.ai.dto.MediaDto;
 import xyz.ppmblszdp.ai.registry.ModelDescriptor;
 import xyz.ppmblszdp.ai.registry.ModelHealthTracker;
@@ -65,6 +68,10 @@ class ChatServiceTest {
 	private ObjectProvider<RateLimiter> rateLimiter;
 	private SessionService sessionService;
 	private AiProviderProperties properties;
+	private ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor;
+	private ObjectProvider<RagAdvisorFactory> ragAdvisorFactory;
+	private ObjectProvider<UsageQuota> usageQuota;
+	private UsageRepository usageRepository;
 
 	private ChatModel chatModel;
 	private ChatService chatService;
@@ -115,10 +122,10 @@ class ChatServiceTest {
 		ResolvedModel resolved = new ResolvedModel(chatModel, providerDescriptor, modelDescriptor);
 		when(registry.resolve(any(), any())).thenReturn(resolved);
 
-		ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor = mock(ObjectProvider.class);
-		ObjectProvider<RagAdvisorFactory> ragAdvisorFactory = mock(ObjectProvider.class);
-		ObjectProvider<UsageQuota> usageQuota = mock(ObjectProvider.class);
-		UsageRepository usageRepository = mock(UsageRepository.class);
+		safeGuardAdvisor = mock(ObjectProvider.class);
+		ragAdvisorFactory = mock(ObjectProvider.class);
+		usageQuota = mock(ObjectProvider.class);
+		usageRepository = mock(UsageRepository.class);
 
 		chatService = new ChatService(
 				registry,
@@ -345,6 +352,45 @@ class ChatServiceTest {
 					assertNotNull(dto);
 					assertEquals("Hello text!", dto.content());
 				})
+				.verifyComplete();
+	}
+
+	@Test
+	void testIsImageGenerationRequestWithExtendedKeywords() {
+		ImageGenerationService imgService = mock(ImageGenerationService.class);
+		ImageGenerationResultDto imgResult = new ImageGenerationResultDto("img-1", "prompt", "b64data", "image/png", "openai", "dall-e-3");
+		when(imgService.generateImage(any())).thenReturn(Mono.just(imgResult));
+
+		@SuppressWarnings("unchecked")
+		ObjectProvider<ImageGenerationService> imgProvider = mock(ObjectProvider.class);
+		when(imgProvider.getIfAvailable()).thenReturn(imgService);
+
+		ChatService serviceWithImg = new ChatService(
+				registry, contextAssembler, sessionChatMemory, longTermFactory,
+				longTermWriter, longTermProcessor, rateLimiter, usageQuota,
+				usageRepository, safeGuardAdvisor, ragAdvisorFactory,
+				new ModelHealthTracker(), sessionService, properties,
+				speechModelProvider, new ToolEventEmitter(properties),
+				new ToolCallback[0], mcpToolProvider, toolSearchFactory,
+				null, imgProvider
+		);
+
+		ChatRequest req1 = new ChatRequest("绘制一张雪山风景图", null, "openai", "gpt-4o", null, null, null, null, null);
+		Flux<ChatChunkDto> flux1 = serviceWithImg.streamChatChunks(req1, "user-1");
+
+		StepVerifier.create(flux1)
+				.expectNextMatches(chunk -> chunk.content() != null && chunk.content().contains("正在为你生成图片：一张雪山风景图"))
+				.expectNextMatches(chunk -> "processing".equals(chunk.status()))
+				.expectNextMatches(chunk -> "complete".equals(chunk.status()))
+				.verifyComplete();
+
+		ChatRequest req2 = new ChatRequest("generate image: a cyberpunk city", null, "openai", "gpt-4o", null, null, null, null, null);
+		Flux<ChatChunkDto> flux2 = serviceWithImg.streamChatChunks(req2, "user-1");
+
+		StepVerifier.create(flux2)
+				.expectNextMatches(chunk -> chunk.content() != null && chunk.content().contains("正在为你生成图片：a cyberpunk city"))
+				.expectNextMatches(chunk -> "processing".equals(chunk.status()))
+				.expectNextMatches(chunk -> "complete".equals(chunk.status()))
 				.verifyComplete();
 	}
 }

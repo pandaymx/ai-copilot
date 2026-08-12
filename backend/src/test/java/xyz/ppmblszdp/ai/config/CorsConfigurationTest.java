@@ -22,8 +22,7 @@ class CorsConfigurationTest {
 				MockServerHttpRequest.options("http://localhost:8084/api/chat")
 						.header("Origin", "http://example.com")
 						.header("Access-Control-Request-Method", "POST")
-						.build()
-		);
+						.build());
 
 		WebFilterChain filterChain = ex -> Mono.empty();
 
@@ -47,8 +46,7 @@ class CorsConfigurationTest {
 						.header("Origin", "http://example.com")
 						.header("Access-Control-Request-Method", "POST")
 						.header("Access-Control-Request-Headers", "X-User-Id, Content-Type")
-						.build()
-		);
+						.build());
 
 		WebFilterChain filterChain = ex -> Mono.empty();
 
@@ -69,8 +67,7 @@ class CorsConfigurationTest {
 				MockServerHttpRequest.options("http://localhost:8084/api/chat")
 						.header("Origin", "http://example.com")
 						.header("Access-Control-Request-Method", "POST")
-						.build()
-		);
+						.build());
 
 		WebFilterChain filterChain = ex -> Mono.empty();
 
@@ -92,8 +89,7 @@ class CorsConfigurationTest {
 		MockServerWebExchange exchange = MockServerWebExchange.from(
 				MockServerHttpRequest.get("http://localhost:8084/api/chat")
 						.header("Origin", "http://example.com")
-						.build()
-		);
+						.build());
 
 		WebFilterChain filterChain = ex -> {
 			ex.getResponse().setStatusCode(org.springframework.http.HttpStatus.OK);
@@ -121,9 +117,13 @@ class CorsConfigurationTest {
 	@Test
 	void corsWebFilter_WithStrictModeAndWildcard_ConstructsSuccessfullyWithWarning() {
 		CorsProperties corsProperties = new CorsProperties("*", false, "*");
-		xyz.ppmblszdp.ai.identity.AuthProperties strictAuth = new xyz.ppmblszdp.ai.identity.AuthProperties("strict", "X-User-Id", java.util.Set.of("admin"));
+			xyz.ppmblszdp.ai.identity.AuthProperties strictAuth = new xyz.ppmblszdp.ai.identity.AuthProperties("strict", "X-User-Id", java.util.Set
+				.of("admin"));
 		AiBeansConfiguration beansConfig = new AiBeansConfiguration();
+				
 		CorsWebFilter filter = beansConfig.corsWebFilter(corsProperties, strictAuth);
 		assertThat(filter).isNotNull();
 	}
 }
+
+				
