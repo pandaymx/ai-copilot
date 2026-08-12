@@ -10,9 +10,20 @@ import java.util.regex.Pattern;
  */
 public final class ApiKeyValidator {
 
-	private static final Pattern PLACEHOLDER = Pattern.compile("^your_.*_here$", Pattern.CASE_INSENSITIVE);
+	private static final Pattern PLACEHOLDER = Pattern.compile("^your_.*", Pattern.CASE_INSENSITIVE);
 
 	private ApiKeyValidator() {
+	}
+
+	/**
+	 * 判断是否为占位符字符串（如 your_deepseek_api_key_here 或以 your_ 开头）。
+	 */
+	public static boolean isPlaceholder(String apiKey) {
+		if (apiKey == null || apiKey.isBlank()) {
+			return false;
+		}
+		String trimmed = apiKey.trim();
+		return trimmed.toLowerCase().startsWith("your_") || PLACEHOLDER.matcher(trimmed).matches();
 	}
 
 	/**
@@ -22,7 +33,7 @@ public final class ApiKeyValidator {
 		if (apiKey == null || apiKey.isBlank()) {
 			return false;
 		}
-		if (PLACEHOLDER.matcher(apiKey.trim()).matches()) {
+		if (isPlaceholder(apiKey)) {
 			return false;
 		}
 		return apiKey.trim().length() >= 8;

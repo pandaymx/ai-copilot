@@ -37,6 +37,7 @@ public class FirstClassProviderRegistrar {
 	private final ObjectProvider<OllamaChatModel> ollama;
 	private final ObjectProvider<AnthropicChatModel> anthropic;
 	private final AiProviderProperties properties;
+	private final ObjectProvider<xyz.ppmblszdp.ai.identity.AuthProperties> authPropertiesProvider;
 
 	@Value("${spring.ai.deepseek.api-key:}")
 	private String deepseekApiKey;
@@ -56,13 +57,15 @@ public class FirstClassProviderRegistrar {
 			ObjectProvider<GoogleGenAiChatModel> google,
 			ObjectProvider<OllamaChatModel> ollama,
 			ObjectProvider<AnthropicChatModel> anthropic,
-			AiProviderProperties properties) {
+			AiProviderProperties properties,
+			ObjectProvider<xyz.ppmblszdp.ai.identity.AuthProperties> authPropertiesProvider) {
 		this.deepseek = deepseek;
 		this.openai = openai;
 		this.google = google;
 		this.ollama = ollama;
 		this.anthropic = anthropic;
 		this.properties = properties;
+		this.authPropertiesProvider = authPropertiesProvider;
 	}
 
 	/** 收集所有可用的一等公民供应商描述符。 */
@@ -86,6 +89,19 @@ public class FirstClassProviderRegistrar {
 
 		if (cfg != null && !cfg.isEnabled()) {
 			log.info("一等公民供应商 '{}' 已配置为禁用，跳过注册", providerId);
+			return;
+		}
+
+		if (requiresApiKey && ApiKeyValidator.isPlaceholder(apiKey)) {
+			xyz.ppmblszdp.ai.identity.AuthProperties authProps = authPropertiesProvider != null ? authPropertiesProvider.getIfAvailable() : null;
+			if (authProps != null && authProps.isStrict()) {
+				throw new IllegalStateException(String.format(
+						"【FAIL-FAST】系统运行在 strict 认证模式 (app.auth.mode=strict)，但供应商 '%s' 的 API Key 使用了默认占位符 [%s]！"
+								+ " 请在 .env 中配置真实 API 密钥，或在开发环境中设置 AUTH_MODE=dev。",
+						providerId, apiKey.trim()
+				));
+			}
+			log.warn("一等公民供应商 '{}' 未配置有效密钥（占位值或空白），跳过注册", providerId);
 			return;
 		}
 
