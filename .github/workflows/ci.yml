@@ -94,6 +94,11 @@ jobs:
           cd frontend
           bun run lint
 
+      - name: Run Frontend Unit Tests
+        run: |
+          cd frontend
+          bun test src
+
       - name: Build Next.js Production App
         run: |
           cd frontend
