@@ -9,7 +9,6 @@ import {
   Network,
   Terminal,
 } from "lucide-react";
-import mermaid from "mermaid";
 import { useTheme } from "next-themes";
 import { memo, useEffect, useId, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -229,6 +228,7 @@ function MermaidBlock({
     const renderDiagram = async () => {
       setLoading(true);
       try {
+        const { default: mermaid } = await import("mermaid");
         mermaid.initialize({
           startOnLoad: false,
           theme: isDark ? "dark" : "default",
