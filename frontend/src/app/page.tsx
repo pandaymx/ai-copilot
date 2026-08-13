@@ -1090,7 +1090,7 @@ export default function Home() {
                 />
               </div>
               <span className="select-none font-mono text-[11px] text-zinc-400 dark:text-zinc-500">
-                ⌘ + Enter 发送
+                Enter 发送 / Shift+Enter 换行
               </span>
             </div>
           </form>
