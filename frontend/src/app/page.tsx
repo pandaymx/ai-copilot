@@ -403,6 +403,9 @@ export default function Home() {
 
   useEffect(() => {
     if (loadingSessions) return;
+    // 流式生成中或存在 live message 时，本地会话尚未同步到 dbSessions，
+    // 此时不能因会话列表为空就清空 activeId/messages，否则会丢失进行中的回复。
+    if (isStreaming || liveIdRef.current) return;
     const activeRaw =
       typeof window !== "undefined" ? localStorage.getItem(ACTIVE_KEY) : null;
     const currentSessions = dbSessions ?? [];
@@ -427,14 +430,20 @@ export default function Home() {
           }
         })();
       }
-    } else if (activeId !== null && currentSessions.length === 0) {
+    } else if (
+      activeId !== null &&
+      currentSessions.length === 0 &&
+      messages.length === 0
+    ) {
+      // 仅在本地没有任何消息时才清空：本地新建的会话尚未同步到 dbSessions，
+      // 列表为空不代表会话已删除，不能误清空进行中的对话。
       setActiveId(null);
       setMessages([]);
       if (typeof window !== "undefined") {
         localStorage.removeItem(ACTIVE_KEY);
       }
     }
-  }, [dbSessions, loadingSessions, activeId]);
+  }, [dbSessions, loadingSessions, activeId, isStreaming, messages]);
 
   // 模型选择持久化
   useEffect(() => {

@@ -62,9 +62,9 @@ export function buildSessionDetail(session: MockSession, messages: MockMessage[]
  */
 export function buildStreamFrames(
   text: string,
-  opts: { conversationId?: string; reasoning?: string; step?: number } = {},
+  opts: { conversationId: string; reasoning?: string; step?: number },
 ): string[] {
-  const { conversationId = "sess-mock-1", reasoning, step = 4 } = opts;
+  const { conversationId, reasoning, step = 4 } = opts;
   const safeText = text || " ";
   const chunks = safeText.match(new RegExp(`.{1,${step}}`, "g")) ?? [safeText];
 
@@ -98,9 +98,12 @@ export function buildStreamFrames(
  * 前端 useSpringAiStream 会将其识别为 type:"error" 并调用 setError，
  * 从而渲染“服务连接受阻”错误卡片（而非作为正文文本追加）。
  */
-export function buildErrorFrames(message = "Mock 服务异常"): string[] {
+export function buildErrorFrames(
+  message = "Mock 服务异常",
+  conversationId = "sess-mock-err",
+): string[] {
   return [
-    `data: ${JSON.stringify({ type: "conversation", conversationId: "sess-mock-err" })}\n\n`,
+    `data: ${JSON.stringify({ type: "conversation", conversationId })}\n\n`,
     `data: ${JSON.stringify({ type: "error", message })}\n\n`,
     `data: [DONE]\n\n`,
   ];

@@ -281,6 +281,33 @@ export function useSpringAiStream(
     onFinish,
   } = options;
 
+  // 回调 ref：流一旦启动就会跨多个渲染周期运行，必须用 ref 避免捕获旧闭包，
+  // 否则 onFinish 等回调会读到调用 send 瞬间的过期状态（如 activeId=null）。
+  const onConversationIdRef = useRef(onConversationId);
+  const onReasoningRef = useRef(onReasoning);
+  const onUsageRef = useRef(onUsage);
+  const onArtifactRef = useRef(onArtifact);
+  const onToolCallRef = useRef(onToolCall);
+  const onToolResultRef = useRef(onToolResult);
+  const onFinishRef = useRef(onFinish);
+  useEffect(() => {
+    onConversationIdRef.current = onConversationId;
+    onReasoningRef.current = onReasoning;
+    onUsageRef.current = onUsage;
+    onArtifactRef.current = onArtifact;
+    onToolCallRef.current = onToolCall;
+    onToolResultRef.current = onToolResult;
+    onFinishRef.current = onFinish;
+  }, [
+    onConversationId,
+    onReasoning,
+    onUsage,
+    onArtifact,
+    onToolCall,
+    onToolResult,
+    onFinish,
+  ]);
+
   const [streamData, setStreamData] = useState({ content: "", thinking: "" });
   const [usage, setUsage] = useState<{
     promptTokens: number;
@@ -375,9 +402,9 @@ export function useSpringAiStream(
       abortRef.current = null;
       flushState();
       setLoading(false);
-      onFinish?.(currentContent, currentThinking, currentUsage);
+      onFinishRef.current?.(currentContent, currentThinking, currentUsage);
     }
-  }, [flushState, onFinish]);
+  }, [flushState]);
 
   const send = useCallback(
     (input: string, extraBody?: Record<string, unknown>) => {
@@ -419,7 +446,7 @@ export function useSpringAiStream(
               try {
                 const parsed = JSON.parse(ev.data);
                 if (parsed?.type === "conversation" && parsed.conversationId) {
-                  onConversationId?.(parsed.conversationId);
+                  onConversationIdRef.current?.(parsed.conversationId);
                   return;
                 }
                 // 业务级错误帧：统一置位 error，渲染错误卡片并终止后续增量处理。
@@ -431,7 +458,7 @@ export function useSpringAiStream(
                 if (parsed?.type === "reasoning" && parsed.reasoning) {
                   thinkingRef.current += parsed.reasoning;
                   scheduleUpdate();
-                  onReasoning?.(parsed.reasoning);
+                  onReasoningRef.current?.(parsed.reasoning);
                   return;
                 }
                 if (parsed?.type === "artifact") {
@@ -446,7 +473,7 @@ export function useSpringAiStream(
                     status: parsed.status || "complete",
                   };
                   streamStoreRef.current.updateArtifact(item.artifactId, item);
-                  onArtifact?.(item);
+                  onArtifactRef.current?.(item);
                   return;
                 }
                 if (parsed?.type === "tool_call") {
@@ -482,7 +509,7 @@ export function useSpringAiStream(
                     status: "calling",
                   };
                   streamStoreRef.current.updateToolCall(item.callId, item);
-                  onToolCall?.(item);
+                  onToolCallRef.current?.(item);
                   return;
                 }
                 if (parsed?.type === "tool_result") {
@@ -494,13 +521,13 @@ export function useSpringAiStream(
                     status: parsed.isError ? "error" : "success",
                   };
                   streamStoreRef.current.updateToolCall(item.callId, item);
-                  onToolResult?.(item);
+                  onToolResultRef.current?.(item);
                   return;
                 }
                 if (parsed?.type === "usage" && parsed.usage) {
                   usageRef.current = parsed.usage;
                   setUsage(parsed.usage);
-                  onUsage?.(parsed.usage);
+                  onUsageRef.current?.(parsed.usage);
                   return;
                 }
               } catch {
@@ -527,7 +554,7 @@ export function useSpringAiStream(
             abortRef.current = null;
             flushState();
             setLoading(false);
-            onFinish?.(
+            onFinishRef.current?.(
               contentRef.current,
               thinkingRef.current,
               usageRef.current,
@@ -543,13 +570,6 @@ export function useSpringAiStream(
       headers,
       buildBody,
       parseChunk,
-      onConversationId,
-      onReasoning,
-      onUsage,
-      onArtifact,
-      onToolCall,
-      onToolResult,
-      onFinish,
       flushState,
       scheduleUpdate,
       loading,

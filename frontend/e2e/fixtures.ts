@@ -191,9 +191,23 @@ async function mockApiRoutes(
       });
       return;
     }
+
+    // 回显前端传入的 conversationId，避免硬编码 id 与本地新会话 id 不一致
+    // 导致 onConversationId 触发会话详情重拉并覆盖当前消息。
+    let requestConversationId = "";
+    try {
+      const body = JSON.parse(route.request().postData() || "{}") as {
+        conversationId?: string;
+      };
+      requestConversationId = body.conversationId ?? "";
+    } catch {
+      // 解析失败时使用兜底 id
+    }
+    const conversationId = requestConversationId || "sess-mock-default";
+
     const frames = streamError
-      ? buildErrorFrames("Mock SSE 错误事件")
-      : buildStreamFrames(streamText);
+      ? buildErrorFrames("Mock SSE 错误事件", conversationId)
+      : buildStreamFrames(streamText, { conversationId });
     await route.fulfill({
       status: 200,
       contentType: "text/event-stream; charset=utf-8",
