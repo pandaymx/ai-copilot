@@ -13,18 +13,18 @@ import xyz.ppmblszdp.ai.dto.ChatFeedbackRequest;
 @Repository
 public class FeedbackRepository {
 
-	private static final Logger log = LoggerFactory.getLogger(FeedbackRepository.class);
+    private static final Logger log = LoggerFactory.getLogger(FeedbackRepository.class);
 
-	private final JdbcTemplate jdbcTemplate;
+    private final JdbcTemplate jdbcTemplate;
 
-	public FeedbackRepository(JdbcTemplate jdbcTemplate) {
-		this.jdbcTemplate = jdbcTemplate;
-	}
+    public FeedbackRepository(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
 
-	@PostConstruct
-	public void initSchema() {
-		try {
-			jdbcTemplate.execute("""
+    @PostConstruct
+    public void initSchema() {
+        try {
+            jdbcTemplate.execute("""
 					CREATE TABLE IF NOT EXISTS chat_feedback (
 						id BIGSERIAL PRIMARY KEY,
 						conversation_id VARCHAR(128),
@@ -35,39 +35,42 @@ public class FeedbackRepository {
 						created_at BIGINT NOT NULL
 					);
 					""");
-			jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_chat_feedback_cid ON chat_feedback(conversation_id);");
-			log.info("PostgreSQL 用户反馈元数据表 'chat_feedback' 初始化/校验成功");
-		} catch (Exception ex) {
-			log.error("初始化 PostgreSQL 用户反馈表失败: {}", ex.getMessage(), ex);
-		}
-	}
+            jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_chat_feedback_cid ON chat_feedback(conversation_id);");
+            log.info("PostgreSQL 用户反馈元数据表 'chat_feedback' 初始化/校验成功");
+        } catch (Exception ex) {
+            log.error("初始化 PostgreSQL 用户反馈表失败: {}", ex.getMessage(), ex);
+        }
+    }
 
-	/**
-	 * 保存用户对消息的点赞/点踩反馈记录。userId 来自服务端受信任身份，不再信任请求体。
-	 */
-	public void saveFeedback(String userId, ChatFeedbackRequest request) {
-		if (request == null || request.rating() == null || request.rating().isBlank()) {
-			log.warn("跳过无效的反馈保存请求: {}", request);
-			return;
-		}
-		if (userId == null || userId.isBlank()) {
-			log.warn("跳过缺少用户身份的反馈保存请求: {}", request);
-			return;
-		}
-		String sql = """
+    /**
+     * 保存用户对消息的点赞/点踩反馈记录。userId 来自服务端受信任身份，不再信任请求体。
+     */
+    public void saveFeedback(String userId, ChatFeedbackRequest request) {
+        if (request == null || request.rating() == null || request.rating().isBlank()) {
+            log.warn("跳过无效的反馈保存请求: {}", request);
+            return;
+        }
+        if (userId == null || userId.isBlank()) {
+            log.warn("跳过缺少用户身份的反馈保存请求: {}", request);
+            return;
+        }
+        String sql = """
 				INSERT INTO chat_feedback (conversation_id, message_id, rating, comment, user_id, created_at)
 				VALUES (?, ?, ?, ?, ?, ?);
 				""";
-		jdbcTemplate.update(
-				sql,
-				request.conversationId(),
-				request.messageId(),
-				request.rating().toUpperCase(),
-				request.comment(),
-				userId,
-				System.currentTimeMillis()
-		);
-		log.info("已保存用户反馈记录 [user={}, cid={}, msgId={}, rating={}]",
-				userId, request.conversationId(), request.messageId(), request.rating());
-	}
+        jdbcTemplate.update(
+                sql,
+                request.conversationId(),
+                request.messageId(),
+                request.rating().toUpperCase(),
+                request.comment(),
+                userId,
+                System.currentTimeMillis());
+        log.info(
+                "已保存用户反馈记录 [user={}, cid={}, msgId={}, rating={}]",
+                userId,
+                request.conversationId(),
+                request.messageId(),
+                request.rating());
+    }
 }

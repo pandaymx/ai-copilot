@@ -1,12 +1,11 @@
 package xyz.ppmblszdp.ai.rag.rerank;
 
-import org.springframework.ai.document.Document;
-import org.springframework.stereotype.Component;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import org.springframework.ai.document.Document;
+import org.springframework.stereotype.Component;
 
 /**
  * RAG Reranker 精排服务接口与默认实现。
@@ -46,7 +45,8 @@ public interface RagReranker {
 
             for (Document doc : candidates) {
                 double rrfScore = getMetadataDouble(doc, "rrfScore", 0.0);
-                double textMatchScore = computeTextMatchScore(lowerQuery, doc.getText().toLowerCase());
+                double textMatchScore =
+                        computeTextMatchScore(lowerQuery, doc.getText().toLowerCase());
                 double finalScore = rrfScore * 0.7 + textMatchScore * 0.3;
 
                 Map<String, Object> meta = new java.util.HashMap<>(doc.getMetadata());

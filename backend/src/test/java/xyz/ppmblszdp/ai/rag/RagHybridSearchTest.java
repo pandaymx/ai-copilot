@@ -1,5 +1,11 @@
 package xyz.ppmblszdp.ai.rag;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.document.Document;
@@ -8,13 +14,6 @@ import org.springframework.ai.vectorstore.VectorStore;
 import xyz.ppmblszdp.ai.rag.repository.RagSearchRepository;
 import xyz.ppmblszdp.ai.rag.rerank.RagReranker;
 import xyz.ppmblszdp.ai.rag.service.RagQueryService;
-
-import java.util.List;
-import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 
 class RagHybridSearchTest {
 
@@ -29,16 +28,21 @@ class RagHybridSearchTest {
         mockSearchRepository = mock(RagSearchRepository.class);
 
         properties = new RagProperties(
-                true, 4, 900, 180, "CL100K_BASE", "ai_rag_documents",
-                true, false, true, 60, 3,
+                true,
+                4,
+                900,
+                180,
+                "CL100K_BASE",
+                "ai_rag_documents",
+                true,
+                false,
+                true,
+                60,
+                3,
                 new RagProperties.SsrfConfig(5, 10_485_760L));
 
         queryService = new RagQueryService(
-                mockVectorStore,
-                properties,
-                mockSearchRepository,
-                new RagReranker.DefaultRagReranker()
-        );
+                mockVectorStore, properties, mockSearchRepository, new RagReranker.DefaultRagReranker());
     }
 
     @Test
@@ -71,18 +75,23 @@ class RagHybridSearchTest {
     @Test
     void search_shouldFallbackToVectorOnly_whenHybridSearchDisabled() {
         RagProperties disabledProperties = new RagProperties(
-                true, 4, 900, 180, "CL100K_BASE", "ai_rag_documents",
-                false, false, false, 60, 3,
+                true,
+                4,
+                900,
+                180,
+                "CL100K_BASE",
+                "ai_rag_documents",
+                false,
+                false,
+                false,
+                60,
+                3,
                 new RagProperties.SsrfConfig(5, 10_485_760L));
 
-        RagQueryService fallbackQueryService = new RagQueryService(
-                mockVectorStore,
-                disabledProperties
-        );
+        RagQueryService fallbackQueryService = new RagQueryService(mockVectorStore, disabledProperties);
 
         Document docVec = new Document("doc-1", "纯向量结果", Map.of());
-        when(mockVectorStore.similaritySearch(any(SearchRequest.class)))
-                .thenReturn(List.of(docVec));
+        when(mockVectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(docVec));
 
         List<Document> results = fallbackQueryService.search("查询", "user-1");
 

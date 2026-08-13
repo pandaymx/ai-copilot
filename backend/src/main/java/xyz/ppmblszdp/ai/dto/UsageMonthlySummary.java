@@ -8,5 +8,4 @@ import java.math.BigDecimal;
  * @param totalTokens 累计 token 数
  * @param totalCost   累计费用（元）
  */
-public record UsageMonthlySummary(long totalTokens, BigDecimal totalCost) {
-}
+public record UsageMonthlySummary(long totalTokens, BigDecimal totalCost) {}

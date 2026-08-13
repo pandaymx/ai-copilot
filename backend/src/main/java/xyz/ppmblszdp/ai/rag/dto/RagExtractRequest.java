@@ -9,10 +9,4 @@ package xyz.ppmblszdp.ai.rag.dto;
  * @param sourceType 来源类型过滤
  * @param topK       检索 RAG 文档切片数量
  */
-public record RagExtractRequest(
-        String query,
-        String rawText,
-        String userId,
-        String sourceType,
-        Integer topK
-) {}
+public record RagExtractRequest(String query, String rawText, String userId, String sourceType, Integer topK) {}

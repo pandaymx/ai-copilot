@@ -1,12 +1,11 @@
 package xyz.ppmblszdp.ai.factory;
 
+import java.util.Map;
+import java.util.Optional;
 import org.springframework.ai.chat.model.ChatModel;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.config.ProviderProtocol;
 import xyz.ppmblszdp.ai.spi.CustomChatModelSupplier;
-
-import java.util.Map;
-import java.util.Optional;
 
 /**
  * 自定义 SPI 工厂。
@@ -17,25 +16,25 @@ import java.util.Optional;
  */
 public class CustomChatModelFactory implements ChatModelFactory {
 
-	private final Map<String, CustomChatModelSupplier> suppliers;
+    private final Map<String, CustomChatModelSupplier> suppliers;
 
-	public CustomChatModelFactory(Map<String, CustomChatModelSupplier> suppliers) {
-		this.suppliers = suppliers;
-	}
+    public CustomChatModelFactory(Map<String, CustomChatModelSupplier> suppliers) {
+        this.suppliers = suppliers;
+    }
 
-	@Override
-	public boolean supports(ProviderProtocol protocol) {
-		return protocol == ProviderProtocol.CUSTOM;
-	}
+    @Override
+    public boolean supports(ProviderProtocol protocol) {
+        return protocol == ProviderProtocol.CUSTOM;
+    }
 
-	@Override
-	public ChatModel create(AiProviderProperties.SecondClassConfig config) {
-		String supplierName = (config.supplier() == null || config.supplier().isBlank())
-				? "default" : config.supplier();
-		CustomChatModelSupplier supplier = Optional.ofNullable(suppliers.get(supplierName))
-				.orElseThrow(() -> new IllegalStateException(
-						"协议为 custom 的供应商 '%s' 需要名为 '%s' 的 CustomChatModelSupplier Bean，"
-								+ "但未找到。请实现该接口并以该名称注册为 Spring Bean。".formatted(config.id(), supplierName)));
-		return supplier.supply(config);
-	}
+    @Override
+    public ChatModel create(AiProviderProperties.SecondClassConfig config) {
+        String supplierName =
+                (config.supplier() == null || config.supplier().isBlank()) ? "default" : config.supplier();
+        CustomChatModelSupplier supplier = Optional.ofNullable(suppliers.get(supplierName))
+                .orElseThrow(
+                        () -> new IllegalStateException("协议为 custom 的供应商 '%s' 需要名为 '%s' 的 CustomChatModelSupplier Bean，"
+                                + "但未找到。请实现该接口并以该名称注册为 Spring Bean。".formatted(config.id(), supplierName)));
+        return supplier.supply(config);
+    }
 }

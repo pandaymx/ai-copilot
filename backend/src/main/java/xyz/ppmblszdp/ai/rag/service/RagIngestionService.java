@@ -1,5 +1,6 @@
 package xyz.ppmblszdp.ai.rag.service;
 
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
@@ -22,8 +23,6 @@ import xyz.ppmblszdp.ai.rag.metadata.RagMetadataEnricher;
 import xyz.ppmblszdp.ai.rag.reader.DocumentReaderFactory;
 import xyz.ppmblszdp.ai.rag.reader.SourceType;
 
-import java.util.List;
-
 /**
  * RAG 文档入库编排服务：Reader → Splitter → Metadata → Extraction → VectorStore 端到端管道。
  *
@@ -43,16 +42,22 @@ public class RagIngestionService {
     private final RagProperties properties;
     private final RagExtractionService extractionService;
 
-    public RagIngestionService(DocumentReaderFactory readerFactory,
+    public RagIngestionService(
+            DocumentReaderFactory readerFactory,
             TokenBasedRagTextSplitter splitter,
             @Qualifier("ragVectorStore") VectorStore ragVectorStore,
             RagProperties properties,
             ObjectProvider<RagExtractionService> extractionServiceProvider) {
-        this(readerFactory, splitter, ragVectorStore, properties,
+        this(
+                readerFactory,
+                splitter,
+                ragVectorStore,
+                properties,
                 extractionServiceProvider != null ? extractionServiceProvider.getIfAvailable() : null);
     }
 
-    public RagIngestionService(DocumentReaderFactory readerFactory,
+    public RagIngestionService(
+            DocumentReaderFactory readerFactory,
             TokenBasedRagTextSplitter splitter,
             VectorStore ragVectorStore,
             RagProperties properties,
@@ -64,7 +69,8 @@ public class RagIngestionService {
         this.extractionService = extractionService;
     }
 
-    public RagIngestionService(DocumentReaderFactory readerFactory,
+    public RagIngestionService(
+            DocumentReaderFactory readerFactory,
             TokenBasedRagTextSplitter splitter,
             VectorStore ragVectorStore,
             RagProperties properties) {
@@ -74,8 +80,7 @@ public class RagIngestionService {
     /**
      * 入库结果：区分实际新增与去重跳过的 chunk 数。
      */
-    public record IngestResult(int ingested, int skipped) {
-    }
+    public record IngestResult(int ingested, int skipped) {}
 
     /**
      * 默认入库入口（使用 SKIP 策略去重）。
@@ -95,15 +100,21 @@ public class RagIngestionService {
      * @return 入库结果（新增 / 跳过计数）
      */
     @Transactional
-    public IngestResult ingest(SourceType sourceType, String source, String fileName, String userId, ConflictPolicy conflictPolicy) {
+    public IngestResult ingest(
+            SourceType sourceType, String source, String fileName, String userId, ConflictPolicy conflictPolicy) {
         if (source == null || source.isBlank()) {
             log.warn("入库源为空，跳过: sourceType={} fileName={}", sourceType, fileName);
             return new IngestResult(0, 0);
         }
 
         ConflictPolicy policy = conflictPolicy != null ? conflictPolicy : ConflictPolicy.SKIP;
-        log.info("RAG 入库开始: sourceType={} source={} fileName={} userId={} policy={}",
-                sourceType, source, fileName, userId, policy);
+        log.info(
+                "RAG 入库开始: sourceType={} source={} fileName={} userId={} policy={}",
+                sourceType,
+                source,
+                fileName,
+                userId,
+                policy);
 
         // 如果是 OVERWRITE 模式，在事务内先严格清理旧数据
         if (policy == ConflictPolicy.OVERWRITE) {
@@ -142,7 +153,8 @@ public class RagIngestionService {
                 try {
                     String chunkContent = chunk.getText();
                     if (chunkContent != null && !chunkContent.isBlank()) {
-                        RagExtractRequest request = new RagExtractRequest(null, chunkContent, userId, sourceType.name(), null);
+                        RagExtractRequest request =
+                                new RagExtractRequest(null, chunkContent, userId, sourceType.name(), null);
                         StructuredKnowledge knowledge = extractionService.extract(request);
                         if (knowledge != null) {
                             chunk.getMetadata().put("structuredKnowledge", knowledge);
@@ -168,16 +180,31 @@ public class RagIngestionService {
         if (ingested > 0) {
             try {
                 ragVectorStore.add(toWrite);
-                log.info("RAG 入库完成: sourceType={} source={} ingested={} skipped={} policy={} userId={}",
-                        sourceType, source, ingested, skipped, policy, userId);
+                log.info(
+                        "RAG 入库完成: sourceType={} source={} ingested={} skipped={} policy={} userId={}",
+                        sourceType,
+                        source,
+                        ingested,
+                        skipped,
+                        policy,
+                        userId);
             } catch (Exception e) {
-                log.error("RAG 入库写入 VectorStore 异常: sourceType={} source={} chunks={} error={}",
-                        sourceType, source, ingested, e.getMessage(), e);
+                log.error(
+                        "RAG 入库写入 VectorStore 异常: sourceType={} source={} chunks={} error={}",
+                        sourceType,
+                        source,
+                        ingested,
+                        e.getMessage(),
+                        e);
                 throw new RuntimeException("RAG 向量库写入失败: " + source, e);
             }
         } else {
-            log.info("RAG 入库全部去重跳过: sourceType={} source={} chunks={} userId={}",
-                    sourceType, source, chunks.size(), userId);
+            log.info(
+                    "RAG 入库全部去重跳过: sourceType={} source={} chunks={} userId={}",
+                    sourceType,
+                    source,
+                    chunks.size(),
+                    userId);
         }
 
         return new IngestResult(ingested, skipped);
@@ -193,8 +220,7 @@ public class RagIngestionService {
         return new ReingestResult(removed, ingestResult.ingested(), ingestResult.skipped());
     }
 
-    public record ReingestResult(int removed, int ingested, int skipped) {
-    }
+    public record ReingestResult(int removed, int ingested, int skipped) {}
 
     /**
      * 按 source + userId 删除。
@@ -223,17 +249,19 @@ public class RagIngestionService {
             Filter.Expression filter;
             if (sourceType != null && !sourceType.isBlank()) {
                 filter = feb.and(
-                        feb.eq("source", source),
-                        feb.and(feb.eq("userId", uid), feb.eq("sourceType", sourceType))
-                ).build();
+                                feb.eq("source", source),
+                                feb.and(feb.eq("userId", uid), feb.eq("sourceType", sourceType)))
+                        .build();
             } else {
-                filter = feb.and(feb.eq("source", source), feb.eq("userId", uid)).build();
+                filter =
+                        feb.and(feb.eq("source", source), feb.eq("userId", uid)).build();
             }
             ragVectorStore.delete(filter);
             log.info("RAG 精确删除完成: source={} sourceType={} userId={}", source, sourceType, uid);
             return 1;
         } catch (Exception e) {
-            log.error("RAG 删除异常: source={} sourceType={} userId={} error={}", source, sourceType, uid, e.getMessage(), e);
+            log.error(
+                    "RAG 删除异常: source={} sourceType={} userId={} error={}", source, sourceType, uid, e.getMessage(), e);
             throw new RuntimeException("RAG 删除失败: " + source, e);
         }
     }
@@ -249,7 +277,8 @@ public class RagIngestionService {
         String uid = (userId != null) ? userId : "system";
         try {
             FilterExpressionBuilder feb = new FilterExpressionBuilder();
-            Filter.Expression filter = feb.and(feb.eq("contentHash", contentHash), feb.eq("userId", uid)).build();
+            Filter.Expression filter = feb.and(feb.eq("contentHash", contentHash), feb.eq("userId", uid))
+                    .build();
             ragVectorStore.delete(filter);
             log.info("RAG contentHash 删除完成: hash={} userId={}", contentHash, uid);
             return 1;
@@ -270,9 +299,8 @@ public class RagIngestionService {
                 continue;
             }
             String hash = hashObj.toString();
-            Filter.Expression filter = feb.and(
-                    feb.eq("contentHash", hash),
-                    feb.eq("userId", uid)).build();
+            Filter.Expression filter =
+                    feb.and(feb.eq("contentHash", hash), feb.eq("userId", uid)).build();
             SearchRequest probe = SearchRequest.builder()
                     .query("")
                     .topK(1)

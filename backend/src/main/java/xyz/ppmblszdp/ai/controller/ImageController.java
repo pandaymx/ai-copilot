@@ -23,17 +23,18 @@ import xyz.ppmblszdp.ai.service.ImageGenerationService;
 @RequestMapping("/api/image")
 public class ImageController {
 
-	private final ImageGenerationService imageGenerationService;
-	private final AuthProperties authProperties;
+    private final ImageGenerationService imageGenerationService;
+    private final AuthProperties authProperties;
 
-	public ImageController(ImageGenerationService imageGenerationService, AuthProperties authProperties) {
-		this.imageGenerationService = imageGenerationService;
-		this.authProperties = authProperties;
-	}
+    public ImageController(ImageGenerationService imageGenerationService, AuthProperties authProperties) {
+        this.imageGenerationService = imageGenerationService;
+        this.authProperties = authProperties;
+    }
 
-	@PostMapping("/generate")
-	public Mono<ImageGenerationResultDto> generate(@RequestBody ImageGenerationRequestDto request, ServerWebExchange exchange) {
-		UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
-		return imageGenerationService.generateImage(request);
-	}
+    @PostMapping("/generate")
+    public Mono<ImageGenerationResultDto> generate(
+            @RequestBody ImageGenerationRequestDto request, ServerWebExchange exchange) {
+        UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
+        return imageGenerationService.generateImage(request);
+    }
 }

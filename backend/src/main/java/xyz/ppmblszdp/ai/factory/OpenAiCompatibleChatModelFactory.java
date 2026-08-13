@@ -1,13 +1,12 @@
 package xyz.ppmblszdp.ai.factory;
 
+import java.time.Duration;
+import java.util.concurrent.Executors;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.config.ProviderProtocol;
-
-import java.time.Duration;
-import java.util.concurrent.Executors;
 
 /**
  * OpenAI 兼容协议工厂。
@@ -21,29 +20,30 @@ import java.util.concurrent.Executors;
  */
 public class OpenAiCompatibleChatModelFactory implements ChatModelFactory {
 
-	private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(60);
+    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(60);
 
-	@Override
-	public boolean supports(ProviderProtocol protocol) {
-		return protocol == ProviderProtocol.OPENAI;
-	}
+    @Override
+    public boolean supports(ProviderProtocol protocol) {
+        return protocol == ProviderProtocol.OPENAI;
+    }
 
-	@Override
-	public ChatModel create(AiProviderProperties.SecondClassConfig config) {
-		String defaultModel = config.firstEnabledModelName();
-		OpenAiChatOptions.Builder optsBuilder = OpenAiChatOptions.builder()
-				.baseUrl(config.baseUrl())
-				.apiKey(config.apiKey())
-				.timeout(DEFAULT_TIMEOUT);
-		if (config.maxRetriesOrNull() != null) {
-			optsBuilder.maxRetries(config.maxRetriesOrNull());
-		}
-		if (defaultModel != null) {
-			optsBuilder.model(defaultModel);
-		}
-		return OpenAiChatModel.builder()
-				.options(optsBuilder.build())
-				.httpClientBuilderCustomizer(b -> b.dispatcherExecutorService(Executors.newVirtualThreadPerTaskExecutor()))
-				.build();
-	}
+    @Override
+    public ChatModel create(AiProviderProperties.SecondClassConfig config) {
+        String defaultModel = config.firstEnabledModelName();
+        OpenAiChatOptions.Builder optsBuilder = OpenAiChatOptions.builder()
+                .baseUrl(config.baseUrl())
+                .apiKey(config.apiKey())
+                .timeout(DEFAULT_TIMEOUT);
+        if (config.maxRetriesOrNull() != null) {
+            optsBuilder.maxRetries(config.maxRetriesOrNull());
+        }
+        if (defaultModel != null) {
+            optsBuilder.model(defaultModel);
+        }
+        return OpenAiChatModel.builder()
+                .options(optsBuilder.build())
+                .httpClientBuilderCustomizer(
+                        b -> b.dispatcherExecutorService(Executors.newVirtualThreadPerTaskExecutor()))
+                .build();
+    }
 }

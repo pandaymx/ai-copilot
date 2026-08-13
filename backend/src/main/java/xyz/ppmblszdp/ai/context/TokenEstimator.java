@@ -1,8 +1,7 @@
 package xyz.ppmblszdp.ai.context;
 
-import org.springframework.ai.chat.messages.Message;
-
 import java.util.List;
+import org.springframework.ai.chat.messages.Message;
 
 /**
  * Token 估算接口。
@@ -12,9 +11,9 @@ import java.util.List;
  */
 public interface TokenEstimator {
 
-	/** 估算一段文本的 token 数。 */
-	int estimate(String text);
+    /** 估算一段文本的 token 数。 */
+    int estimate(String text);
 
-	/** 估算多条消息的 token 数之和。 */
-	int estimate(List<Message> messages);
+    /** 估算多条消息的 token 数之和。 */
+    int estimate(List<Message> messages);
 }

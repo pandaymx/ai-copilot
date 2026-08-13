@@ -31,8 +31,7 @@ public record RagProperties(
         @Name("extraction-enabled") @Nullable Boolean extractionEnabled,
         @Name("rrf-k") @Nullable Integer rrfK,
         @Name("candidate-pool-multiplier") @Nullable Integer candidatePoolMultiplier,
-        @Nullable SsrfConfig ssrf
-) {
+        @Nullable SsrfConfig ssrf) {
 
     public boolean isEnabled() {
         return enabled != null && enabled;
@@ -90,8 +89,7 @@ public record RagProperties(
      */
     public record SsrfConfig(
             @Name("timeout-seconds") @Nullable Integer timeoutSeconds,
-            @Name("max-body-bytes") @Nullable Long maxBodyBytes
-    ) {
+            @Name("max-body-bytes") @Nullable Long maxBodyBytes) {
         public static SsrfConfig defaults() {
             return new SsrfConfig(5, 10_485_760L); // 5s / 10MB
         }

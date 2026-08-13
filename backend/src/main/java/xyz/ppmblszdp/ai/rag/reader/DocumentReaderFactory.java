@@ -1,5 +1,12 @@
 package xyz.ppmblszdp.ai.rag.reader;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.UUID;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
@@ -14,14 +21,6 @@ import org.springframework.core.io.FileSystemResource;
 import org.springframework.stereotype.Component;
 import xyz.ppmblszdp.ai.rag.RagProperties;
 import xyz.ppmblszdp.ai.rag.security.SsrfGuard;
-
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.UUID;
 
 /**
  * 多源文档读取器工厂：按 {@link SourceType} 选择对应 Reader 构造并读取文档。
@@ -43,12 +42,33 @@ public class DocumentReaderFactory {
 
     /** 常见的 HTML 噪音标签与属性 */
     private static final String[] NOISE_SELECTORS = {
-            "script", "style", "nav", "header", "footer", "aside",
-            "noscript", "iframe", "svg", "form", "button",
-            "[role=complementary]", "[role=navigation]", "[role=banner]",
-            ".sidebar", ".nav", ".menu", ".footer", ".header", ".ads", ".ad",
-            ".advertisement", ".banner", ".social", ".comments", ".share",
-            "[aria-hidden=true]"
+        "script",
+        "style",
+        "nav",
+        "header",
+        "footer",
+        "aside",
+        "noscript",
+        "iframe",
+        "svg",
+        "form",
+        "button",
+        "[role=complementary]",
+        "[role=navigation]",
+        "[role=banner]",
+        ".sidebar",
+        ".nav",
+        ".menu",
+        ".footer",
+        ".header",
+        ".ads",
+        ".ad",
+        ".advertisement",
+        ".banner",
+        ".social",
+        ".comments",
+        ".share",
+        "[aria-hidden=true]"
     };
 
     public DocumentReaderFactory(RagProperties properties) {
@@ -76,8 +96,7 @@ public class DocumentReaderFactory {
     private List<Document> readPdf(String filePath, String fileName) {
         try {
             // Spring AI 2.0: PagePdfDocumentReader 按页解析
-            PagePdfDocumentReader reader = new PagePdfDocumentReader(
-                    new FileSystemResource(filePath));
+            PagePdfDocumentReader reader = new PagePdfDocumentReader(new FileSystemResource(filePath));
             List<Document> docs = reader.get();
             for (int i = 0; i < docs.size(); i++) {
                 Document doc = docs.get(i);
@@ -94,8 +113,7 @@ public class DocumentReaderFactory {
 
     private List<Document> readTika(String filePath, String fileName) {
         try {
-            TikaDocumentReader reader = new TikaDocumentReader(
-                    new FileSystemResource(filePath));
+            TikaDocumentReader reader = new TikaDocumentReader(new FileSystemResource(filePath));
             List<Document> docs = reader.get();
             log.info("Tika 解析完成: file={} chunks={}", fileName, docs.size());
             return docs;
@@ -110,14 +128,12 @@ public class DocumentReaderFactory {
             // 读取 Markdown 源文本
             String content = Files.readString(Path.of(filePath), StandardCharsets.UTF_8);
             // Spring AI 2.0: MarkdownDocumentReader 支持配置是否包含代码块与引用块
-            MarkdownDocumentReaderConfig config = MarkdownDocumentReaderConfig
-                    .builder()
+            MarkdownDocumentReaderConfig config = MarkdownDocumentReaderConfig.builder()
                     .withHorizontalRuleCreateDocument(true)
                     .withIncludeCodeBlock(true)
                     .withIncludeBlockquote(true)
                     .build();
-            MarkdownDocumentReader reader = new MarkdownDocumentReader(
-                    content, config);
+            MarkdownDocumentReader reader = new MarkdownDocumentReader(content, config);
             List<Document> docs = reader.get();
             log.info("Markdown 解析完成: file={} chunks={}", fileName, docs.size());
             return docs;
@@ -155,9 +171,7 @@ public class DocumentReaderFactory {
             if (mainContent == null) {
                 mainContent = htmlDoc.body();
             }
-            String text = (mainContent != null)
-                    ? mainContent.text()
-                    : htmlDoc.text();
+            String text = (mainContent != null) ? mainContent.text() : htmlDoc.text();
 
             if (text.isBlank()) {
                 log.warn("URL 抓取后未提取到有效正文: url={}", url);

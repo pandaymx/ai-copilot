@@ -1,5 +1,8 @@
 package xyz.ppmblszdp.ai.context;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -7,10 +10,6 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.content.Media;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.dto.ChatMessageDto;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 
 /**
  * 上下文组装器：本方案核心算法（统一 Token 动态滑动窗口剪裁）。
@@ -33,252 +32,260 @@ import java.util.List;
  */
 public class ContextAssembler {
 
-	private final AiProviderProperties properties;
-	private final TokenEstimator estimator;
+    private final AiProviderProperties properties;
+    private final TokenEstimator estimator;
 
-	public ContextAssembler(AiProviderProperties properties, TokenEstimator estimator) {
-		this.properties = properties;
-		this.estimator = estimator;
-	}
+    public ContextAssembler(AiProviderProperties properties, TokenEstimator estimator) {
+        this.properties = properties;
+        this.estimator = estimator;
+    }
 
-	/**
-	 * 组装消息列表（针对 DTO 历史路径）。
-	 *
-	 * @param message          当前用户消息（必填）
-	 * @param history          历史消息（可能已含当前消息，需去重）
-	 * @param requestSystem    请求级 system prompt 覆盖（可空）
-	 * @param providerSystem   供应商级 system prompt（可空）
-	 * @param maxContextTokens 模型上下文窗口大小
-	 * @return 可直接用于 {@code new Prompt(messages, options)} 的消息列表
-	 */
-	public List<Message> assemble(String message, List<ChatMessageDto> history,
-			String requestSystem, String providerSystem, int maxContextTokens) {
-		return assemble(message, history, requestSystem, providerSystem, maxContextTokens, List.of());
-	}
+    /**
+     * 组装消息列表（针对 DTO 历史路径）。
+     *
+     * @param message          当前用户消息（必填）
+     * @param history          历史消息（可能已含当前消息，需去重）
+     * @param requestSystem    请求级 system prompt 覆盖（可空）
+     * @param providerSystem   供应商级 system prompt（可空）
+     * @param maxContextTokens 模型上下文窗口大小
+     * @return 可直接用于 {@code new Prompt(messages, options)} 的消息列表
+     */
+    public List<Message> assemble(
+            String message,
+            List<ChatMessageDto> history,
+            String requestSystem,
+            String providerSystem,
+            int maxContextTokens) {
+        return assemble(message, history, requestSystem, providerSystem, maxContextTokens, List.of());
+    }
 
-	public List<Message> assemble(String message, List<ChatMessageDto> history,
-			String requestSystem, String providerSystem, int maxContextTokens, List<Media> mediaList) {
-		String system = resolveSystem(requestSystem, providerSystem);
-		int systemTokens = (system != null) ? estimator.estimate(system) : 0;
+    public List<Message> assemble(
+            String message,
+            List<ChatMessageDto> history,
+            String requestSystem,
+            String providerSystem,
+            int maxContextTokens,
+            List<Media> mediaList) {
+        String system = resolveSystem(requestSystem, providerSystem);
+        int systemTokens = (system != null) ? estimator.estimate(system) : 0;
 
-		int reserve = properties.resolveContext().resolveReserveOutputTokens();
-		double ratio = properties.resolveContext().resolveHistoryRatio();
-		int budget = (int) (maxContextTokens * ratio) - systemTokens - reserve;
-		if (budget < 0) {
-			budget = 0;
-		}
+        int reserve = properties.resolveContext().resolveReserveOutputTokens();
+        double ratio = properties.resolveContext().resolveHistoryRatio();
+        int budget = (int) (maxContextTokens * ratio) - systemTokens - reserve;
+        if (budget < 0) {
+            budget = 0;
+        }
 
-		// 1) 取出历史中的非系统消息，并去重当前消息
-		List<ChatMessageDto> deduped = dedupeCurrentMessage(history, message);
+        // 1) 取出历史中的非系统消息，并去重当前消息
+        List<ChatMessageDto> deduped = dedupeCurrentMessage(history, message);
 
-		// 2) 反向滑窗裁剪（按轮次成对对齐）
-		List<ChatMessageDto> kept = slidingWindow(deduped, budget);
+        // 2) 反向滑窗裁剪（按轮次成对对齐）
+        List<ChatMessageDto> kept = slidingWindow(deduped, budget);
 
-		// 3) 组装最终消息：system 保底在首
-		List<Message> result = new ArrayList<>();
-		if (system != null && !system.isBlank()) {
-			result.add(new SystemMessage(system));
-		}
-		for (ChatMessageDto dto : kept) {
-			result.add(toMessage(dto));
-		}
-		// 当前用户消息一定在末尾（去重后追加，支持多模态 Media）
-		if (mediaList != null && !mediaList.isEmpty()) {
-			result.add(UserMessage.builder().text(message).media(mediaList).build());
-		} else {
-			result.add(new UserMessage(message));
-		}
-		return result;
-	}
+        // 3) 组装最终消息：system 保底在首
+        List<Message> result = new ArrayList<>();
+        if (system != null && !system.isBlank()) {
+            result.add(new SystemMessage(system));
+        }
+        for (ChatMessageDto dto : kept) {
+            result.add(toMessage(dto));
+        }
+        // 当前用户消息一定在末尾（去重后追加，支持多模态 Media）
+        if (mediaList != null && !mediaList.isEmpty()) {
+            result.add(UserMessage.builder().text(message).media(mediaList).build());
+        } else {
+            result.add(new UserMessage(message));
+        }
+        return result;
+    }
 
-	/**
-	 * 对 Spring AI 的 Message 列表（如从 ChatMemory 中读取的历史）进行统一 Token 预算反向滑动窗口裁剪。
-	 *
-	 * @param messages         原始 Message 列表
-	 * @param maxContextTokens 模型最大上下文 Token 数
-	 * @return 动态满足当前模型 Token 预算且按轮次成对对齐的 Message 列表
-	 */
-	public List<Message> trimMessages(List<Message> messages, int maxContextTokens) {
-		if (messages == null || messages.isEmpty()) {
-			return List.of();
-		}
-		// 1) 提取首个 SystemMessage（若存在）
-		SystemMessage systemMsg = null;
-		List<Message> conversationalMsgs = new ArrayList<>();
-		for (Message m : messages) {
-			if (m instanceof SystemMessage sys) {
-				if (systemMsg == null) {
-					systemMsg = sys;
-				}
-			} else {
-				conversationalMsgs.add(m);
-			}
-		}
+    /**
+     * 对 Spring AI 的 Message 列表（如从 ChatMemory 中读取的历史）进行统一 Token 预算反向滑动窗口裁剪。
+     *
+     * @param messages         原始 Message 列表
+     * @param maxContextTokens 模型最大上下文 Token 数
+     * @return 动态满足当前模型 Token 预算且按轮次成对对齐的 Message 列表
+     */
+    public List<Message> trimMessages(List<Message> messages, int maxContextTokens) {
+        if (messages == null || messages.isEmpty()) {
+            return List.of();
+        }
+        // 1) 提取首个 SystemMessage（若存在）
+        SystemMessage systemMsg = null;
+        List<Message> conversationalMsgs = new ArrayList<>();
+        for (Message m : messages) {
+            if (m instanceof SystemMessage sys) {
+                if (systemMsg == null) {
+                    systemMsg = sys;
+                }
+            } else {
+                conversationalMsgs.add(m);
+            }
+        }
 
-		int systemTokens = (systemMsg != null && systemMsg.getText() != null)
-				? estimator.estimate(systemMsg.getText())
-				: 0;
+        int systemTokens =
+                (systemMsg != null && systemMsg.getText() != null) ? estimator.estimate(systemMsg.getText()) : 0;
 
-		int reserve = properties.resolveContext().resolveReserveOutputTokens();
-		double ratio = properties.resolveContext().resolveHistoryRatio();
-		int budget = (int) (maxContextTokens * ratio) - systemTokens - reserve;
-		if (budget < 0) {
-			budget = 0;
-		}
+        int reserve = properties.resolveContext().resolveReserveOutputTokens();
+        double ratio = properties.resolveContext().resolveHistoryRatio();
+        int budget = (int) (maxContextTokens * ratio) - systemTokens - reserve;
+        if (budget < 0) {
+            budget = 0;
+        }
 
-		// 2) 反向滑动窗口剪裁
-		List<Message> kept = slidingWindowMessages(conversationalMsgs, budget);
+        // 2) 反向滑动窗口剪裁
+        List<Message> kept = slidingWindowMessages(conversationalMsgs, budget);
 
-		// 3) 组装最终结果
-		List<Message> result = new ArrayList<>();
-		if (systemMsg != null) {
-			result.add(systemMsg);
-		}
-		result.addAll(kept);
-		return result;
-	}
+        // 3) 组装最终结果
+        List<Message> result = new ArrayList<>();
+        if (systemMsg != null) {
+            result.add(systemMsg);
+        }
+        result.addAll(kept);
+        return result;
+    }
 
-	private String resolveSystem(String requestSystem, String providerSystem) {
-		if (requestSystem != null && !requestSystem.isBlank()) {
-			return requestSystem;
-		}
-		if (providerSystem != null && !providerSystem.isBlank()) {
-			return providerSystem;
-		}
-		String global = properties.systemPrompt();
-		return (global != null && !global.isBlank()) ? global : null;
-	}
+    private String resolveSystem(String requestSystem, String providerSystem) {
+        if (requestSystem != null && !requestSystem.isBlank()) {
+            return requestSystem;
+        }
+        if (providerSystem != null && !providerSystem.isBlank()) {
+            return providerSystem;
+        }
+        String global = properties.systemPrompt();
+        return (global != null && !global.isBlank()) ? global : null;
+    }
 
-	/** 暴露全局/默认系统提示词（记忆路径中作为 ChatClient system 兜底）。 */
-	public String defaultSystemPrompt() {
-		String global = properties.systemPrompt();
-		return (global != null && !global.isBlank()) ? global : "你是一个专业、友好且可靠的 AI 助手。";
-	}
+    /** 暴露全局/默认系统提示词（记忆路径中作为 ChatClient system 兜底）。 */
+    public String defaultSystemPrompt() {
+        String global = properties.systemPrompt();
+        return (global != null && !global.isBlank()) ? global : "你是一个专业、友好且可靠的 AI 助手。";
+    }
 
-	/**
-	 * 去重：若 history 非空，且最后一条是 user 且内容与当前 message 相同，
-	 * 则去掉该条（它会被作为当前消息重新追加），避免重复发送。
-	 */
-	private List<ChatMessageDto> dedupeCurrentMessage(List<ChatMessageDto> history, String message) {
-		List<ChatMessageDto> src = (history == null) ? List.of() : history;
-		if (src.isEmpty()) {
-			return List.of();
-		}
-		ChatMessageDto last = src.get(src.size() - 1);
-		List<ChatMessageDto> out = new ArrayList<>(src);
-		if ("user".equalsIgnoreCase(last.role()) && message != null && message.equals(last.content())) {
-			out.remove(out.size() - 1);
-		}
-		return out;
-	}
+    /**
+     * 去重：若 history 非空，且最后一条是 user 且内容与当前 message 相同，
+     * 则去掉该条（它会被作为当前消息重新追加），避免重复发送。
+     */
+    private List<ChatMessageDto> dedupeCurrentMessage(List<ChatMessageDto> history, String message) {
+        List<ChatMessageDto> src = (history == null) ? List.of() : history;
+        if (src.isEmpty()) {
+            return List.of();
+        }
+        ChatMessageDto last = src.get(src.size() - 1);
+        List<ChatMessageDto> out = new ArrayList<>(src);
+        if ("user".equalsIgnoreCase(last.role()) && message != null && message.equals(last.content())) {
+            out.remove(out.size() - 1);
+        }
+        return out;
+    }
 
-	/**
-	 * 反向滑动窗口：从最新消息向前累加 token，超预算即止，且以 user/assistant 轮次成对保留。
-	 */
-	private List<ChatMessageDto> slidingWindow(List<ChatMessageDto> messages, int budget) {
-		List<ChatMessageDto> kept = new ArrayList<>();
-		int used = 0;
-		for (int i = messages.size() - 1; i >= 0; i--) {
-			ChatMessageDto msg = messages.get(i);
-			if (msg == null || msg.content() == null) {
-				continue;
-			}
-			// 系统消息不计入历史预算（已单独保底）
-			if ("system".equalsIgnoreCase(msg.role())) {
-				continue;
-			}
-			int cost = estimator.estimate(msg.content());
-			// 成对对齐：仅当本消息与其「成对伙伴」（前一条）都能放入时才保留
-			boolean pairOk = true;
-			if (i > 0) {
-				ChatMessageDto prev = messages.get(i - 1);
-				if (prev != null && prev.content() != null && isPaired(msg.role(), prev.role())) {
-					int pairCost = cost + estimator.estimate(prev.content());
-					if (used + pairCost > budget) {
-						pairOk = false;
-					}
-				}
-			}
-			if (used + cost > budget || !pairOk) {
-				break;
-			}
-			used += cost;
-			kept.add(msg);
-		}
-		// kept 是反向收集的，需反转回正序
-		Collections.reverse(kept);
-		// 清理头部孤儿 assistant 消息，确保历史消息始终以 user 消息开头
-		while (!kept.isEmpty()) {
-			ChatMessageDto first = kept.get(0);
-			if ("assistant".equalsIgnoreCase(first.role())) {
-				kept.remove(0);
-			} else {
-				break;
-			}
-		}
-		return kept;
-	}
+    /**
+     * 反向滑动窗口：从最新消息向前累加 token，超预算即止，且以 user/assistant 轮次成对保留。
+     */
+    private List<ChatMessageDto> slidingWindow(List<ChatMessageDto> messages, int budget) {
+        List<ChatMessageDto> kept = new ArrayList<>();
+        int used = 0;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            ChatMessageDto msg = messages.get(i);
+            if (msg == null || msg.content() == null) {
+                continue;
+            }
+            // 系统消息不计入历史预算（已单独保底）
+            if ("system".equalsIgnoreCase(msg.role())) {
+                continue;
+            }
+            int cost = estimator.estimate(msg.content());
+            // 成对对齐：仅当本消息与其「成对伙伴」（前一条）都能放入时才保留
+            boolean pairOk = true;
+            if (i > 0) {
+                ChatMessageDto prev = messages.get(i - 1);
+                if (prev != null && prev.content() != null && isPaired(msg.role(), prev.role())) {
+                    int pairCost = cost + estimator.estimate(prev.content());
+                    if (used + pairCost > budget) {
+                        pairOk = false;
+                    }
+                }
+            }
+            if (used + cost > budget || !pairOk) {
+                break;
+            }
+            used += cost;
+            kept.add(msg);
+        }
+        // kept 是反向收集的，需反转回正序
+        Collections.reverse(kept);
+        // 清理头部孤儿 assistant 消息，确保历史消息始终以 user 消息开头
+        while (!kept.isEmpty()) {
+            ChatMessageDto first = kept.get(0);
+            if ("assistant".equalsIgnoreCase(first.role())) {
+                kept.remove(0);
+            } else {
+                break;
+            }
+        }
+        return kept;
+    }
 
-	private List<Message> slidingWindowMessages(List<Message> messages, int budget) {
-		List<Message> kept = new ArrayList<>();
-		int used = 0;
-		for (int i = messages.size() - 1; i >= 0; i--) {
-			Message msg = messages.get(i);
-			if (msg == null || msg.getText() == null) {
-				continue;
-			}
-			int cost = estimator.estimate(msg.getText());
-			boolean pairOk = true;
-			if (i > 0) {
-				Message prev = messages.get(i - 1);
-				if (prev != null && prev.getText() != null && isPairedMessage(msg, prev)) {
-					int pairCost = cost + estimator.estimate(prev.getText());
-					if (used + pairCost > budget) {
-						pairOk = false;
-					}
-				}
-			}
-			if (used + cost > budget || !pairOk) {
-				break;
-			}
-			used += cost;
-			kept.add(msg);
-		}
-		Collections.reverse(kept);
-		// 清理头部孤儿 AssistantMessage
-		while (!kept.isEmpty()) {
-			Message first = kept.get(0);
-			if (first instanceof AssistantMessage) {
-				kept.remove(0);
-			} else {
-				break;
-			}
-		}
-		return kept;
-	}
+    private List<Message> slidingWindowMessages(List<Message> messages, int budget) {
+        List<Message> kept = new ArrayList<>();
+        int used = 0;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            Message msg = messages.get(i);
+            if (msg == null || msg.getText() == null) {
+                continue;
+            }
+            int cost = estimator.estimate(msg.getText());
+            boolean pairOk = true;
+            if (i > 0) {
+                Message prev = messages.get(i - 1);
+                if (prev != null && prev.getText() != null && isPairedMessage(msg, prev)) {
+                    int pairCost = cost + estimator.estimate(prev.getText());
+                    if (used + pairCost > budget) {
+                        pairOk = false;
+                    }
+                }
+            }
+            if (used + cost > budget || !pairOk) {
+                break;
+            }
+            used += cost;
+            kept.add(msg);
+        }
+        Collections.reverse(kept);
+        // 清理头部孤儿 AssistantMessage
+        while (!kept.isEmpty()) {
+            Message first = kept.get(0);
+            if (first instanceof AssistantMessage) {
+                kept.remove(0);
+            } else {
+                break;
+            }
+        }
+        return kept;
+    }
 
-	private boolean isPaired(String role, String prevRole) {
-		if ("user".equalsIgnoreCase(role) && "assistant".equalsIgnoreCase(prevRole)) {
-			return true;
-		}
-		if ("assistant".equalsIgnoreCase(role) && "user".equalsIgnoreCase(prevRole)) {
-			return true;
-		}
-		return false;
-	}
+    private boolean isPaired(String role, String prevRole) {
+        if ("user".equalsIgnoreCase(role) && "assistant".equalsIgnoreCase(prevRole)) {
+            return true;
+        }
+        if ("assistant".equalsIgnoreCase(role) && "user".equalsIgnoreCase(prevRole)) {
+            return true;
+        }
+        return false;
+    }
 
-	private boolean isPairedMessage(Message msg, Message prev) {
-		return (msg instanceof UserMessage && prev instanceof AssistantMessage) ||
-				(msg instanceof AssistantMessage && prev instanceof UserMessage);
-	}
+    private boolean isPairedMessage(Message msg, Message prev) {
+        return (msg instanceof UserMessage && prev instanceof AssistantMessage)
+                || (msg instanceof AssistantMessage && prev instanceof UserMessage);
+    }
 
-	private Message toMessage(ChatMessageDto dto) {
-		String content = (dto.content() == null) ? "" : dto.content();
-		String role = (dto.role() == null) ? "user" : dto.role();
-		return switch (role.toLowerCase()) {
-			case "system" -> new SystemMessage(content);
-			case "assistant" -> new AssistantMessage(content);
-			default -> new UserMessage(content);
-		};
-	}
+    private Message toMessage(ChatMessageDto dto) {
+        String content = (dto.content() == null) ? "" : dto.content();
+        String role = (dto.role() == null) ? "user" : dto.role();
+        return switch (role.toLowerCase()) {
+            case "system" -> new SystemMessage(content);
+            case "assistant" -> new AssistantMessage(content);
+            default -> new UserMessage(content);
+        };
+    }
 }

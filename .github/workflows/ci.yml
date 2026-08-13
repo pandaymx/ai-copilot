@@ -243,3 +243,31 @@ jobs:
         with:
           sarif_file: 'trivy-frontend-image.sarif'
           category: 'trivy-frontend-image'
+
+  commitlint:
+    name: Commit Message Convention Check
+    runs-on: ubuntu-latest
+    # Only enforce on PRs to avoid rejecting historical/main commits.
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          # Need the full PR history to resolve the head commit message.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install Root Hook Dependencies (commitlint)
+        run: bun install
+
+      - name: Verify PR Head Commit Message
+        run: |
+          MSG="$(git log -1 --pretty=%B)"
+          echo "Validating commit message:"
+          echo "$MSG"
+          echo "$MSG" | bunx --no-install commitlint

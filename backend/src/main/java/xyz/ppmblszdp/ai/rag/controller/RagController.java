@@ -1,5 +1,9 @@
 package xyz.ppmblszdp.ai.rag.controller;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -17,11 +21,6 @@ import xyz.ppmblszdp.ai.rag.security.SsrfBlockedException;
 import xyz.ppmblszdp.ai.rag.service.RagExtractionService;
 import xyz.ppmblszdp.ai.rag.service.RagIngestionService;
 import xyz.ppmblszdp.ai.rag.service.RagQueryService;
-
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * RAG 文档入库、检索与结构化抽取 REST 接口。
@@ -51,10 +50,11 @@ public class RagController {
     private final RagExtractionService extractionService;
     private final AuthProperties authProperties;
 
-    public RagController(RagIngestionService ingestionService,
-                         RagQueryService queryService,
-                         RagExtractionService extractionService,
-                         AuthProperties authProperties) {
+    public RagController(
+            RagIngestionService ingestionService,
+            RagQueryService queryService,
+            RagExtractionService extractionService,
+            AuthProperties authProperties) {
         this.ingestionService = ingestionService;
         this.queryService = queryService;
         this.extractionService = extractionService;
@@ -65,16 +65,14 @@ public class RagController {
      * 多源文档入库（支持 ConflictPolicy 冲突策略）。
      */
     @PostMapping("/ingest")
-    public ResponseEntity<Map<String, Object>> ingest(
-            @RequestBody IngestRequest request, ServerWebExchange exchange) {
+    public ResponseEntity<Map<String, Object>> ingest(@RequestBody IngestRequest request, ServerWebExchange exchange) {
 
         SourceType sourceType;
         try {
             sourceType = SourceType.valueOf(request.sourceType().toUpperCase());
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(
-                    Map.of("error", "未知的 sourceType: " + request.sourceType(),
-                            "valid", SourceType.values()));
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "未知的 sourceType: " + request.sourceType(), "valid", SourceType.values()));
         }
 
         String source = "";
@@ -92,9 +90,9 @@ public class RagController {
                 source = request.targetUrl();
             }
             case PDF, TIKA, MARKDOWN -> {
-                if (request.fileStoragePath() == null || request.fileStoragePath().isBlank()) {
-                    return ResponseEntity.badRequest().body(Map.of("error",
-                            sourceType + " 类型需提供 fileStoragePath"));
+                if (request.fileStoragePath() == null
+                        || request.fileStoragePath().isBlank()) {
+                    return ResponseEntity.badRequest().body(Map.of("error", sourceType + " 类型需提供 fileStoragePath"));
                 }
                 source = request.fileStoragePath();
             }
@@ -104,13 +102,15 @@ public class RagController {
         String userId = UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
 
         try {
-            RagIngestionService.IngestResult result = ingestionService.ingest(
-                    sourceType, source, fileName, userId, request.conflictPolicy());
+            RagIngestionService.IngestResult result =
+                    ingestionService.ingest(sourceType, source, fileName, userId, request.conflictPolicy());
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("success", true);
             body.put("sourceType", sourceType.name());
             body.put("source", source);
-            body.put("conflictPolicy", request.conflictPolicy() != null ? request.conflictPolicy().name() : "SKIP");
+            body.put(
+                    "conflictPolicy",
+                    request.conflictPolicy() != null ? request.conflictPolicy().name() : "SKIP");
             body.put("ingested", result.ingested());
             body.put("skipped", result.skipped());
             return ResponseEntity.ok(body);
@@ -155,14 +155,9 @@ public class RagController {
         long total = items.size();
         Map<String, Long> sourceTypeCounts = items.stream()
                 .map(o -> ((RagDocumentMeta) o))
-                .collect(Collectors.groupingBy(
-                        RagDocumentMeta::sourceType,
-                        Collectors.counting()));
+                .collect(Collectors.groupingBy(RagDocumentMeta::sourceType, Collectors.counting()));
         RagListResponse response = new RagListResponse(
-                items.stream()
-                        .map(o -> (RagDocumentMeta) o)
-                        .collect(Collectors.toList()),
-                total, sourceTypeCounts);
+                items.stream().map(o -> (RagDocumentMeta) o).collect(Collectors.toList()), total, sourceTypeCounts);
         return ResponseEntity.ok(response);
     }
 
@@ -216,9 +211,8 @@ public class RagController {
         try {
             sourceType = SourceType.valueOf(request.sourceType().toUpperCase());
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(
-                    Map.of("error", "未知的 sourceType: " + request.sourceType(),
-                            "valid", SourceType.values()));
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "未知的 sourceType: " + request.sourceType(), "valid", SourceType.values()));
         }
 
         String source = "";
@@ -236,9 +230,9 @@ public class RagController {
                 source = request.targetUrl();
             }
             case PDF, TIKA, MARKDOWN -> {
-                if (request.fileStoragePath() == null || request.fileStoragePath().isBlank()) {
-                    return ResponseEntity.badRequest().body(Map.of("error",
-                            sourceType + " 类型需提供 fileStoragePath"));
+                if (request.fileStoragePath() == null
+                        || request.fileStoragePath().isBlank()) {
+                    return ResponseEntity.badRequest().body(Map.of("error", sourceType + " 类型需提供 fileStoragePath"));
                 }
                 source = request.fileStoragePath();
             }
@@ -248,8 +242,8 @@ public class RagController {
         String resolvedUser = UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
 
         try {
-            RagIngestionService.ReingestResult result = ingestionService.reingest(
-                    sourceType, source, fileName, resolvedUser);
+            RagIngestionService.ReingestResult result =
+                    ingestionService.reingest(sourceType, source, fileName, resolvedUser);
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("success", true);
             body.put("sourceType", sourceType.name());
@@ -300,15 +294,21 @@ public class RagController {
             body.put("userId", userId);
             body.put("sourceType", sourceType);
             body.put("count", results.size());
-            body.put("results", results.stream().map(doc -> {
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("id", doc.getId());
-                item.put("text", doc.getText().length() > 500
-                        ? doc.getText().substring(0, 500) + "..."
-                        : doc.getText());
-                item.put("metadata", doc.getMetadata());
-                return item;
-            }).toList());
+            body.put(
+                    "results",
+                    results.stream()
+                            .map(doc -> {
+                                Map<String, Object> item = new LinkedHashMap<>();
+                                item.put("id", doc.getId());
+                                item.put(
+                                        "text",
+                                        doc.getText().length() > 500
+                                                ? doc.getText().substring(0, 500) + "..."
+                                                : doc.getText());
+                                item.put("metadata", doc.getMetadata());
+                                return item;
+                            })
+                            .toList());
             return ResponseEntity.ok(body);
         } catch (Exception e) {
             log.error("检索异常: query=...", e);

@@ -38,8 +38,7 @@ public class RagAdvisorConfig {
 
     @Bean
     public RagAdvisorFactory ragAdvisorFactory(
-            @Qualifier("ragVectorStore") ObjectProvider<VectorStore> ragVectorStore,
-            RagProperties properties) {
+            @Qualifier("ragVectorStore") ObjectProvider<VectorStore> ragVectorStore, RagProperties properties) {
 
         VectorStore vs = ragVectorStore.getIfAvailable();
         int topK = properties.resolveTopK();
@@ -54,7 +53,8 @@ public class RagAdvisorConfig {
 
         return (userId, sourceType) -> {
             FilterExpressionBuilder feb = new FilterExpressionBuilder();
-            var op = feb.eq("userId", (userId != null && !userId.isBlank()) ? userId : UserIdentityFilter.DEFAULT_USER_ID);
+            var op = feb.eq(
+                    "userId", (userId != null && !userId.isBlank()) ? userId : UserIdentityFilter.DEFAULT_USER_ID);
             Filter.Expression filter;
             if (sourceType != null && !sourceType.isBlank()) {
                 filter = feb.and(op, feb.eq("sourceType", sourceType)).build();
@@ -62,10 +62,8 @@ public class RagAdvisorConfig {
                 filter = op.build();
             }
 
-            SearchRequest search = SearchRequest.builder()
-                    .topK(topK)
-                    .filterExpression(filter)
-                    .build();
+            SearchRequest search =
+                    SearchRequest.builder().topK(topK).filterExpression(filter).build();
 
             PromptTemplate promptTemplate = new PromptTemplate("""
                     {query}

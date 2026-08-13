@@ -1,15 +1,14 @@
 package xyz.ppmblszdp.ai.rag.chunker;
 
 import com.knuddels.jtokkit.api.EncodingType;
+import java.util.ArrayList;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.stereotype.Component;
 import xyz.ppmblszdp.ai.rag.RagProperties;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * 基于 {@link TokenTextSplitter} 的默认切片策略，附加自实现 overlap 尾部复用包装。
@@ -40,8 +39,7 @@ public class TokenBasedRagTextSplitter implements RagTextSplitter {
                 .withEncodingType(EncodingType.valueOf(encodingType))
                 .build();
 
-        log.info("TokenTextSplitter 装配完成: chunkSize={} overlap={} encoding={}",
-                chunkSize, overlap, encodingType);
+        log.info("TokenTextSplitter 装配完成: chunkSize={} overlap={} encoding={}", chunkSize, overlap, encodingType);
     }
 
     @Override

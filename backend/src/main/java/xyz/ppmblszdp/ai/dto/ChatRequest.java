@@ -24,49 +24,48 @@ import java.util.List;
  * @param agentEnabled  Agent 模式开关（可选）；为 true 时装配工具调用并推送 tool_call/tool_result 帧
  */
 public record ChatRequest(
-		String message,
-		List<ChatMessageDto> history,
-		String provider,
-		String model,
-		String systemPrompt,
-		String conversationId,
-		String userId,
-		List<MediaDto> media,
-		Boolean agentEnabled
-) {
-	public List<MediaDto> media() {
-		return media == null ? List.of() : media;
-	}
+        String message,
+        List<ChatMessageDto> history,
+        String provider,
+        String model,
+        String systemPrompt,
+        String conversationId,
+        String userId,
+        List<MediaDto> media,
+        Boolean agentEnabled) {
+    public List<MediaDto> media() {
+        return media == null ? List.of() : media;
+    }
 
-	public List<ChatMessageDto> history() {
-		return history == null ? List.of() : history;
-	}
+    public List<ChatMessageDto> history() {
+        return history == null ? List.of() : history;
+    }
 
-	public String message() {
-		if (message == null || message.isBlank()) {
-			throw new IllegalArgumentException("message 不能为空");
-		}
-		return message;
-	}
+    public String message() {
+        if (message == null || message.isBlank()) {
+            throw new IllegalArgumentException("message 不能为空");
+        }
+        return message;
+    }
 
-	/** 是否走记忆驱动路径：有 conversationId 即启用（依赖 app.ai.memory.enabled 总开关）。 */
-	public boolean hasConversation() {
-		return conversationId != null && !conversationId.isBlank();
-	}
+    /** 是否走记忆驱动路径：有 conversationId 即启用（依赖 app.ai.memory.enabled 总开关）。 */
+    public boolean hasConversation() {
+        return conversationId != null && !conversationId.isBlank();
+    }
 
-	/** 返回一个带指定 conversationId 的副本（record 不可变，用于后端生成后回填）。 */
-	public ChatRequest withConversationId(String id) {
-		return new ChatRequest(message, history, provider, model, systemPrompt, id, userId, media, agentEnabled);
-	}
+    /** 返回一个带指定 conversationId 的副本（record 不可变，用于后端生成后回填）。 */
+    public ChatRequest withConversationId(String id) {
+        return new ChatRequest(message, history, provider, model, systemPrompt, id, userId, media, agentEnabled);
+    }
 
-	/**
-	 * 解析当前用户 id；空则回落匿名标识。
-	 *
-	 * @deprecated 服务端身份已从受信任 {@code X-User-Id} Header 解析（见 {@code UserIdentityFilter}）。
-	 * 该方法仅保留作为 dev 模式 fallback，生产环境不应信任请求体中的 userId。
-	 */
-	@Deprecated(since = "auth-refactor", forRemoval = false)
-	public String resolveUserId() {
-		return (userId != null && !userId.isBlank()) ? userId : "anonymous";
-	}
+    /**
+     * 解析当前用户 id；空则回落匿名标识。
+     *
+     * @deprecated 服务端身份已从受信任 {@code X-User-Id} Header 解析（见 {@code UserIdentityFilter}）。
+     * 该方法仅保留作为 dev 模式 fallback，生产环境不应信任请求体中的 userId。
+     */
+    @Deprecated(since = "auth-refactor", forRemoval = false)
+    public String resolveUserId() {
+        return (userId != null && !userId.isBlank()) ? userId : "anonymous";
+    }
 }

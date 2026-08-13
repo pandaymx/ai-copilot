@@ -1,11 +1,11 @@
 package xyz.ppmblszdp.ai.rag.security;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.assertThatCode;
 
 class SsrfGuardTest {
 
@@ -65,13 +65,13 @@ class SsrfGuardTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {
-            "http://0.0.0.0:8080",
-            "http://100.64.0.1/api",
-            "http://100.127.255.254/api",
-    })
+    @ValueSource(
+            strings = {
+                "http://0.0.0.0:8080",
+                "http://100.64.0.1/api",
+                "http://100.127.255.254/api",
+            })
     void shouldBlockReservedOrCgnatAddresses(String url) {
-        assertThatThrownBy(() -> SsrfGuard.validate(url))
-                .isInstanceOf(SsrfBlockedException.class);
+        assertThatThrownBy(() -> SsrfGuard.validate(url)).isInstanceOf(SsrfBlockedException.class);
     }
 }

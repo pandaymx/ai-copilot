@@ -1,11 +1,10 @@
 package xyz.ppmblszdp.ai.safeguard;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 高性能安全检查与脱敏引擎。
@@ -20,165 +19,166 @@ import java.util.regex.Pattern;
  */
 public class SafeGuardEngine {
 
-	private static final Logger log = LoggerFactory.getLogger(SafeGuardEngine.class);
+    private static final Logger log = LoggerFactory.getLogger(SafeGuardEngine.class);
 
-	// ─────────────────────────────────────────────
-	// 静态预编译正则表达式（高性能）
-	// ─────────────────────────────────────────────
+    // ─────────────────────────────────────────────
+    // 静态预编译正则表达式（高性能）
+    // ─────────────────────────────────────────────
 
-	/** 中国大陆手机号正则 */
-	private static final Pattern PHONE_PATTERN = Pattern.compile("1[3-9]\\d{9}");
+    /** 中国大陆手机号正则 */
+    private static final Pattern PHONE_PATTERN = Pattern.compile("1[3-9]\\d{9}");
 
-	/** 中国居民身份证正则 */
-	private static final Pattern ID_CARD_PATTERN = Pattern.compile("[1-9]\\d{5}(18|19|20)\\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\\d|3[01])\\d{3}[\\dX]");
+    /** 中国居民身份证正则 */
+    private static final Pattern ID_CARD_PATTERN =
+            Pattern.compile("[1-9]\\d{5}(18|19|20)\\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\\d|3[01])\\d{3}[\\dX]");
 
-	/** 常用 Email 正则 */
-	private static final Pattern EMAIL_PATTERN = Pattern.compile("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}");
+    /** 常用 Email 正则 */
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}");
 
-	/** Prompt 注入攻击模式 */
-	private static final List<Pattern> PROMPT_INJECTION_PATTERNS = List.of(
-			Pattern.compile("(?i)ignore\\s+(all\\s+)?previous\\s+instructions"),
-			Pattern.compile("(?i)system\\s+prompt\\s+(override|bypass|instructions)"),
-			Pattern.compile("(?i)you\\s+are\\s+now\\s+DAN"),
-			Pattern.compile("(?i)jailbreak\\s+(mode|prompt)"),
-			Pattern.compile("(?i)disregard\\s+all\\s+prior\\s+rules")
-	);
+    /** Prompt 注入攻击模式 */
+    private static final List<Pattern> PROMPT_INJECTION_PATTERNS = List.of(
+            Pattern.compile("(?i)ignore\\s+(all\\s+)?previous\\s+instructions"),
+            Pattern.compile("(?i)system\\s+prompt\\s+(override|bypass|instructions)"),
+            Pattern.compile("(?i)you\\s+are\\s+now\\s+DAN"),
+            Pattern.compile("(?i)jailbreak\\s+(mode|prompt)"),
+            Pattern.compile("(?i)disregard\\s+all\\s+prior\\s+rules"));
 
-	private final SensitiveWordMatcher sensitiveWordMatcher;
-	private final String maskReplacement;
+    private final SensitiveWordMatcher sensitiveWordMatcher;
+    private final String maskReplacement;
 
-	public SafeGuardEngine(SensitiveWordMatcher sensitiveWordMatcher, String maskReplacement) {
-		this.sensitiveWordMatcher = sensitiveWordMatcher;
-		this.maskReplacement = maskReplacement != null ? maskReplacement : "***";
-	}
+    public SafeGuardEngine(SensitiveWordMatcher sensitiveWordMatcher, String maskReplacement) {
+        this.sensitiveWordMatcher = sensitiveWordMatcher;
+        this.maskReplacement = maskReplacement != null ? maskReplacement : "***";
+    }
 
-	public SafeGuardEngine(List<String> sensitiveWords, String maskReplacement) {
-		this(new DefaultSensitiveWordMatcher(sensitiveWords), maskReplacement);
-	}
+    public SafeGuardEngine(List<String> sensitiveWords, String maskReplacement) {
+        this(new DefaultSensitiveWordMatcher(sensitiveWords), maskReplacement);
+    }
 
-	/**
-	 * 前置 Request 检查
-	 *
-	 * @param text   用户输入的 Prompt 文本
-	 * @param policy 前置处置策略 (BLOCK / MASK / LOG_ONLY)
-	 * @return 检查结果
-	 */
-	public SafeGuardCheckResult inspectRequest(String text, ActionPolicy policy) {
-		if (text == null || text.isBlank()) {
-			return SafeGuardCheckResult.clean(text);
-		}
+    /**
+     * 前置 Request 检查
+     *
+     * @param text   用户输入的 Prompt 文本
+     * @param policy 前置处置策略 (BLOCK / MASK / LOG_ONLY)
+     * @return 检查结果
+     */
+    public SafeGuardCheckResult inspectRequest(String text, ActionPolicy policy) {
+        if (text == null || text.isBlank()) {
+            return SafeGuardCheckResult.clean(text);
+        }
 
-		// 1. Prompt 注入攻击检测
-		for (Pattern p : PROMPT_INJECTION_PATTERNS) {
-			if (p.matcher(text).find()) {
-				log.warn("🚨 [SafeGuard-Request] 触发 Prompt 注入攻击拦截 Rule={}", p.pattern());
-				if (policy == ActionPolicy.BLOCK) {
-					return SafeGuardCheckResult.triggered(SafeGuardCheckResult.TriggerType.PROMPT_INJECTION, p.pattern(), text);
-				}
-			}
-		}
+        // 1. Prompt 注入攻击检测
+        for (Pattern p : PROMPT_INJECTION_PATTERNS) {
+            if (p.matcher(text).find()) {
+                log.warn("🚨 [SafeGuard-Request] 触发 Prompt 注入攻击拦截 Rule={}", p.pattern());
+                if (policy == ActionPolicy.BLOCK) {
+                    return SafeGuardCheckResult.triggered(
+                            SafeGuardCheckResult.TriggerType.PROMPT_INJECTION, p.pattern(), text);
+                }
+            }
+        }
 
-		// 2. 敏感词及隐私检测
-		return executeSanitization(text, policy, "Request");
-	}
+        // 2. 敏感词及隐私检测
+        return executeSanitization(text, policy, "Request");
+    }
 
-	/**
-	 * 后置 Response 处理（脱敏或阻断）
-	 *
-	 * @param text   大模型生成的回复文本
-	 * @param policy 后置处置策略 (BLOCK / MASK / LOG_ONLY)
-	 * @return 处理后的结果
-	 */
-	public SafeGuardCheckResult inspectResponse(String text, ActionPolicy policy) {
-		if (text == null || text.isBlank()) {
-			return SafeGuardCheckResult.clean(text);
-		}
+    /**
+     * 后置 Response 处理（脱敏或阻断）
+     *
+     * @param text   大模型生成的回复文本
+     * @param policy 后置处置策略 (BLOCK / MASK / LOG_ONLY)
+     * @return 处理后的结果
+     */
+    public SafeGuardCheckResult inspectResponse(String text, ActionPolicy policy) {
+        if (text == null || text.isBlank()) {
+            return SafeGuardCheckResult.clean(text);
+        }
 
-		return executeSanitization(text, policy, "Response");
-	}
+        return executeSanitization(text, policy, "Response");
+    }
 
-	/**
-	 * 统一执行隐私正则与敏感词检测/脱敏替换
-	 */
-	private SafeGuardCheckResult executeSanitization(String text, ActionPolicy policy, String stage) {
-		boolean triggered = false;
-		SafeGuardCheckResult.TriggerType firstType = SafeGuardCheckResult.TriggerType.NONE;
-		String matchedRule = null;
+    /**
+     * 统一执行隐私正则与敏感词检测/脱敏替换
+     */
+    private SafeGuardCheckResult executeSanitization(String text, ActionPolicy policy, String stage) {
+        boolean triggered = false;
+        SafeGuardCheckResult.TriggerType firstType = SafeGuardCheckResult.TriggerType.NONE;
+        String matchedRule = null;
 
-		String processed = text;
+        String processed = text;
 
-		// A. 检查手机号
-		Matcher phoneMatcher = PHONE_PATTERN.matcher(processed);
-		if (phoneMatcher.find()) {
-			triggered = true;
-			firstType = SafeGuardCheckResult.TriggerType.PHONE;
-			matchedRule = "PHONE_PATTERN";
-			log.warn("⚠️ [SafeGuard-{}] 发现隐私泄漏 (手机号)", stage);
-			if (policy == ActionPolicy.BLOCK) {
-				return SafeGuardCheckResult.triggered(firstType, matchedRule, text);
-			}
-			if (policy == ActionPolicy.MASK) {
-				processed = PHONE_PATTERN.matcher(processed).replaceAll(maskReplacement);
-			}
-		}
+        // A. 检查手机号
+        Matcher phoneMatcher = PHONE_PATTERN.matcher(processed);
+        if (phoneMatcher.find()) {
+            triggered = true;
+            firstType = SafeGuardCheckResult.TriggerType.PHONE;
+            matchedRule = "PHONE_PATTERN";
+            log.warn("⚠️ [SafeGuard-{}] 发现隐私泄漏 (手机号)", stage);
+            if (policy == ActionPolicy.BLOCK) {
+                return SafeGuardCheckResult.triggered(firstType, matchedRule, text);
+            }
+            if (policy == ActionPolicy.MASK) {
+                processed = PHONE_PATTERN.matcher(processed).replaceAll(maskReplacement);
+            }
+        }
 
-		// B. 检查身份证
-		Matcher idMatcher = ID_CARD_PATTERN.matcher(processed);
-		if (idMatcher.find()) {
-			triggered = true;
-			if (firstType == SafeGuardCheckResult.TriggerType.NONE) {
-				firstType = SafeGuardCheckResult.TriggerType.ID_CARD;
-				matchedRule = "ID_CARD_PATTERN";
-			}
-			log.warn("⚠️ [SafeGuard-{}] 发现隐私泄漏 (身份证)", stage);
-			if (policy == ActionPolicy.BLOCK) {
-				return SafeGuardCheckResult.triggered(firstType, matchedRule, text);
-			}
-			if (policy == ActionPolicy.MASK) {
-				processed = ID_CARD_PATTERN.matcher(processed).replaceAll(maskReplacement);
-			}
-		}
+        // B. 检查身份证
+        Matcher idMatcher = ID_CARD_PATTERN.matcher(processed);
+        if (idMatcher.find()) {
+            triggered = true;
+            if (firstType == SafeGuardCheckResult.TriggerType.NONE) {
+                firstType = SafeGuardCheckResult.TriggerType.ID_CARD;
+                matchedRule = "ID_CARD_PATTERN";
+            }
+            log.warn("⚠️ [SafeGuard-{}] 发现隐私泄漏 (身份证)", stage);
+            if (policy == ActionPolicy.BLOCK) {
+                return SafeGuardCheckResult.triggered(firstType, matchedRule, text);
+            }
+            if (policy == ActionPolicy.MASK) {
+                processed = ID_CARD_PATTERN.matcher(processed).replaceAll(maskReplacement);
+            }
+        }
 
-		// C. 检查 Email
-		Matcher emailMatcher = EMAIL_PATTERN.matcher(processed);
-		if (emailMatcher.find()) {
-			triggered = true;
-			if (firstType == SafeGuardCheckResult.TriggerType.NONE) {
-				firstType = SafeGuardCheckResult.TriggerType.EMAIL;
-				matchedRule = "EMAIL_PATTERN";
-			}
-			log.warn("⚠️ [SafeGuard-{}] 发现隐私泄漏 (Email)", stage);
-			if (policy == ActionPolicy.BLOCK) {
-				return SafeGuardCheckResult.triggered(firstType, matchedRule, text);
-			}
-			if (policy == ActionPolicy.MASK) {
-				processed = EMAIL_PATTERN.matcher(processed).replaceAll(maskReplacement);
-			}
-		}
+        // C. 检查 Email
+        Matcher emailMatcher = EMAIL_PATTERN.matcher(processed);
+        if (emailMatcher.find()) {
+            triggered = true;
+            if (firstType == SafeGuardCheckResult.TriggerType.NONE) {
+                firstType = SafeGuardCheckResult.TriggerType.EMAIL;
+                matchedRule = "EMAIL_PATTERN";
+            }
+            log.warn("⚠️ [SafeGuard-{}] 发现隐私泄漏 (Email)", stage);
+            if (policy == ActionPolicy.BLOCK) {
+                return SafeGuardCheckResult.triggered(firstType, matchedRule, text);
+            }
+            if (policy == ActionPolicy.MASK) {
+                processed = EMAIL_PATTERN.matcher(processed).replaceAll(maskReplacement);
+            }
+        }
 
-		// D. 检查敏感词库
-		if (sensitiveWordMatcher.containsAny(processed)) {
-			triggered = true;
-			if (firstType == SafeGuardCheckResult.TriggerType.NONE) {
-				firstType = SafeGuardCheckResult.TriggerType.SENSITIVE_WORD;
-				matchedRule = "SENSITIVE_WORD";
-			}
-			log.warn("⚠️ [SafeGuard-{}] 触发敏感词匹配", stage);
-			if (policy == ActionPolicy.BLOCK) {
-				return SafeGuardCheckResult.triggered(firstType, matchedRule, text);
-			}
-			if (policy == ActionPolicy.MASK) {
-				processed = sensitiveWordMatcher.mask(processed, maskReplacement);
-			}
-		}
+        // D. 检查敏感词库
+        if (sensitiveWordMatcher.containsAny(processed)) {
+            triggered = true;
+            if (firstType == SafeGuardCheckResult.TriggerType.NONE) {
+                firstType = SafeGuardCheckResult.TriggerType.SENSITIVE_WORD;
+                matchedRule = "SENSITIVE_WORD";
+            }
+            log.warn("⚠️ [SafeGuard-{}] 触发敏感词匹配", stage);
+            if (policy == ActionPolicy.BLOCK) {
+                return SafeGuardCheckResult.triggered(firstType, matchedRule, text);
+            }
+            if (policy == ActionPolicy.MASK) {
+                processed = sensitiveWordMatcher.mask(processed, maskReplacement);
+            }
+        }
 
-		if (triggered) {
-			return SafeGuardCheckResult.triggered(firstType, matchedRule, processed);
-		}
-		return SafeGuardCheckResult.clean(processed);
-	}
+        if (triggered) {
+            return SafeGuardCheckResult.triggered(firstType, matchedRule, processed);
+        }
+        return SafeGuardCheckResult.clean(processed);
+    }
 
-	public SensitiveWordMatcher getSensitiveWordMatcher() {
-		return sensitiveWordMatcher;
-	}
+    public SensitiveWordMatcher getSensitiveWordMatcher() {
+        return sensitiveWordMatcher;
+    }
 }

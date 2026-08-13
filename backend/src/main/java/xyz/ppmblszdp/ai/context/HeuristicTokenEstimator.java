@@ -1,8 +1,7 @@
 package xyz.ppmblszdp.ai.context;
 
-import org.springframework.ai.chat.messages.Message;
-
 import java.util.List;
+import org.springframework.ai.chat.messages.Message;
 
 /**
  * 默认启发式 Token 估算器。
@@ -18,58 +17,57 @@ import java.util.List;
  */
 public class HeuristicTokenEstimator implements TokenEstimator {
 
-	private static final double CJK_PER_CHAR = 1.0d;
-	private static final double ASCII_PER_CHAR = 0.25d;
-	private static final int ROLE_OVERHEAD = 4;
-	private final double safetyFactor;
+    private static final double CJK_PER_CHAR = 1.0d;
+    private static final double ASCII_PER_CHAR = 0.25d;
+    private static final int ROLE_OVERHEAD = 4;
+    private final double safetyFactor;
 
-	public HeuristicTokenEstimator(double safetyFactor) {
-		this.safetyFactor = Math.max(1.0d, safetyFactor);
-	}
+    public HeuristicTokenEstimator(double safetyFactor) {
+        this.safetyFactor = Math.max(1.0d, safetyFactor);
+    }
 
-	@Override
-	public int estimate(String text) {
-		if (text == null || text.isEmpty()) {
-			return 0;
-		}
-		double tokens = 0;
-		for (int i = 0; i < text.length(); i++) {
-			char c = text.charAt(i);
-			if (isCjk(c)) {
-				tokens += CJK_PER_CHAR;
-			}
-			else {
-				tokens += ASCII_PER_CHAR;
-			}
-		}
-		tokens += ROLE_OVERHEAD;
-		return (int) Math.ceil(tokens * safetyFactor);
-	}
+    @Override
+    public int estimate(String text) {
+        if (text == null || text.isEmpty()) {
+            return 0;
+        }
+        double tokens = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (isCjk(c)) {
+                tokens += CJK_PER_CHAR;
+            } else {
+                tokens += ASCII_PER_CHAR;
+            }
+        }
+        tokens += ROLE_OVERHEAD;
+        return (int) Math.ceil(tokens * safetyFactor);
+    }
 
-	@Override
-	public int estimate(List<Message> messages) {
-		if (messages == null || messages.isEmpty()) {
-			return 0;
-		}
-		int total = 0;
-		for (Message m : messages) {
-			String content = (m.getText() == null) ? "" : m.getText();
-			total += estimate(content);
-		}
-		return total;
-	}
+    @Override
+    public int estimate(List<Message> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return 0;
+        }
+        int total = 0;
+        for (Message m : messages) {
+            String content = (m.getText() == null) ? "" : m.getText();
+            total += estimate(content);
+        }
+        return total;
+    }
 
-	private boolean isCjk(char c) {
-		Character.UnicodeBlock block = Character.UnicodeBlock.of(c);
-		if (block == null) {
-			return false;
-		}
-		return block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
-				|| block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
-				|| block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B
-				|| block == Character.UnicodeBlock.HIRAGANA
-				|| block == Character.UnicodeBlock.KATAKANA
-				|| block == Character.UnicodeBlock.HANGUL_SYLLABLES
-				|| block == Character.UnicodeBlock.HANGUL_JAMO;
-	}
+    private boolean isCjk(char c) {
+        Character.UnicodeBlock block = Character.UnicodeBlock.of(c);
+        if (block == null) {
+            return false;
+        }
+        return block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
+                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
+                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B
+                || block == Character.UnicodeBlock.HIRAGANA
+                || block == Character.UnicodeBlock.KATAKANA
+                || block == Character.UnicodeBlock.HANGUL_SYLLABLES
+                || block == Character.UnicodeBlock.HANGUL_JAMO;
+    }
 }

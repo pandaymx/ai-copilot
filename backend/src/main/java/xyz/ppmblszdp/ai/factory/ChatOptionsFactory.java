@@ -14,76 +14,78 @@ import xyz.ppmblszdp.ai.registry.ResolvedModel;
  */
 public final class ChatOptionsFactory {
 
-	private ChatOptionsFactory() {
-		// 工具类禁止实例化
-	}
+    private ChatOptionsFactory() {
+        // 工具类禁止实例化
+    }
 
-	/**
-	 * 根据 ResolvedModel 构建对应的 ChatOptions。
-	 *
-	 * @param resolved 模型解析信息
-	 * @param temperature 采样温度 (若为 null 则不设置)
-	 * @return 供应商特定的 ChatOptions 实例
-	 */
-	public static ChatOptions forProvider(ResolvedModel resolved, Double temperature) {
-		if (resolved == null || resolved.provider() == null || resolved.model() == null) {
-			return forProvider(null, null, temperature);
-		}
-		return forProvider(resolved.provider().providerId(), resolved.model().modelName(), temperature);
-	}
+    /**
+     * 根据 ResolvedModel 构建对应的 ChatOptions。
+     *
+     * @param resolved 模型解析信息
+     * @param temperature 采样温度 (若为 null 则不设置)
+     * @return 供应商特定的 ChatOptions 实例
+     */
+    public static ChatOptions forProvider(ResolvedModel resolved, Double temperature) {
+        if (resolved == null || resolved.provider() == null || resolved.model() == null) {
+            return forProvider(null, null, temperature);
+        }
+        return forProvider(resolved.provider().providerId(), resolved.model().modelName(), temperature);
+    }
 
-	/**
-	 * 根据 providerId、modelName 和 temperature 构建对应的 ChatOptions。
-	 *
-	 * @param providerId 供应商 ID（如 "deepseek", "openai", "google", "anthropic", "ollama"）
-	 * @param modelName 模型名称
-	 * @param temperature 采样温度 (若为 null 则不设置)
-	 * @return 供应商特定的 ChatOptions 实例
-	 */
-	public static ChatOptions forProvider(String providerId, String modelName, Double temperature) {
-		String pid = providerId != null ? providerId.toLowerCase() : "";
+    /**
+     * 根据 providerId、modelName 和 temperature 构建对应的 ChatOptions。
+     *
+     * @param providerId 供应商 ID（如 "deepseek", "openai", "google", "anthropic", "ollama"）
+     * @param modelName 模型名称
+     * @param temperature 采样温度 (若为 null 则不设置)
+     * @return 供应商特定的 ChatOptions 实例
+     */
+    public static ChatOptions forProvider(String providerId, String modelName, Double temperature) {
+        String pid = providerId != null ? providerId.toLowerCase() : "";
 
-		if (pid.contains("deepseek")) {
-			DeepSeekChatOptions.Builder builder = DeepSeekChatOptions.builder().model(modelName);
-			if (temperature != null) {
-				builder.temperature(temperature);
-			}
-			return builder.build();
-		}
-		if (pid.contains("openai")) {
-			OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder().model(modelName);
-			if (temperature != null) {
-				builder.temperature(temperature);
-			}
-			return builder.build();
-		}
-		if (pid.contains("google") || pid.contains("gemini")) {
-			GoogleGenAiChatOptions.Builder builder = GoogleGenAiChatOptions.builder().model(modelName);
-			if (temperature != null) {
-				builder.temperature(temperature);
-			}
-			return builder.build();
-		}
-		if (pid.contains("anthropic") || pid.contains("claude")) {
-			AnthropicChatOptions.Builder builder = AnthropicChatOptions.builder().model(modelName);
-			if (temperature != null) {
-				builder.temperature(temperature);
-			}
-			return builder.build();
-		}
-		if (pid.contains("ollama")) {
-			OllamaChatOptions.Builder builder = OllamaChatOptions.builder().model(modelName);
-			if (temperature != null) {
-				builder.temperature(temperature);
-			}
-			return builder.build();
-		}
+        if (pid.contains("deepseek")) {
+            DeepSeekChatOptions.Builder builder = DeepSeekChatOptions.builder().model(modelName);
+            if (temperature != null) {
+                builder.temperature(temperature);
+            }
+            return builder.build();
+        }
+        if (pid.contains("openai")) {
+            OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder().model(modelName);
+            if (temperature != null) {
+                builder.temperature(temperature);
+            }
+            return builder.build();
+        }
+        if (pid.contains("google") || pid.contains("gemini")) {
+            GoogleGenAiChatOptions.Builder builder =
+                    GoogleGenAiChatOptions.builder().model(modelName);
+            if (temperature != null) {
+                builder.temperature(temperature);
+            }
+            return builder.build();
+        }
+        if (pid.contains("anthropic") || pid.contains("claude")) {
+            AnthropicChatOptions.Builder builder =
+                    AnthropicChatOptions.builder().model(modelName);
+            if (temperature != null) {
+                builder.temperature(temperature);
+            }
+            return builder.build();
+        }
+        if (pid.contains("ollama")) {
+            OllamaChatOptions.Builder builder = OllamaChatOptions.builder().model(modelName);
+            if (temperature != null) {
+                builder.temperature(temperature);
+            }
+            return builder.build();
+        }
 
-		// 默认回退至 OpenAiChatOptions
-		OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder().model(modelName);
-		if (temperature != null) {
-			builder.temperature(temperature);
-		}
-		return builder.build();
-	}
+        // 默认回退至 OpenAiChatOptions
+        OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder().model(modelName);
+        if (temperature != null) {
+            builder.temperature(temperature);
+        }
+        return builder.build();
+    }
 }

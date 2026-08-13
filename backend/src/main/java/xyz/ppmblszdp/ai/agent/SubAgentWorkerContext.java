@@ -27,29 +27,24 @@ import xyz.ppmblszdp.ai.dto.ChatChunkDto;
  * @param conversationId 当前会话 id
  * @param depth          当前调度深度（0 = Orchestrator，1 = Worker，2+ = 禁止）
  */
-public record SubAgentWorkerContext(
-		Many<ChatChunkDto> eventSink,
-		String userId,
-		String conversationId,
-		int depth
-) {
+public record SubAgentWorkerContext(Many<ChatChunkDto> eventSink, String userId, String conversationId, int depth) {
 
-	/** ToolContext 中存储本对象的键名。 */
-	public static final String CTX_KEY = "workerCtx";
+    /** ToolContext 中存储本对象的键名。 */
+    public static final String CTX_KEY = "workerCtx";
 
-	/**
-	 * 构造初始 Orchestrator 层上下文（depth = 0）。
-	 */
-	public SubAgentWorkerContext(Many<ChatChunkDto> eventSink, String userId, String conversationId) {
-		this(eventSink, userId, conversationId, 0);
-	}
+    /**
+     * 构造初始 Orchestrator 层上下文（depth = 0）。
+     */
+    public SubAgentWorkerContext(Many<ChatChunkDto> eventSink, String userId, String conversationId) {
+        this(eventSink, userId, conversationId, 0);
+    }
 
-	/**
-	 * 产生 depth+1 的不可变副本，用于向下传递给下一层 Worker。
-	 *
-	 * @return depth 加 1 的新上下文实例
-	 */
-	public SubAgentWorkerContext incrementDepth() {
-		return new SubAgentWorkerContext(eventSink, userId, conversationId, depth + 1);
-	}
+    /**
+     * 产生 depth+1 的不可变副本，用于向下传递给下一层 Worker。
+     *
+     * @return depth 加 1 的新上下文实例
+     */
+    public SubAgentWorkerContext incrementDepth() {
+        return new SubAgentWorkerContext(eventSink, userId, conversationId, depth + 1);
+    }
 }

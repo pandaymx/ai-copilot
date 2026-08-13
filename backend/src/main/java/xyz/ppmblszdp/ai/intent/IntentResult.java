@@ -11,14 +11,13 @@ package xyz.ppmblszdp.ai.intent;
  * @param systemPromptTemplate 意图专属系统提示词补充模板（可为空）
  */
 public record IntentResult(
-		IntentType intent,
-		String label,
-		String recommendedModel,
-		boolean enableRag,
-		boolean enableTools,
-		String systemPromptTemplate
-) {
-	public IntentResult(IntentType intent, boolean enableRag, boolean enableTools, String systemPromptTemplate) {
-		this(intent, intent != null ? intent.getLabel() : "闲聊", null, enableRag, enableTools, systemPromptTemplate);
-	}
+        IntentType intent,
+        String label,
+        String recommendedModel,
+        boolean enableRag,
+        boolean enableTools,
+        String systemPromptTemplate) {
+    public IntentResult(IntentType intent, boolean enableRag, boolean enableTools, String systemPromptTemplate) {
+        this(intent, intent != null ? intent.getLabel() : "闲聊", null, enableRag, enableTools, systemPromptTemplate);
+    }
 }

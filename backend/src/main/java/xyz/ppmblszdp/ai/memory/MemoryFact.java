@@ -12,45 +12,44 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class MemoryFact {
 
-	/** 事实分类，例如：技术栈偏好 / 项目状态 / 关键决策 / 个人背景 */
-	private String category;
+    /** 事实分类，例如：技术栈偏好 / 项目状态 / 关键决策 / 个人背景 */
+    private String category;
 
-	/** 原子化、无上下文依赖的独立陈述句 */
-	private String content;
+    /** 原子化、无上下文依赖的独立陈述句 */
+    private String content;
 
-	/** LLM 抽取置信度，取值范围 0.0 ~ 1.0 */
-	private Double confidence;
+    /** LLM 抽取置信度，取值范围 0.0 ~ 1.0 */
+    private Double confidence;
 
-	public MemoryFact() {
-	}
+    public MemoryFact() {}
 
-	public MemoryFact(String category, String content, Double confidence) {
-		this.category = category;
-		this.content = content;
-		this.confidence = confidence;
-	}
+    public MemoryFact(String category, String content, Double confidence) {
+        this.category = category;
+        this.content = content;
+        this.confidence = confidence;
+    }
 
-	public String getCategory() {
-		return category;
-	}
+    public String getCategory() {
+        return category;
+    }
 
-	public void setCategory(String category) {
-		this.category = category;
-	}
+    public void setCategory(String category) {
+        this.category = category;
+    }
 
-	public String getContent() {
-		return content;
-	}
+    public String getContent() {
+        return content;
+    }
 
-	public void setContent(String content) {
-		this.content = content;
-	}
+    public void setContent(String content) {
+        this.content = content;
+    }
 
-	public Double getConfidence() {
-		return confidence;
-	}
+    public Double getConfidence() {
+        return confidence;
+    }
 
-	public void setConfidence(Double confidence) {
-		this.confidence = confidence;
-	}
+    public void setConfidence(Double confidence) {
+        this.confidence = confidence;
+    }
 }

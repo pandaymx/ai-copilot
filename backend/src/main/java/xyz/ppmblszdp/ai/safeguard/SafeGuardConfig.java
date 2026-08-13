@@ -17,27 +17,31 @@ import org.springframework.core.Ordered;
 @ConditionalOnProperty(prefix = "app.ai.safeguard", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class SafeGuardConfig {
 
-	private static final Logger log = LoggerFactory.getLogger(SafeGuardConfig.class);
+    private static final Logger log = LoggerFactory.getLogger(SafeGuardConfig.class);
 
-	@Bean
-	@ConditionalOnMissingBean
-	public SensitiveWordMatcher sensitiveWordMatcher(SafeGuardProperties properties) {
-		log.info("初始化 DefaultSensitiveWordMatcher 敏感词匹配器，内置词库数={}", properties.getSensitiveWords().size());
-		return new DefaultSensitiveWordMatcher(properties.getSensitiveWords());
-	}
+    @Bean
+    @ConditionalOnMissingBean
+    public SensitiveWordMatcher sensitiveWordMatcher(SafeGuardProperties properties) {
+        log.info(
+                "初始化 DefaultSensitiveWordMatcher 敏感词匹配器，内置词库数={}",
+                properties.getSensitiveWords().size());
+        return new DefaultSensitiveWordMatcher(properties.getSensitiveWords());
+    }
 
-	@Bean
-	@ConditionalOnMissingBean
-	public SafeGuardEngine safeGuardEngine(SensitiveWordMatcher matcher, SafeGuardProperties properties) {
-		log.info("初始化 SafeGuardEngine 安全打码/阻断引擎 (RequestPolicy={}, ResponsePolicy={})",
-				properties.getRequestPolicy(), properties.getResponsePolicy());
-		return new SafeGuardEngine(matcher, properties.getMaskReplacement());
-	}
+    @Bean
+    @ConditionalOnMissingBean
+    public SafeGuardEngine safeGuardEngine(SensitiveWordMatcher matcher, SafeGuardProperties properties) {
+        log.info(
+                "初始化 SafeGuardEngine 安全打码/阻断引擎 (RequestPolicy={}, ResponsePolicy={})",
+                properties.getRequestPolicy(),
+                properties.getResponsePolicy());
+        return new SafeGuardEngine(matcher, properties.getMaskReplacement());
+    }
 
-	@Bean
-	@ConditionalOnMissingBean
-	public SafeGuardAdvisor safeGuardAdvisor(SafeGuardEngine engine, SafeGuardProperties properties) {
-		log.info("装配 Spring AI SafeGuardAdvisor (顺序: HIGHEST_PRECEDENCE)");
-		return new SafeGuardAdvisor(engine, properties, Ordered.HIGHEST_PRECEDENCE);
-	}
+    @Bean
+    @ConditionalOnMissingBean
+    public SafeGuardAdvisor safeGuardAdvisor(SafeGuardEngine engine, SafeGuardProperties properties) {
+        log.info("装配 Spring AI SafeGuardAdvisor (顺序: HIGHEST_PRECEDENCE)");
+        return new SafeGuardAdvisor(engine, properties, Ordered.HIGHEST_PRECEDENCE);
+    }
 }

@@ -8,23 +8,23 @@ import java.util.Collection;
  */
 public interface SensitiveWordMatcher {
 
-	/**
-	 * 校验文本中是否包含任意敏感词。
-	 */
-	boolean containsAny(String text);
+    /**
+     * 校验文本中是否包含任意敏感词。
+     */
+    boolean containsAny(String text);
 
-	/**
-	 * 对文本中的所有敏感词进行脱敏掩码替换。
-	 */
-	String mask(String text, String replacement);
+    /**
+     * 对文本中的所有敏感词进行脱敏掩码替换。
+     */
+    String mask(String text, String replacement);
 
-	/**
-	 * 动态重载敏感词库。
-	 */
-	void reload(Collection<String> words);
+    /**
+     * 动态重载敏感词库。
+     */
+    void reload(Collection<String> words);
 
-	/**
-	 * 获取当前词库中最长敏感词的长度（用于流式滑动窗口计算）。
-	 */
-	int getMaxWordLength();
+    /**
+     * 获取当前词库中最长敏感词的长度（用于流式滑动窗口计算）。
+     */
+    int getMaxWordLength();
 }

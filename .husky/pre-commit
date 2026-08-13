@@ -1,0 +1,29 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Fail fast on first error and treat unset vars as errors.
+set -eu
+
+echo "🔍 Running pre-commit checks..."
+
+# --- Frontend: Biome lint (only if frontend changed) ---
+if git diff --cached --name-only --diff-filter=ACMR | grep -qE '^frontend/'; then
+  echo "→ Frontend changed, running Biome lint..."
+  cd "$(git rev-parse --show-toplevel)/frontend"
+  bun run lint
+  cd "$(git rev-parse --show-toplevel)"
+else
+  echo "→ No frontend changes, skipping Biome lint."
+fi
+
+# --- Backend: Spotless check (only if backend changed) ---
+if git diff --cached --name-only --diff-filter=ACMR | grep -qE '^backend/'; then
+  echo "→ Backend changed, running Spotless check..."
+  cd "$(git rev-parse --show-toplevel)/backend"
+  ./gradlew spotlessCheck --no-daemon
+  cd "$(git rev-parse --show-toplevel)"
+else
+  echo "→ No backend changes, skipping Spotless check."
+fi
+
+echo "✅ Pre-commit checks passed."

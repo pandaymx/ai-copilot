@@ -13,11 +13,9 @@ import java.math.BigDecimal;
  * @param requestCount     请求数
  */
 public record UsageUserSummary(
-		String userId,
-		long promptTokens,
-		long completionTokens,
-		long totalTokens,
-		BigDecimal totalCost,
-		long requestCount
-) {
-}
+        String userId,
+        long promptTokens,
+        long completionTokens,
+        long totalTokens,
+        BigDecimal totalCost,
+        long requestCount) {}

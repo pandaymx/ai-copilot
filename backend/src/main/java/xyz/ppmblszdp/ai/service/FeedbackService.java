@@ -10,16 +10,16 @@ import xyz.ppmblszdp.ai.repository.FeedbackRepository;
 @Service
 public class FeedbackService {
 
-	private final FeedbackRepository feedbackRepository;
+    private final FeedbackRepository feedbackRepository;
 
-	public FeedbackService(FeedbackRepository feedbackRepository) {
-		this.feedbackRepository = feedbackRepository;
-	}
+    public FeedbackService(FeedbackRepository feedbackRepository) {
+        this.feedbackRepository = feedbackRepository;
+    }
 
-	/**
-	 * 保存点赞/点踩反馈。userId 来自服务端受信任身份，不再信任请求体。
-	 */
-	public void saveFeedback(String userId, ChatFeedbackRequest request) {
-		feedbackRepository.saveFeedback(userId, request);
-	}
+    /**
+     * 保存点赞/点踩反馈。userId 来自服务端受信任身份，不再信任请求体。
+     */
+    public void saveFeedback(String userId, ChatFeedbackRequest request) {
+        feedbackRepository.saveFeedback(userId, request);
+    }
 }

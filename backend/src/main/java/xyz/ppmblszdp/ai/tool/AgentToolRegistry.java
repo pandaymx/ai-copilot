@@ -1,5 +1,8 @@
 package xyz.ppmblszdp.ai.tool;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.ObjectProvider;
@@ -7,10 +10,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import xyz.ppmblszdp.ai.agent.SubAgentTool;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 
 /**
  * Agent 工具注册表：将各 {@code @Tool} Bean 封装为 {@link ToolCallback} 数组，供 {@code ChatService}
@@ -23,30 +22,30 @@ import java.util.List;
 @Configuration
 public class AgentToolRegistry {
 
-	@Bean
-	public ToolCallback[] agentToolCallbacks(
-			CalculatorTool calculatorTool,
-			HttpRequestTool httpRequestTool,
-			FileTool fileTool,
-			KnowledgeQueryTool knowledgeQueryTool,
-			ObjectProvider<SubAgentTool> subAgentToolProvider,
-			AiProviderProperties properties) {
+    @Bean
+    public ToolCallback[] agentToolCallbacks(
+            CalculatorTool calculatorTool,
+            HttpRequestTool httpRequestTool,
+            FileTool fileTool,
+            KnowledgeQueryTool knowledgeQueryTool,
+            ObjectProvider<SubAgentTool> subAgentToolProvider,
+            AiProviderProperties properties) {
 
-		// ToolCallbacks.from 自动扫描对象上所有 @Tool 注解方法，FileTool 含 fileRead/fileWrite 两个
-		List<ToolCallback> all = new ArrayList<>();
-		all.addAll(Arrays.asList(ToolCallbacks.from(calculatorTool)));
-		all.addAll(Arrays.asList(ToolCallbacks.from(httpRequestTool)));
-		all.addAll(Arrays.asList(ToolCallbacks.from(fileTool)));
-		all.addAll(Arrays.asList(ToolCallbacks.from(knowledgeQueryTool)));
+        // ToolCallbacks.from 自动扫描对象上所有 @Tool 注解方法，FileTool 含 fileRead/fileWrite 两个
+        List<ToolCallback> all = new ArrayList<>();
+        all.addAll(Arrays.asList(ToolCallbacks.from(calculatorTool)));
+        all.addAll(Arrays.asList(ToolCallbacks.from(httpRequestTool)));
+        all.addAll(Arrays.asList(ToolCallbacks.from(fileTool)));
+        all.addAll(Arrays.asList(ToolCallbacks.from(knowledgeQueryTool)));
 
-		// 按 orchestratorEnabled 开关条件性注入子代理工具（分析/代码/摘要三个 @Tool）
-		if (properties.resolveAgent().isOrchestratorEnabled()) {
-			SubAgentTool subAgentTool = subAgentToolProvider.getIfAvailable();
-			if (subAgentTool != null) {
-				all.addAll(Arrays.asList(ToolCallbacks.from(subAgentTool)));
-			}
-		}
+        // 按 orchestratorEnabled 开关条件性注入子代理工具（分析/代码/摘要三个 @Tool）
+        if (properties.resolveAgent().isOrchestratorEnabled()) {
+            SubAgentTool subAgentTool = subAgentToolProvider.getIfAvailable();
+            if (subAgentTool != null) {
+                all.addAll(Arrays.asList(ToolCallbacks.from(subAgentTool)));
+            }
+        }
 
-		return all.toArray(new ToolCallback[0]);
-	}
+        return all.toArray(new ToolCallback[0]);
+    }
 }

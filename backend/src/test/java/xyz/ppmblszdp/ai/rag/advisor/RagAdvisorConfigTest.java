@@ -1,5 +1,8 @@
 package xyz.ppmblszdp.ai.rag.advisor;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
@@ -8,12 +11,8 @@ import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
-
 import xyz.ppmblszdp.ai.memory.SafeVectorStore;
 import xyz.ppmblszdp.ai.rag.RagProperties;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
 
 /**
  * RagAdvisor Factory 逻辑测试：聚焦工厂函数式行为（有/无 VectorStore 时的返回），
@@ -22,8 +21,17 @@ import static org.mockito.Mockito.mock;
 class RagAdvisorConfigTest {
 
     private final RagProperties properties = new RagProperties(
-            true, 5, 900, 180, "CL100K_BASE", "ai_rag_documents",
-            true, false, true, 60, 3,
+            true,
+            5,
+            900,
+            180,
+            "CL100K_BASE",
+            "ai_rag_documents",
+            true,
+            false,
+            true,
+            60,
+            3,
             new RagProperties.SsrfConfig(5, 10_485_760L));
 
     @Test
@@ -51,8 +59,8 @@ class RagAdvisorConfigTest {
 
     @Test
     void ragPropertiesShouldHaveSaneDefaults() {
-        RagProperties defaults = new RagProperties(
-                true, null, null, null, null, null, null, null, null, null, null, null);
+        RagProperties defaults =
+                new RagProperties(true, null, null, null, null, null, null, null, null, null, null, null);
 
         assertThat(defaults.resolveTopK()).isEqualTo(4);
         assertThat(defaults.resolveChunkSize()).isEqualTo(900);
@@ -64,8 +72,8 @@ class RagAdvisorConfigTest {
 
     @Test
     void ragPropertiesSsrfDefaults() {
-        RagProperties defaults = new RagProperties(
-                true, null, null, null, null, null, null, null, null, null, null, null);
+        RagProperties defaults =
+                new RagProperties(true, null, null, null, null, null, null, null, null, null, null, null);
         assertThat(defaults.resolveSsrf().resolveTimeoutSeconds()).isEqualTo(5);
         assertThat(defaults.resolveSsrf().resolveMaxBodyBytes()).isEqualTo(10_485_760L);
     }
@@ -90,10 +98,8 @@ class RagAdvisorConfigTest {
                 filter = op.build();
             }
 
-            var search = SearchRequest.builder()
-                    .topK(topK)
-                    .filterExpression(filter)
-                    .build();
+            var search =
+                    SearchRequest.builder().topK(topK).filterExpression(filter).build();
 
             var prompt = new PromptTemplate("""
                     {query}

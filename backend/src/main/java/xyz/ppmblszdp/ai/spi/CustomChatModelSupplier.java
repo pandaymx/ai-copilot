@@ -14,11 +14,11 @@ import xyz.ppmblszdp.ai.config.AiProviderProperties;
 @FunctionalInterface
 public interface CustomChatModelSupplier {
 
-	/**
-	 * 根据二等公民配置构建一个 {@link ChatModel} 实例。
-	 *
-	 * @param config 该供应商的 YAML 配置（含 baseUrl / apiKey / 自定义字段等）
-	 * @return 可直接调用的 ChatModel 实例
-	 */
-	ChatModel supply(AiProviderProperties.SecondClassConfig config);
+    /**
+     * 根据二等公民配置构建一个 {@link ChatModel} 实例。
+     *
+     * @param config 该供应商的 YAML 配置（含 baseUrl / apiKey / 自定义字段等）
+     * @return 可直接调用的 ChatModel 实例
+     */
+    ChatModel supply(AiProviderProperties.SecondClassConfig config);
 }

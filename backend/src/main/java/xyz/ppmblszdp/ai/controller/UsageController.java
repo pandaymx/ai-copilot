@@ -1,5 +1,7 @@
 package xyz.ppmblszdp.ai.controller;
 
+import java.math.BigDecimal;
+import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -21,9 +23,6 @@ import xyz.ppmblszdp.ai.identity.UserIdentityFilter;
 import xyz.ppmblszdp.ai.memory.UsageQuotaChecker;
 import xyz.ppmblszdp.ai.repository.UsageRepository;
 
-import java.math.BigDecimal;
-import java.util.List;
-
 /**
  * 用量计量与成本看板 Controller（/api/usage）。
  *
@@ -33,132 +32,125 @@ import java.util.List;
 @RequestMapping("/api/usage")
 public class UsageController {
 
-	private final UsageRepository usageRepository;
-	private final AiProviderProperties properties;
-	private final AuthProperties authProperties;
+    private final UsageRepository usageRepository;
+    private final AiProviderProperties properties;
+    private final AuthProperties authProperties;
 
-	public UsageController(UsageRepository usageRepository, AiProviderProperties properties, AuthProperties authProperties) {
-		this.usageRepository = usageRepository;
-		this.properties = properties;
-		this.authProperties = authProperties;
-	}
+    public UsageController(
+            UsageRepository usageRepository, AiProviderProperties properties, AuthProperties authProperties) {
+        this.usageRepository = usageRepository;
+        this.properties = properties;
+        this.authProperties = authProperties;
+    }
 
-	/**
-	 * 返回当前用户本月用量统计与配额剩余。
-	 */
-	@GetMapping
-	public ResponseEntity<UsageSummaryDto> getUsage(ServerWebExchange exchange) {
-		String userId = UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
-		String monthKey = UsageQuotaChecker.currentMonthKey();
+    /**
+     * 返回当前用户本月用量统计与配额剩余。
+     */
+    @GetMapping
+    public ResponseEntity<UsageSummaryDto> getUsage(ServerWebExchange exchange) {
+        String userId = UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
+        String monthKey = UsageQuotaChecker.currentMonthKey();
 
-		long defaultQuota = properties.resolveMemory().resolveUsageQuota().resolveMonthlyTokenQuota();
-		QuotaConfigDto quotaConfig = usageRepository.getQuotaConfig(defaultQuota);
-		long quotaTokens = quotaConfig.monthlyTokenQuota();
+        long defaultQuota = properties.resolveMemory().resolveUsageQuota().resolveMonthlyTokenQuota();
+        QuotaConfigDto quotaConfig = usageRepository.getQuotaConfig(defaultQuota);
+        long quotaTokens = quotaConfig.monthlyTokenQuota();
 
-		var monthly = usageRepository.sumUsageByUserAndMonth(userId, monthKey);
-		List<UsageModelSummary> byModel = usageRepository.sumByModelForUserAndMonth(userId, monthKey);
+        var monthly = usageRepository.sumUsageByUserAndMonth(userId, monthKey);
+        List<UsageModelSummary> byModel = usageRepository.sumByModelForUserAndMonth(userId, monthKey);
 
-		long totalTokens = monthly.totalTokens();
-		double usedPercent = (quotaTokens > 0)
-				? Math.min(100.0, (totalTokens * 100.0) / quotaTokens)
-				: 0.0;
-		long remainingTokens = (quotaTokens > 0)
-				? Math.max(0, quotaTokens - totalTokens)
-				: totalTokens;
+        long totalTokens = monthly.totalTokens();
+        double usedPercent = (quotaTokens > 0) ? Math.min(100.0, (totalTokens * 100.0) / quotaTokens) : 0.0;
+        long remainingTokens = (quotaTokens > 0) ? Math.max(0, quotaTokens - totalTokens) : totalTokens;
 
-		UsageSummaryDto dto = new UsageSummaryDto(
-				monthKey,
-				totalTokens,
-				monthly.totalCost() != null ? monthly.totalCost() : BigDecimal.ZERO,
-				quotaTokens,
-				remainingTokens,
-				usedPercent,
-				byModel
-		);
-		return ResponseEntity.ok(dto);
-	}
+        UsageSummaryDto dto = new UsageSummaryDto(
+                monthKey,
+                totalTokens,
+                monthly.totalCost() != null ? monthly.totalCost() : BigDecimal.ZERO,
+                quotaTokens,
+                remainingTokens,
+                usedPercent,
+                byModel);
+        return ResponseEntity.ok(dto);
+    }
 
-	/**
-	 * 看板大盘聚合数据 API（GET /api/usage/dashboard?month=yyyy-MM）。
-	 * 返回按用户、模型、日期的全局 Token 与费用分布，以及告警触发状态。
-	 */
-	@GetMapping("/dashboard")
-	public ResponseEntity<UsageDashboardDto> getDashboard(
-			ServerWebExchange exchange,
-			@RequestParam(name = "month", required = false) String monthParam) {
-		UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
-		String monthKey = (monthParam != null && !monthParam.isBlank())
-				? monthParam.trim()
-				: UsageQuotaChecker.currentMonthKey();
+    /**
+     * 看板大盘聚合数据 API（GET /api/usage/dashboard?month=yyyy-MM）。
+     * 返回按用户、模型、日期的全局 Token 与费用分布，以及告警触发状态。
+     */
+    @GetMapping("/dashboard")
+    public ResponseEntity<UsageDashboardDto> getDashboard(
+            ServerWebExchange exchange, @RequestParam(name = "month", required = false) String monthParam) {
+        UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
+        String monthKey =
+                (monthParam != null && !monthParam.isBlank()) ? monthParam.trim() : UsageQuotaChecker.currentMonthKey();
 
-		long defaultQuota = properties.resolveMemory().resolveUsageQuota().resolveMonthlyTokenQuota();
-		QuotaConfigDto quotaConfig = usageRepository.getQuotaConfig(defaultQuota);
+        long defaultQuota = properties.resolveMemory().resolveUsageQuota().resolveMonthlyTokenQuota();
+        QuotaConfigDto quotaConfig = usageRepository.getQuotaConfig(defaultQuota);
 
-		List<UsageUserSummary> byUser = usageRepository.sumByUsersForMonth(monthKey);
-		List<UsageModelDetailSummary> byModel = usageRepository.sumByModelsForMonth(monthKey);
-		List<UsageDailySummary> dailyTrend = usageRepository.sumDailyTrendForMonth(monthKey);
+        List<UsageUserSummary> byUser = usageRepository.sumByUsersForMonth(monthKey);
+        List<UsageModelDetailSummary> byModel = usageRepository.sumByModelsForMonth(monthKey);
+        List<UsageDailySummary> dailyTrend = usageRepository.sumDailyTrendForMonth(monthKey);
 
-		long totalTokens = byUser.stream().mapToLong(UsageUserSummary::totalTokens).sum();
-		BigDecimal totalCost = byUser.stream()
-				.map(u -> u.totalCost() != null ? u.totalCost() : BigDecimal.ZERO)
-				.reduce(BigDecimal.ZERO, BigDecimal::add);
-		long totalRequests = byUser.stream().mapToLong(UsageUserSummary::requestCount).sum();
-		long activeUsers = byUser.size();
-		long activeModels = byModel.size();
+        long totalTokens =
+                byUser.stream().mapToLong(UsageUserSummary::totalTokens).sum();
+        BigDecimal totalCost = byUser.stream()
+                .map(u -> u.totalCost() != null ? u.totalCost() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        long totalRequests =
+                byUser.stream().mapToLong(UsageUserSummary::requestCount).sum();
+        long activeUsers = byUser.size();
+        long activeModels = byModel.size();
 
-		boolean alertTriggered = false;
-		if (quotaConfig.monthlyTokenQuota() > 0) {
-			double thresholdTokens = quotaConfig.monthlyTokenQuota() * (quotaConfig.alertThresholdPercent() / 100.0);
-			if (totalTokens >= thresholdTokens) {
-				alertTriggered = true;
-			}
-		}
-		if (quotaConfig.monthlyCostQuotaRmb() != null && quotaConfig.monthlyCostQuotaRmb().compareTo(BigDecimal.ZERO) > 0) {
-			if (totalCost.compareTo(quotaConfig.monthlyCostQuotaRmb()) >= 0) {
-				alertTriggered = true;
-			}
-		}
+        boolean alertTriggered = false;
+        if (quotaConfig.monthlyTokenQuota() > 0) {
+            double thresholdTokens = quotaConfig.monthlyTokenQuota() * (quotaConfig.alertThresholdPercent() / 100.0);
+            if (totalTokens >= thresholdTokens) {
+                alertTriggered = true;
+            }
+        }
+        if (quotaConfig.monthlyCostQuotaRmb() != null
+                && quotaConfig.monthlyCostQuotaRmb().compareTo(BigDecimal.ZERO) > 0) {
+            if (totalCost.compareTo(quotaConfig.monthlyCostQuotaRmb()) >= 0) {
+                alertTriggered = true;
+            }
+        }
 
-		UsageDashboardDto dto = new UsageDashboardDto(
-				monthKey,
-				totalTokens,
-				totalCost,
-				totalRequests,
-				activeUsers,
-				activeModels,
-				byUser,
-				byModel,
-				dailyTrend,
-				quotaConfig,
-				alertTriggered
-		);
-		return ResponseEntity.ok(dto);
-	}
+        UsageDashboardDto dto = new UsageDashboardDto(
+                monthKey,
+                totalTokens,
+                totalCost,
+                totalRequests,
+                activeUsers,
+                activeModels,
+                byUser,
+                byModel,
+                dailyTrend,
+                quotaConfig,
+                alertTriggered);
+        return ResponseEntity.ok(dto);
+    }
 
-	/**
-	 * 获取当前配额与告警阈值配置（GET /api/usage/quota-config）。
-	 */
-	@GetMapping("/quota-config")
-	public ResponseEntity<QuotaConfigDto> getQuotaConfig(ServerWebExchange exchange) {
-		UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
-		long defaultQuota = properties.resolveMemory().resolveUsageQuota().resolveMonthlyTokenQuota();
-		QuotaConfigDto config = usageRepository.getQuotaConfig(defaultQuota);
-		return ResponseEntity.ok(config);
-	}
+    /**
+     * 获取当前配额与告警阈值配置（GET /api/usage/quota-config）。
+     */
+    @GetMapping("/quota-config")
+    public ResponseEntity<QuotaConfigDto> getQuotaConfig(ServerWebExchange exchange) {
+        UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
+        long defaultQuota = properties.resolveMemory().resolveUsageQuota().resolveMonthlyTokenQuota();
+        QuotaConfigDto config = usageRepository.getQuotaConfig(defaultQuota);
+        return ResponseEntity.ok(config);
+    }
 
-	/**
-	 * 管理员更新配额与告警阈值配置（PUT /api/usage/quota-config）。
-	 */
-	@PutMapping("/quota-config")
-	public ResponseEntity<QuotaConfigDto> updateQuotaConfig(
-			ServerWebExchange exchange,
-			@RequestBody QuotaConfigDto config) {
-		UserIdentityFilter.requireAdmin(exchange, authProperties);
-		usageRepository.saveQuotaConfig(config);
-		long defaultQuota = properties.resolveMemory().resolveUsageQuota().resolveMonthlyTokenQuota();
-		QuotaConfigDto updated = usageRepository.getQuotaConfig(defaultQuota);
-		return ResponseEntity.ok(updated);
-	}
-
+    /**
+     * 管理员更新配额与告警阈值配置（PUT /api/usage/quota-config）。
+     */
+    @PutMapping("/quota-config")
+    public ResponseEntity<QuotaConfigDto> updateQuotaConfig(
+            ServerWebExchange exchange, @RequestBody QuotaConfigDto config) {
+        UserIdentityFilter.requireAdmin(exchange, authProperties);
+        usageRepository.saveQuotaConfig(config);
+        long defaultQuota = properties.resolveMemory().resolveUsageQuota().resolveMonthlyTokenQuota();
+        QuotaConfigDto updated = usageRepository.getQuotaConfig(defaultQuota);
+        return ResponseEntity.ok(updated);
+    }
 }
-

@@ -6,15 +6,12 @@ package xyz.ppmblszdp.ai.dto;
  * @param mimeType 媒体 MIME 类型，例如 "image/png", "image/jpeg"
  * @param data     Base64 编码的字节数据或 Data URL（例如 "data:image/png;base64,..."）
  */
-public record MediaDto(
-		String mimeType,
-		String data
-) {
-	public String mimeType() {
-		return (mimeType != null && !mimeType.isBlank()) ? mimeType.trim() : "image/png";
-	}
+public record MediaDto(String mimeType, String data) {
+    public String mimeType() {
+        return (mimeType != null && !mimeType.isBlank()) ? mimeType.trim() : "image/png";
+    }
 
-	public String data() {
-		return data != null ? data.trim() : "";
-	}
+    public String data() {
+        return data != null ? data.trim() : "";
+    }
 }

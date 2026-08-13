@@ -33,34 +33,33 @@ import xyz.ppmblszdp.ai.repository.SearchRepository;
 @RequestMapping("/api/chat")
 public class SearchController {
 
-	private static final Logger log = LoggerFactory.getLogger(SearchController.class);
+    private static final Logger log = LoggerFactory.getLogger(SearchController.class);
 
-	private final SearchRepository searchRepository;
-	private final AuthProperties authProperties;
+    private final SearchRepository searchRepository;
+    private final AuthProperties authProperties;
 
-	public SearchController(SearchRepository searchRepository, AuthProperties authProperties) {
-		this.searchRepository = searchRepository;
-		this.authProperties = authProperties;
-	}
+    public SearchController(SearchRepository searchRepository, AuthProperties authProperties) {
+        this.searchRepository = searchRepository;
+        this.authProperties = authProperties;
+    }
 
-	@GetMapping("/search")
-	public Mono<SearchResponse> search(
-			@RequestParam("q") String q,
-			@RequestParam(value = "limit", defaultValue = "50") int limit,
-			ServerWebExchange exchange) {
-		String userId = UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
-		if (q == null || q.isBlank()) {
-			return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "查询关键字 q 不能为空"));
-		}
-		final String query = q.trim();
-		return Mono.fromCallable(() -> searchRepository.searchByUser(userId, query, limit))
-				.subscribeOn(Schedulers.boundedElastic())
-				.map(results -> new SearchResponse(query, results))
-				.onErrorResume(ResponseStatusException.class, ex -> Mono.error(ex))
-				.onErrorResume(Exception.class, ex -> {
-					log.warn("检索失败: {}", ex.getMessage());
-					return Mono.error(new ResponseStatusException(
-							HttpStatus.INTERNAL_SERVER_ERROR, "检索失败，请稍后重试"));
-				});
-	}
+    @GetMapping("/search")
+    public Mono<SearchResponse> search(
+            @RequestParam("q") String q,
+            @RequestParam(value = "limit", defaultValue = "50") int limit,
+            ServerWebExchange exchange) {
+        String userId = UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
+        if (q == null || q.isBlank()) {
+            return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "查询关键字 q 不能为空"));
+        }
+        final String query = q.trim();
+        return Mono.fromCallable(() -> searchRepository.searchByUser(userId, query, limit))
+                .subscribeOn(Schedulers.boundedElastic())
+                .map(results -> new SearchResponse(query, results))
+                .onErrorResume(ResponseStatusException.class, ex -> Mono.error(ex))
+                .onErrorResume(Exception.class, ex -> {
+                    log.warn("检索失败: {}", ex.getMessage());
+                    return Mono.error(new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "检索失败，请稍后重试"));
+                });
+    }
 }

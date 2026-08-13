@@ -10,10 +10,4 @@ import java.math.BigDecimal;
  * @param totalCost    当日总费用 RMB
  * @param requestCount 当日请求数
  */
-public record UsageDailySummary(
-		String day,
-		long totalTokens,
-		BigDecimal totalCost,
-		long requestCount
-) {
-}
+public record UsageDailySummary(String day, long totalTokens, BigDecimal totalCost, long requestCount) {}

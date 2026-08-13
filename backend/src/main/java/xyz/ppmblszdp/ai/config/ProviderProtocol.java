@@ -18,40 +18,39 @@ import java.util.stream.Collectors;
  */
 public enum ProviderProtocol {
 
-	/** OpenAI 兼容协议。 */
-	OPENAI,
+    /** OpenAI 兼容协议。 */
+    OPENAI,
 
-	/** Anthropic / Claude 协议。 */
-	ANTHROPIC,
+    /** Anthropic / Claude 协议。 */
+    ANTHROPIC,
 
-	/** 自定义协议，走 SPI 扩展点。 */
-	CUSTOM;
+    /** 自定义协议，走 SPI 扩展点。 */
+    CUSTOM;
 
-	/**
-	 * 宽松解析协议名称，大小写无关，并允许常见别名。
-	 *
-	 * @param raw 配置文件中书写的原始值，允许为 {@code null}
-	 * @return 解析出的协议；{@code raw} 为空时回落到 {@link #OPENAI}
-	 * @throws IllegalArgumentException 当取值无法识别时，异常信息中会列出全部候选值
-	 */
-	public static ProviderProtocol fromString(String raw) {
-		if (raw == null || raw.isBlank()) {
-			return OPENAI;
-		}
-		String normalized = raw.trim().toLowerCase(Locale.ROOT).replace('-', '_');
-		return switch (normalized) {
-			// 常见别名：这些厂商本质上都是 OpenAI 兼容端点
-			case "openai", "open_ai", "oai", "openai_compatible", "compatible" -> OPENAI;
-			case "anthropic", "claude" -> ANTHROPIC;
-			case "custom", "spi" -> CUSTOM;
-			default -> throw new IllegalArgumentException(
-					"未知的 protocol 取值 '%s'，可选值为: %s".formatted(raw, candidates()));
-		};
-	}
+    /**
+     * 宽松解析协议名称，大小写无关，并允许常见别名。
+     *
+     * @param raw 配置文件中书写的原始值，允许为 {@code null}
+     * @return 解析出的协议；{@code raw} 为空时回落到 {@link #OPENAI}
+     * @throws IllegalArgumentException 当取值无法识别时，异常信息中会列出全部候选值
+     */
+    public static ProviderProtocol fromString(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return OPENAI;
+        }
+        String normalized = raw.trim().toLowerCase(Locale.ROOT).replace('-', '_');
+        return switch (normalized) {
+            // 常见别名：这些厂商本质上都是 OpenAI 兼容端点
+            case "openai", "open_ai", "oai", "openai_compatible", "compatible" -> OPENAI;
+            case "anthropic", "claude" -> ANTHROPIC;
+            case "custom", "spi" -> CUSTOM;
+            default -> throw new IllegalArgumentException("未知的 protocol 取值 '%s'，可选值为: %s".formatted(raw, candidates()));
+        };
+    }
 
-	private static String candidates() {
-		return Arrays.stream(values())
-				.map(p -> p.name().toLowerCase(Locale.ROOT))
-				.collect(Collectors.joining(", "));
-	}
+    private static String candidates() {
+        return Arrays.stream(values())
+                .map(p -> p.name().toLowerCase(Locale.ROOT))
+                .collect(Collectors.joining(", "));
+    }
 }

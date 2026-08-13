@@ -1,6 +1,13 @@
 package xyz.ppmblszdp.ai.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;
@@ -16,14 +23,6 @@ import xyz.ppmblszdp.ai.factory.ChatOptionsFactory;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
 import xyz.ppmblszdp.ai.tool.ToolEventEmitter;
-
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Worker 代理执行器：在调度者（Orchestrator）工具调用时，作为嵌套 ChatModel 执行具体子任务。
@@ -52,16 +51,14 @@ public class WorkerAgentExecutor {
      * Worker 专属虚拟线程池：每次 Worker 执行在独立虚拟线程中进行，防止阻塞 Reactor 线程。
      * <p>Java 21+ Virtual Threads 支持海量并发阻塞调用而无线程耗尽风险。
      */
-    private static final ExecutorService VIRTUAL_THREAD_POOL =
-            Executors.newVirtualThreadPerTaskExecutor();
+    private static final ExecutorService VIRTUAL_THREAD_POOL = Executors.newVirtualThreadPerTaskExecutor();
 
     private final ProviderRegistry registry;
     private final AiProviderProperties properties;
     private final ToolEventEmitter toolEventEmitter;
 
-    public WorkerAgentExecutor(ProviderRegistry registry,
-                               AiProviderProperties properties,
-                               ToolEventEmitter toolEventEmitter) {
+    public WorkerAgentExecutor(
+            ProviderRegistry registry, AiProviderProperties properties, ToolEventEmitter toolEventEmitter) {
         this.registry = registry;
         this.properties = properties;
         this.toolEventEmitter = toolEventEmitter;
@@ -84,15 +81,17 @@ public class WorkerAgentExecutor {
 
         // ① 深度保护：超限直接发射错误帧，拒绝递归派发
         if (ctx.depth() > maxDepth) {
-            String errMsg = String.format(
-                    "Worker 嵌套深度 %d 超过上限 %d，已拒绝派发（防止递归调用）", ctx.depth(), maxDepth);
+            String errMsg = String.format("Worker 嵌套深度 %d 超过上限 %d，已拒绝派发（防止递归调用）", ctx.depth(), maxDepth);
             log.warn("[{}] {}", toolName, errMsg);
             emitErrorFrame(toolName, argsJson, ctx, errMsg);
             return buildErrorJson(errMsg);
         }
 
-        log.info("[{}] 子代理任务开始 (depth={}, user={}, task={})",
-                toolName, ctx.depth(), ctx.userId(),
+        log.info(
+                "[{}] 子代理任务开始 (depth={}, user={}, task={})",
+                toolName,
+                ctx.depth(),
+                ctx.userId(),
                 task.length() > 32 ? task.substring(0, 32) + "…" : task);
 
         // ② 发射 tool_call 帧（Worker 开始）
@@ -103,42 +102,45 @@ public class WorkerAgentExecutor {
         final String workerProvider = properties.resolveAgent().resolveWorkerProvider();
         final String workerModelId = properties.resolveAgent().resolveWorkerModel();
         final int workerMaxTokens = properties.resolveAgent().resolveWorkerMaxTokens();
-        log.debug("[{}] Worker 配置: provider={}, model={}, maxTokens={}",
-                toolName, workerProvider, workerModelId, workerMaxTokens);
+        log.debug(
+                "[{}] Worker 配置: provider={}, model={}, maxTokens={}",
+                toolName,
+                workerProvider,
+                workerModelId,
+                workerMaxTokens);
 
-        CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
-            try {
-                ResolvedModel resolved = registry.resolve(workerProvider, workerModelId);
-                // Worker 专属 ChatOptions（温度 0.3 偏稳定）
-                ChatOptions opts = ChatOptionsFactory.forProvider(resolved, 0.3);
+        CompletableFuture<String> future = CompletableFuture.supplyAsync(
+                () -> {
+                    try {
+                        ResolvedModel resolved = registry.resolve(workerProvider, workerModelId);
+                        // Worker 专属 ChatOptions（温度 0.3 偏稳定）
+                        ChatOptions opts = ChatOptionsFactory.forProvider(resolved, 0.3);
 
-                // Stateless 单轮消息：仅包含专属 system + 本次 task，不携带任何历史对话
-                List<Message> messages = List.of(
-                        new SystemMessage(workerSystemPrompt),
-                        new UserMessage(task)
-                );
-                Prompt prompt = new Prompt(messages, opts);
+                        // Stateless 单轮消息：仅包含专属 system + 本次 task，不携带任何历史对话
+                        List<Message> messages = List.of(new SystemMessage(workerSystemPrompt), new UserMessage(task));
+                        Prompt prompt = new Prompt(messages, opts);
 
-                ChatResponse response = resolved.chatModel().call(prompt);
-                if (response == null || response.getResult() == null
-                        || response.getResult().getOutput() == null) {
-                    return "";
-                }
-                String text = response.getResult().getOutput().getText();
-                return text != null ? text.strip() : "";
-            } catch (Exception e) {
-                log.warn("[{}] Worker 执行异常: {}", toolName, e.getMessage());
-                throw new RuntimeException("Worker 执行失败: " + e.getMessage(), e);
-            }
-        }, VIRTUAL_THREAD_POOL);
+                        ChatResponse response = resolved.chatModel().call(prompt);
+                        if (response == null
+                                || response.getResult() == null
+                                || response.getResult().getOutput() == null) {
+                            return "";
+                        }
+                        String text = response.getResult().getOutput().getText();
+                        return text != null ? text.strip() : "";
+                    } catch (Exception e) {
+                        log.warn("[{}] Worker 执行异常: {}", toolName, e.getMessage());
+                        throw new RuntimeException("Worker 执行失败: " + e.getMessage(), e);
+                    }
+                },
+                VIRTUAL_THREAD_POOL);
 
         // Worker 超时 = tool timeout * 3（默认 90s），给 LLM 更充裕的生成时间
         Duration timeout = toolEventEmitter.toolTimeout().multipliedBy(3);
 
         try {
             String result = future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
-            ctx.eventSink().tryEmitNext(
-                    ChatChunkDto.toolResult(callId, toolName, buildResultJson(result), false));
+            ctx.eventSink().tryEmitNext(ChatChunkDto.toolResult(callId, toolName, buildResultJson(result), false));
             log.info("[{}] 子代理完成 (depth={}, 结果长度={})", toolName, ctx.depth(), result.length());
             return result;
         } catch (Exception e) {
@@ -146,8 +148,7 @@ public class WorkerAgentExecutor {
             String safeMsg = (e.getCause() != null && e.getCause().getMessage() != null)
                     ? e.getCause().getMessage()
                     : (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
-            ctx.eventSink().tryEmitNext(
-                    ChatChunkDto.toolResult(callId, toolName, buildErrorJson(safeMsg), true));
+            ctx.eventSink().tryEmitNext(ChatChunkDto.toolResult(callId, toolName, buildErrorJson(safeMsg), true));
             log.warn("[{}] 子代理失败 (depth={}): {}", toolName, ctx.depth(), safeMsg);
             return "子代理执行失败: " + safeMsg;
         }

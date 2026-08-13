@@ -1,31 +1,28 @@
 package xyz.ppmblszdp.ai.agent;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
-
 import reactor.core.publisher.Sinks;
 import reactor.core.publisher.Sinks.Many;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.config.AiProviderProperties.AgentConfig;
 import xyz.ppmblszdp.ai.dto.ChatChunkDto;
-
 import xyz.ppmblszdp.ai.registry.ModelDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
 import xyz.ppmblszdp.ai.tool.ToolEventEmitter;
-
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 
 /**
  * WorkerAgentExecutor 单元测试：验证帧发射正确性和深度限制保护。
@@ -91,8 +88,7 @@ class WorkerAgentExecutorTest {
         String result = executor.execute("analysis", "分析用户增长趋势", "你是分析助手。", ctx);
 
         // Assert: 结果正确返回
-        assertTrue(result.contains("分析完成") || result.contains("15%"),
-                "Worker 应返回 LLM 生成内容，实际: " + result);
+        assertTrue(result.contains("分析完成") || result.contains("15%"), "Worker 应返回 LLM 生成内容，实际: " + result);
 
         // 等待异步 Sink 推送
         Thread.sleep(200);
@@ -129,7 +125,8 @@ class WorkerAgentExecutorTest {
         String result = executor.execute("code", "生成一个排序算法", "你是代码助手。", ctx);
 
         // Assert: 结果应包含深度超限提示
-        assertTrue(result.contains("超过上限") || result.contains("拒绝派发") || result.contains("递归"),
+        assertTrue(
+                result.contains("超过上限") || result.contains("拒绝派发") || result.contains("递归"),
                 "深度超限时应返回错误提示，实际: " + result);
 
         // 等待 Sink 推送
@@ -137,8 +134,8 @@ class WorkerAgentExecutorTest {
 
         // 应该发射了 tool_call + isError=true 的 tool_result
         assertTrue(emitted.size() >= 2, "深度超限也应发射帧，实际: " + emitted.size());
-        boolean hasErrorResult = emitted.stream()
-                .anyMatch(c -> "tool_result".equals(c.type()) && Boolean.TRUE.equals(c.isError()));
+        boolean hasErrorResult =
+                emitted.stream().anyMatch(c -> "tool_result".equals(c.type()) && Boolean.TRUE.equals(c.isError()));
         assertTrue(hasErrorResult, "深度超限应发射 isError=true 的 tool_result 帧");
     }
 

@@ -12,9 +12,9 @@ import xyz.ppmblszdp.ai.config.ProviderProtocol;
  */
 public interface ChatModelFactory {
 
-	/** 是否支持该协议。 */
-	boolean supports(ProviderProtocol protocol);
+    /** 是否支持该协议。 */
+    boolean supports(ProviderProtocol protocol);
 
-	/** 根据配置构建一个 {@link ChatModel} 实例。 */
-	ChatModel create(AiProviderProperties.SecondClassConfig config);
+    /** 根据配置构建一个 {@link ChatModel} 实例。 */
+    ChatModel create(AiProviderProperties.SecondClassConfig config);
 }

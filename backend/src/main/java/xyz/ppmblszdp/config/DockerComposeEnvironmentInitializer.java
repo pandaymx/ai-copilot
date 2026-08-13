@@ -1,19 +1,19 @@
 package xyz.ppmblszdp.config;
 
+import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
 
-import java.io.File;
-import java.util.HashMap;
-import java.util.Map;
-
 /**
  * 动态检测 compose.yaml 文件绝对路径的 ApplicationContextInitializer。
  * 解决在根目录（如 IDE 调试）与 backend 目录（如 Gradle bootRun）下 CWD 不同导致相对路径无法找到 compose.yaml 的问题。
  */
-public class DockerComposeEnvironmentInitializer implements ApplicationContextInitializer<ConfigurableApplicationContext> {
+public class DockerComposeEnvironmentInitializer
+        implements ApplicationContextInitializer<ConfigurableApplicationContext> {
 
     @Override
     public void initialize(ConfigurableApplicationContext applicationContext) {
@@ -27,9 +27,9 @@ public class DockerComposeEnvironmentInitializer implements ApplicationContextIn
         if (composeFile != null) {
             Map<String, Object> properties = new HashMap<>();
             properties.put("spring.docker.compose.file", composeFile.getAbsolutePath());
-            environment.getPropertySources().addFirst(
-                    new MapPropertySource("dockerComposeFileAutoDetector", properties)
-            );
+            environment
+                    .getPropertySources()
+                    .addFirst(new MapPropertySource("dockerComposeFileAutoDetector", properties));
         }
     }
 

@@ -11,36 +11,28 @@ package xyz.ppmblszdp.ai.dto;
  * @param finishReason  结束原因（可选，可空）
  */
 public record ChatResponseDto(
-		String content,
-		String provider,
-		String model,
-		String conversationId,
-		Object usage,
-		String finishReason,
-		Boolean isFallback,
-		String intent,
-		String intentLabel
-) {
-	public ChatResponseDto(
-			String content,
-			String provider,
-			String model,
-			String conversationId,
-			Object usage,
-			String finishReason
-	) {
-		this(content, provider, model, conversationId, usage, finishReason, false, null, null);
-	}
+        String content,
+        String provider,
+        String model,
+        String conversationId,
+        Object usage,
+        String finishReason,
+        Boolean isFallback,
+        String intent,
+        String intentLabel) {
+    public ChatResponseDto(
+            String content, String provider, String model, String conversationId, Object usage, String finishReason) {
+        this(content, provider, model, conversationId, usage, finishReason, false, null, null);
+    }
 
-	public ChatResponseDto(
-			String content,
-			String provider,
-			String model,
-			String conversationId,
-			Object usage,
-			String finishReason,
-			Boolean isFallback
-	) {
-		this(content, provider, model, conversationId, usage, finishReason, isFallback, null, null);
-	}
+    public ChatResponseDto(
+            String content,
+            String provider,
+            String model,
+            String conversationId,
+            Object usage,
+            String finishReason,
+            Boolean isFallback) {
+        this(content, provider, model, conversationId, usage, finishReason, isFallback, null, null);
+    }
 }

@@ -1,7 +1,5 @@
 package xyz.ppmblszdp.ai.rag.metadata;
 
-import org.springframework.ai.document.Document;
-
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -10,6 +8,7 @@ import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import org.springframework.ai.document.Document;
 
 /**
  * RAG 文档元数据统一注入器。
@@ -23,8 +22,7 @@ import java.util.Map;
  */
 public class RagMetadataEnricher {
 
-    private RagMetadataEnricher() {
-    }
+    private RagMetadataEnricher() {}
 
     /**
      * 为文档列表统一注入 RAG 元数据：sourceType、source、fileName、url、title、timestamp、userId。
@@ -39,9 +37,14 @@ public class RagMetadataEnricher {
      * @param userId     关联用户 ID，以 String 写入
      * @return 注入元数据后的文档列表（原地修改，但返回同一列表以便链式调用）
      */
-    public static List<Document> enrich(List<Document> documents, String sourceType,
-                                        String source, String fileName, String url,
-                                        String title, String userId) {
+    public static List<Document> enrich(
+            List<Document> documents,
+            String sourceType,
+            String source,
+            String fileName,
+            String url,
+            String title,
+            String userId) {
         if (documents == null || documents.isEmpty()) {
             return documents;
         }

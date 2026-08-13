@@ -19,16 +19,14 @@ import java.util.List;
  * @param quotaAlertTriggered 是否已触发告警阈值
  */
 public record UsageDashboardDto(
-		String monthKey,
-		long totalTokens,
-		BigDecimal totalCost,
-		long totalRequests,
-		long activeUsers,
-		long activeModels,
-		List<UsageUserSummary> byUser,
-		List<UsageModelDetailSummary> byModel,
-		List<UsageDailySummary> dailyTrend,
-		QuotaConfigDto quotaConfig,
-		boolean quotaAlertTriggered
-) {
-}
+        String monthKey,
+        long totalTokens,
+        BigDecimal totalCost,
+        long totalRequests,
+        long activeUsers,
+        long activeModels,
+        List<UsageUserSummary> byUser,
+        List<UsageModelDetailSummary> byModel,
+        List<UsageDailySummary> dailyTrend,
+        QuotaConfigDto quotaConfig,
+        boolean quotaAlertTriggered) {}

@@ -17,12 +17,10 @@ import java.util.List;
  * @param byModel    按模型分组的明细
  */
 public record UsageSummaryDto(
-		String monthKey,
-		long totalTokens,
-		BigDecimal totalCost,
-		long quotaTokens,
-		long remainingTokens,
-		double usedPercent,
-		List<UsageModelSummary> byModel
-) {
-}
+        String monthKey,
+        long totalTokens,
+        BigDecimal totalCost,
+        long quotaTokens,
+        long remainingTokens,
+        double usedPercent,
+        List<UsageModelSummary> byModel) {}

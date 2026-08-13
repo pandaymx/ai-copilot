@@ -7,20 +7,20 @@ import org.springframework.http.HttpStatus;
  */
 public abstract class AiException extends RuntimeException {
 
-	private final String errorCode;
-	private final HttpStatus httpStatus;
+    private final String errorCode;
+    private final HttpStatus httpStatus;
 
-	protected AiException(String errorCode, HttpStatus httpStatus, String message) {
-		super(message);
-		this.errorCode = errorCode;
-		this.httpStatus = httpStatus;
-	}
+    protected AiException(String errorCode, HttpStatus httpStatus, String message) {
+        super(message);
+        this.errorCode = errorCode;
+        this.httpStatus = httpStatus;
+    }
 
-	public String getErrorCode() {
-		return errorCode;
-	}
+    public String getErrorCode() {
+        return errorCode;
+    }
 
-	public HttpStatus getHttpStatus() {
-		return httpStatus;
-	}
+    public HttpStatus getHttpStatus() {
+        return httpStatus;
+    }
 }

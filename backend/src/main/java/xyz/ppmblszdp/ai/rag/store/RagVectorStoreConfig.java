@@ -1,5 +1,6 @@
 package xyz.ppmblszdp.ai.rag.store;
 
+import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -12,8 +13,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import xyz.ppmblszdp.ai.memory.SafeEmbeddingModel;
 import xyz.ppmblszdp.ai.memory.SafeVectorStore;
 import xyz.ppmblszdp.ai.rag.RagProperties;
-
-import javax.sql.DataSource;
 
 /**
  * RAG 独立向量库配置：构造独立 pgvector 表 {@code ai_rag_documents}，与 {@code ai_long_term_memory}
@@ -48,7 +47,8 @@ public class RagVectorStoreConfig {
         SafeEmbeddingModel embedding = safeEmbedding.getIfAvailable();
 
         if (ds == null || embedding == null) {
-            log.warn("RAG 向量库不可用（DataSource={} EmbeddingModel={}），降级为 No-op SafeVectorStore",
+            log.warn(
+                    "RAG 向量库不可用（DataSource={} EmbeddingModel={}），降级为 No-op SafeVectorStore",
                     ds != null ? "OK" : "MISSING",
                     embedding != null ? "OK" : "MISSING");
             return new SafeVectorStore(null);
@@ -67,8 +67,10 @@ public class RagVectorStoreConfig {
                 .initializeSchema(true)
                 .build();
 
-        log.info("RAG 独立向量库装配完成: table={} dimensions={} indexType=HNSW distanceType=COSINE",
-                collectionName, VECTOR_DIMENSIONS);
+        log.info(
+                "RAG 独立向量库装配完成: table={} dimensions={} indexType=HNSW distanceType=COSINE",
+                collectionName,
+                VECTOR_DIMENSIONS);
         return new SafeVectorStore(store);
     }
 }

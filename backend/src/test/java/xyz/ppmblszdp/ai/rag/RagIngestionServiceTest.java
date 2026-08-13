@@ -1,5 +1,11 @@
 package xyz.ppmblszdp.ai.rag;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -12,13 +18,6 @@ import xyz.ppmblszdp.ai.rag.reader.DocumentReaderFactory;
 import xyz.ppmblszdp.ai.rag.reader.SourceType;
 import xyz.ppmblszdp.ai.rag.service.RagExtractionService;
 import xyz.ppmblszdp.ai.rag.service.RagIngestionService;
-
-import java.util.List;
-import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
 class RagIngestionServiceTest {
 
@@ -33,8 +32,17 @@ class RagIngestionServiceTest {
         mockVectorStore = mock(VectorStore.class);
         mockExtractionService = mock(RagExtractionService.class);
         properties = new RagProperties(
-                true, 4, 900, 180, "CL100K_BASE", "ai_rag_documents",
-                true, false, true, 60, 3,
+                true,
+                4,
+                900,
+                180,
+                "CL100K_BASE",
+                "ai_rag_documents",
+                true,
+                false,
+                true,
+                60,
+                3,
                 new RagProperties.SsrfConfig(5, 10_485_760L));
 
         mockReaderFactory = mock(DocumentReaderFactory.class);
@@ -49,12 +57,10 @@ class RagIngestionServiceTest {
     @Test
     void ingest_shouldReadSplitEnrichAndAdd_whenSourceIsText() {
         // 模拟 DocumentReaderFactory 返回一篇原始文档
-        String rawText = "这是一段需要被切片和向量化的长文本。" +
-                "它包含了多个句子，当超过 TokenTextSplitter 的 chunk 大小时应该自动切分。" +
-                "RAG 管道包括读取、切片、元数据注入和向量库写入四个步骤。";
+        String rawText = "这是一段需要被切片和向量化的长文本。" + "它包含了多个句子，当超过 TokenTextSplitter 的 chunk 大小时应该自动切分。"
+                + "RAG 管道包括读取、切片、元数据注入和向量库写入四个步骤。";
         Document rawDoc = new Document("doc-1", rawText, Map.of());
-        when(mockReaderFactory.read(SourceType.TEXT, rawText, "inline.txt"))
-                .thenReturn(List.of(rawDoc));
+        when(mockReaderFactory.read(SourceType.TEXT, rawText, "inline.txt")).thenReturn(List.of(rawDoc));
 
         // 执行入库
         var result = ingestionService.ingest(SourceType.TEXT, rawText, "inline.txt", "user-001");
@@ -86,11 +92,13 @@ class RagIngestionServiceTest {
     void ingest_shouldExtractStructuredKnowledge_whenEnabled() {
         String text = "AI Copilot 包含 Spring Boot 后端与 Next.js 前端。";
         Document rawDoc = new Document("doc-ext", text, Map.of());
-        when(mockReaderFactory.read(SourceType.TEXT, text, "arch.txt"))
-                .thenReturn(List.of(rawDoc));
+        when(mockReaderFactory.read(SourceType.TEXT, text, "arch.txt")).thenReturn(List.of(rawDoc));
 
         StructuredKnowledge mockKnowledge = new StructuredKnowledge(
-                "架构说明", "系统的基本组成", List.of(new StructuredKnowledge.EntityItem("AI Copilot", "产品", "智能助手")), List.of("包含前端与后端"));
+                "架构说明",
+                "系统的基本组成",
+                List.of(new StructuredKnowledge.EntityItem("AI Copilot", "产品", "智能助手")),
+                List.of("包含前端与后端"));
         when(mockExtractionService.extract(any(RagExtractRequest.class))).thenReturn(mockKnowledge);
 
         ingestionService.ingest(SourceType.TEXT, text, "arch.txt", "u-001");
@@ -109,11 +117,9 @@ class RagIngestionServiceTest {
     void ingest_shouldDegradeGracefully_whenExtractionFails() {
         String text = "抽取异常降级测试文本。";
         Document rawDoc = new Document("doc-err", text, Map.of());
-        when(mockReaderFactory.read(SourceType.TEXT, text, "err.txt"))
-                .thenReturn(List.of(rawDoc));
+        when(mockReaderFactory.read(SourceType.TEXT, text, "err.txt")).thenReturn(List.of(rawDoc));
 
-        when(mockExtractionService.extract(any(RagExtractRequest.class)))
-                .thenThrow(new RuntimeException("LLM 抽取限流失败"));
+        when(mockExtractionService.extract(any(RagExtractRequest.class))).thenThrow(new RuntimeException("LLM 抽取限流失败"));
 
         // 执行入库，抽取异常不应阻断入库主流程
         var result = ingestionService.ingest(SourceType.TEXT, text, "err.txt", "u-002");
@@ -125,8 +131,7 @@ class RagIngestionServiceTest {
     @Test
     void ingest_shouldNotThrow_whenVectorStoreThrowsException() {
         // 模拟 VectorStore 写入异常，SafeVectorStore 应静默降级
-        doThrow(new RuntimeException("数据库不可达"))
-                .when(mockVectorStore).add(any());
+        doThrow(new RuntimeException("数据库不可达")).when(mockVectorStore).add(any());
 
         String rawText = "测试降级文本";
         when(mockReaderFactory.read(SourceType.TEXT, rawText, "test.txt"))
@@ -152,8 +157,7 @@ class RagIngestionServiceTest {
     void metadataShouldContainAllRequiredStringKeys() {
         String text = "元数据完整性测试文本，用于断言所有必须的 metadata 键均存在且类型正确。";
         Document rawDoc = new Document("doc-meta", text, Map.of());
-        when(mockReaderFactory.read(SourceType.TEXT, text, "meta.txt"))
-                .thenReturn(List.of(rawDoc));
+        when(mockReaderFactory.read(SourceType.TEXT, text, "meta.txt")).thenReturn(List.of(rawDoc));
 
         ingestionService.ingest(SourceType.TEXT, text, "meta.txt", "u-999");
 
@@ -167,8 +171,7 @@ class RagIngestionServiceTest {
         Map<String, Object> meta = first.getMetadata();
 
         // 必须的元数据键
-        assertThat(meta).containsKeys(
-                "sourceType", "source", "fileName", "ingestedAt", "userId");
+        assertThat(meta).containsKeys("sourceType", "source", "fileName", "ingestedAt", "userId");
         // 确保全部为 String（回应风险3）
         assertThat(meta.get("sourceType")).isInstanceOf(String.class);
         assertThat(meta.get("userId")).isInstanceOf(String.class);

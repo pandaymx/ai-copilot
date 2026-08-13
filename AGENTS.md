@@ -10,6 +10,7 @@ This file defines behavioral constraints, debugging workflows, and operational i
 - **Log Inspection Before Diagnosis**: Inspect raw log files and full stack traces before attempting to diagnose runtime issues or build failures. Never guess root causes without empirical log evidence.
 - **No Superficial Symptom Masking**: Do not resolve errors by swallowing exceptions, masking symptoms with empty fallback objects, or commenting out failing test assertions. Fix the root cause of the underlying failure.
 - **Empirical Verification Required**: Editing a file does NOT mark a task as completed. You MUST run build/lint/test verification commands (`bun run lint`, `bun run build` in `frontend/`, `./gradlew test` in `backend/`) to prove clean execution.
+- **Commit Convention Compliance**: All commits MUST follow [Conventional Commits](https://www.conventionalcommits.org/) (`type(scope): subject`), enforced by the root `commitlint.config.js` via the `commit-msg` git hook. When staging changes, run `bun run lint` (frontend) and `./gradlew spotlessCheck` (backend) locally first so the `pre-commit` hook does not reject your commit. Never bypass hooks with `--no-verify` except in genuine emergencies, and document the reason when you do.
 
 ---
 
@@ -46,3 +47,26 @@ This file defines behavioral constraints, debugging workflows, and operational i
   - Frontend code check: `bun run lint`
   - Frontend production build: `bun run build`
   - Backend test execution: `./gradlew test`
+
+---
+
+## 4. Git Commit Conventions
+
+This repository enforces commit hygiene via husky + commitlint (root `package.json` + `.husky/`) and a Gradle Spotless plugin (backend). These run on **every local commit** and are mirrored by the `commitlint` CI job on pull requests.
+
+### Commit Message Format
+- Must match Conventional Commits: `type(scope): subject`
+  - **Allowed types**: `feat`, `fix`, `refactor`, `style`, `docs`, `chore`, `ci`, `test`, `perf`, `build`, `revert`
+  - **Allowed scopes**: `backend`, `frontend`, `ci`, `docs`, `deps`, `release`, `root`
+  - Example: `feat(frontend): add session rename shortcut`
+- Subject must be non-empty and ≤ 100 characters. The `commit-msg` hook (commitlint) rejects anything else.
+
+### Pre-Commit Quality Gates
+- `pre-commit` hook runs checks **only for the parts you changed**:
+  - Frontend changed → `bun run lint` (Biome) in `frontend/`.
+  - Backend changed → `./gradlew spotlessCheck` in `backend/` (AOSP 4-space style via Palantir Java Format).
+- Before committing, run these locally so the hook passes. If `spotlessCheck` fails, run `./gradlew spotlessApply` to auto-format the backend.
+- Do NOT use `git commit --no-verify` to skip gates. If an emergency forces it, state the reason in the commit body.
+
+### Enabling Hooks
+- Hooks activate automatically after `bun install` at the repo root (the `prepare` script sets `core.hooksPath` to `.husky`). If hooks are missing, run `git config core.hooksPath .husky` once.

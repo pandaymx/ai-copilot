@@ -3,6 +3,11 @@ package xyz.ppmblszdp.ai.rag.repository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
@@ -10,12 +15,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import xyz.ppmblszdp.ai.rag.RagProperties;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 /**
  * RAG 全文与模糊检索 Repository（基于 PostgreSQL {@code tsvector} + {@code pg_trgm}）。
@@ -45,20 +44,16 @@ public class RagSearchRepository {
         String table = properties.resolveCollectionName();
         try {
             jdbcTemplate.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;");
-            jdbcTemplate.execute(
-                    "ALTER TABLE " + table
-                            + " ADD COLUMN IF NOT EXISTS content_tsv tsvector"
-                            + " GENERATED ALWAYS AS (to_tsvector('" + TS_DICT + "', content)) STORED;");
+            jdbcTemplate.execute("ALTER TABLE " + table
+                    + " ADD COLUMN IF NOT EXISTS content_tsv tsvector"
+                    + " GENERATED ALWAYS AS (to_tsvector('" + TS_DICT + "', content)) STORED;");
             jdbcTemplate.execute(
                     "CREATE INDEX IF NOT EXISTS idx_" + table + "_tsv ON " + table + " USING GIN(content_tsv);");
-            jdbcTemplate.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_" + table + "_content_trgm ON " + table
-                            + " USING GIN(content gin_trgm_ops);");
-            jdbcTemplate.execute(
-                    "ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS structured_knowledge JSONB;");
-            jdbcTemplate.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_" + table + "_struct_meta ON " + table
-                            + " USING GIN ((metadata->'structuredKnowledge'));");
+            jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_" + table + "_content_trgm ON " + table
+                    + " USING GIN(content gin_trgm_ops);");
+            jdbcTemplate.execute("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS structured_knowledge JSONB;");
+            jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_" + table + "_struct_meta ON " + table
+                    + " USING GIN ((metadata->'structuredKnowledge'));");
             log.info("RAG 全文检索与结构化索引初始化成功（表 {}）", table);
         } catch (Exception ex) {
             log.warn("初始化 RAG 全文与结构化检索索引失败（非 PG 数据库或缺扩展权限时自动降级，不阻断启动）: {}", ex.getMessage());
@@ -83,8 +78,12 @@ public class RagSearchRepository {
         StringBuilder sql = new StringBuilder();
         List<Object> params = new ArrayList<>();
 
-        sql.append("SELECT id, content, metadata FROM ").append(table).append(" WHERE (")
-                .append("content_tsv @@ plainto_tsquery('").append(TS_DICT).append("', ?) ")
+        sql.append("SELECT id, content, metadata FROM ")
+                .append(table)
+                .append(" WHERE (")
+                .append("content_tsv @@ plainto_tsquery('")
+                .append(TS_DICT)
+                .append("', ?) ")
                 .append("OR content ILIKE '%' || ? || '%'")
                 .append(")");
         params.add(query);
@@ -100,7 +99,9 @@ public class RagSearchRepository {
             params.add(sourceType);
         }
 
-        sql.append(" ORDER BY ts_rank(content_tsv, plainto_tsquery('").append(TS_DICT).append("', ?)) DESC");
+        sql.append(" ORDER BY ts_rank(content_tsv, plainto_tsquery('")
+                .append(TS_DICT)
+                .append("', ?)) DESC");
         params.add(query);
 
         int effectiveLimit = limit > 0 ? limit : 20;
@@ -108,13 +109,16 @@ public class RagSearchRepository {
         params.add(effectiveLimit);
 
         try {
-            return jdbcTemplate.query(sql.toString(), (rs, rowNum) -> {
-                String id = rs.getString("id");
-                String content = rs.getString("content");
-                String metaJson = rs.getString("metadata");
-                Map<String, Object> metadata = parseMetadata(metaJson);
-                return new Document(id, content, metadata);
-            }, params.toArray());
+            return jdbcTemplate.query(
+                    sql.toString(),
+                    (rs, rowNum) -> {
+                        String id = rs.getString("id");
+                        String content = rs.getString("content");
+                        String metaJson = rs.getString("metadata");
+                        Map<String, Object> metadata = parseMetadata(metaJson);
+                        return new Document(id, content, metadata);
+                    },
+                    params.toArray());
         } catch (Exception e) {
             log.warn("RAG 全文检索查询失败（已降级为空）: query=... error={}", e.getMessage());
             return Collections.emptyList();
@@ -139,11 +143,17 @@ public class RagSearchRepository {
         StringBuilder sql = new StringBuilder();
         List<Object> params = new ArrayList<>();
 
-        sql.append("SELECT id, content, metadata FROM ").append(table).append(" WHERE (")
-                .append("COALESCE(structured_knowledge, metadata->'structuredKnowledge')->>'title' ILIKE '%' || ? || '%' ")
-                .append("OR COALESCE(structured_knowledge, metadata->'structuredKnowledge')->>'summary' ILIKE '%' || ? || '%' ")
-                .append("OR COALESCE(structured_knowledge, metadata->'structuredKnowledge')->'entities'::text ILIKE '%' || ? || '%' ")
-                .append("OR COALESCE(structured_knowledge, metadata->'structuredKnowledge')->'keyFacts'::text ILIKE '%' || ? || '%'")
+        sql.append("SELECT id, content, metadata FROM ")
+                .append(table)
+                .append(" WHERE (")
+                .append(
+                        "COALESCE(structured_knowledge, metadata->'structuredKnowledge')->>'title' ILIKE '%' || ? || '%' ")
+                .append(
+                        "OR COALESCE(structured_knowledge, metadata->'structuredKnowledge')->>'summary' ILIKE '%' || ? || '%' ")
+                .append(
+                        "OR COALESCE(structured_knowledge, metadata->'structuredKnowledge')->'entities'::text ILIKE '%' || ? || '%' ")
+                .append(
+                        "OR COALESCE(structured_knowledge, metadata->'structuredKnowledge')->'keyFacts'::text ILIKE '%' || ? || '%'")
                 .append(")");
         params.add(query);
         params.add(query);
@@ -165,13 +175,16 @@ public class RagSearchRepository {
         params.add(effectiveLimit);
 
         try {
-            return jdbcTemplate.query(sql.toString(), (rs, rowNum) -> {
-                String id = rs.getString("id");
-                String content = rs.getString("content");
-                String metaJson = rs.getString("metadata");
-                Map<String, Object> metadata = parseMetadata(metaJson);
-                return new Document(id, content, metadata);
-            }, params.toArray());
+            return jdbcTemplate.query(
+                    sql.toString(),
+                    (rs, rowNum) -> {
+                        String id = rs.getString("id");
+                        String content = rs.getString("content");
+                        String metaJson = rs.getString("metadata");
+                        Map<String, Object> metadata = parseMetadata(metaJson);
+                        return new Document(id, content, metadata);
+                    },
+                    params.toArray());
         } catch (Exception e) {
             log.warn("RAG 结构化知识检索查询失败（已降级为空）: query=... error={}", e.getMessage());
             return Collections.emptyList();

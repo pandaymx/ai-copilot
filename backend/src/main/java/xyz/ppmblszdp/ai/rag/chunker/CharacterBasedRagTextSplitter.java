@@ -1,13 +1,12 @@
 package xyz.ppmblszdp.ai.rag.chunker;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import xyz.ppmblszdp.ai.rag.RagProperties;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
 
 /**
  * 基于字符/段落维度的备选切片策略。

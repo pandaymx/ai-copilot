@@ -1,5 +1,8 @@
 package xyz.ppmblszdp.ai.rag.service;
 
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -12,10 +15,6 @@ import xyz.ppmblszdp.ai.rag.dto.RagExtractRequest;
 import xyz.ppmblszdp.ai.rag.dto.StructuredKnowledge;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
-
-import java.util.Collections;
-import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * RAG 结构化抽取服务（利用 Spring AI {@link BeanOutputConverter} 强类型提取知识对象与结构化实体）。
@@ -35,9 +34,7 @@ public class RagExtractionService {
     private final RagQueryService queryService;
     private final ProviderRegistry providerRegistry;
 
-    public RagExtractionService(
-            RagQueryService queryService,
-            ObjectProvider<ProviderRegistry> providerRegistry) {
+    public RagExtractionService(RagQueryService queryService, ObjectProvider<ProviderRegistry> providerRegistry) {
         this(queryService, providerRegistry != null ? providerRegistry.getIfAvailable() : null);
     }
 
@@ -65,7 +62,8 @@ public class RagExtractionService {
             List<Document> docs = queryService.search(request.query(), request.userId(), request.sourceType(), topK);
             if (docs.isEmpty()) {
                 log.info("未找到相关 RAG 片段，结构化抽取返回空知识库对象: query={}", request.query());
-                return new StructuredKnowledge(request.query(), "未找到相关文档内容", Collections.emptyList(), Collections.emptyList());
+                return new StructuredKnowledge(
+                        request.query(), "未找到相关文档内容", Collections.emptyList(), Collections.emptyList());
             }
             contextText = docs.stream().map(Document::getText).collect(Collectors.joining("\n---\n"));
         } else {
@@ -86,7 +84,8 @@ public class RagExtractionService {
 
             String fullSystemPrompt = EXTRACTION_SYSTEM_PROMPT + "\n" + formatInstructions;
 
-            String responseContent = chatClient.prompt()
+            String responseContent = chatClient
+                    .prompt()
                     .system(fullSystemPrompt)
                     .user("待强类型抽取的内容如下：\n---\n" + contextText + "\n---")
                     .call()
@@ -98,12 +97,15 @@ public class RagExtractionService {
             }
 
             StructuredKnowledge knowledge = converter.convert(responseContent);
-            log.info("RAG 结构化抽取成功: title={} entitiesCount={}",
-                    knowledge.title(), knowledge.entities() != null ? knowledge.entities().size() : 0);
+            log.info(
+                    "RAG 结构化抽取成功: title={} entitiesCount={}",
+                    knowledge.title(),
+                    knowledge.entities() != null ? knowledge.entities().size() : 0);
             return knowledge;
         } catch (Exception e) {
             log.error("RAG 结构化抽取解析异常: error={}", e.getMessage(), e);
-            return new StructuredKnowledge("抽取失败", "解析出现异常: " + e.getMessage(), Collections.emptyList(), Collections.emptyList());
+            return new StructuredKnowledge(
+                    "抽取失败", "解析出现异常: " + e.getMessage(), Collections.emptyList(), Collections.emptyList());
         }
     }
 }

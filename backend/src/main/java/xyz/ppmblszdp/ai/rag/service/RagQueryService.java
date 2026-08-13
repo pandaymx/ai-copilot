@@ -1,5 +1,12 @@
 package xyz.ppmblszdp.ai.rag.service;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
@@ -11,20 +18,11 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
-
 import xyz.ppmblszdp.ai.memory.SafeVectorStore;
 import xyz.ppmblszdp.ai.rag.RagProperties;
 import xyz.ppmblszdp.ai.rag.dto.RagDocumentMeta;
 import xyz.ppmblszdp.ai.rag.repository.RagSearchRepository;
 import xyz.ppmblszdp.ai.rag.rerank.RagReranker;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 /**
  * RAG 文档相似检索服务（支持双路召回 + RRF 倒数排名融合 + 可选 Rerank 精排）。
@@ -95,7 +93,8 @@ public class RagQueryService {
         boolean hasType = sourceType != null && !sourceType.isBlank();
 
         if (hasUser && hasType) {
-            filter = feb.and(feb.eq("userId", userId), feb.eq("sourceType", sourceType)).build();
+            filter = feb.and(feb.eq("userId", userId), feb.eq("sourceType", sourceType))
+                    .build();
         } else if (hasUser) {
             filter = feb.eq("userId", userId).build();
         } else if (hasType) {
@@ -109,8 +108,7 @@ public class RagQueryService {
         try {
             records = ragVectorStore.similaritySearch(builder.build());
         } catch (Exception e) {
-            log.warn("RAG 列表检索异常（已降级为空）: userId={} sourceType={} error={}",
-                    userId, sourceType, e.getMessage());
+            log.warn("RAG 列表检索异常（已降级为空）: userId={} sourceType={} error={}", userId, sourceType, e.getMessage());
             return Collections.emptyList();
         }
 
@@ -124,12 +122,19 @@ public class RagQueryService {
                 bySource.put(source, toMeta(source, uid, m));
             } else {
                 int chunkCount = existing.chunkCount() + 1;
-                String ingestedAt = latest(existing.ingestedAt(),
-                        String.valueOf(m.getOrDefault("ingestedAt", "")));
-                bySource.put(source, new RagDocumentMeta(
-                        existing.docId(), existing.source(), existing.sourceType(),
-                        existing.fileName(), existing.title(), existing.userId(),
-                        chunkCount, ingestedAt, existing.contentHash()));
+                String ingestedAt = latest(existing.ingestedAt(), String.valueOf(m.getOrDefault("ingestedAt", "")));
+                bySource.put(
+                        source,
+                        new RagDocumentMeta(
+                                existing.docId(),
+                                existing.source(),
+                                existing.sourceType(),
+                                existing.fileName(),
+                                existing.title(),
+                                existing.userId(),
+                                chunkCount,
+                                ingestedAt,
+                                existing.contentHash()));
             }
         }
 
@@ -151,12 +156,14 @@ public class RagQueryService {
         stats.put("enabled", properties.isEnabled());
         stats.put("hybridSearchEnabled", properties.isHybridSearchEnabled());
         stats.put("rerankEnabled", properties.isRerankEnabled());
-        stats.put("available", ragVectorStore instanceof SafeVectorStore
-                ? ((SafeVectorStore) ragVectorStore).isAvailable()
-                : true);
+        stats.put(
+                "available",
+                ragVectorStore instanceof SafeVectorStore ? ((SafeVectorStore) ragVectorStore).isAvailable() : true);
         stats.put("collectionName", properties.resolveCollectionName());
         stats.put("documentCount", (long) all.size());
-        stats.put("vectorCount", all.stream().mapToLong(RagDocumentMeta::chunkCount).sum());
+        stats.put(
+                "vectorCount",
+                all.stream().mapToLong(RagDocumentMeta::chunkCount).sum());
         return stats;
     }
 
@@ -176,10 +183,8 @@ public class RagQueryService {
     }
 
     private String latest(String a, String b) {
-        if (a == null || a.isBlank())
-            return b;
-        if (b == null || b.isBlank())
-            return a;
+        if (a == null || a.isBlank()) return b;
+        if (b == null || b.isBlank()) return a;
         return a.compareTo(b) >= 0 ? a : b;
     }
 
@@ -210,7 +215,8 @@ public class RagQueryService {
         // 0. 优先进行结构化知识查询探查 (若开启 extraction-enabled 且 searchRepository 可用)
         if (properties.isExtractionEnabled() && searchRepository != null) {
             try {
-                List<Document> structuredDocs = searchRepository.searchStructuredKnowledge(query, userId, sourceType, targetTopK);
+                List<Document> structuredDocs =
+                        searchRepository.searchStructuredKnowledge(query, userId, sourceType, targetTopK);
                 if (structuredDocs != null && !structuredDocs.isEmpty()) {
                     log.info("RAG 结构化查询路由命中: query={} count={} userId={}", query, structuredDocs.size(), userId);
                     return structuredDocs;
@@ -230,9 +236,7 @@ public class RagQueryService {
     }
 
     private List<Document> searchVectorOnly(String query, String userId, String sourceType, int topK) {
-        SearchRequest.Builder builder = SearchRequest.builder()
-                .query(query)
-                .topK(topK);
+        SearchRequest.Builder builder = SearchRequest.builder().query(query).topK(topK);
 
         FilterExpressionBuilder feb = new FilterExpressionBuilder();
         Filter.Expression filter = buildFilter(feb, userId, sourceType);
@@ -299,9 +303,8 @@ public class RagQueryService {
             rrfCandidates.add(new Document(orig.getId(), orig.getText(), meta));
         }
 
-        rrfCandidates.sort((d1, d2) -> Double.compare(
-                (double) d2.getMetadata().getOrDefault("rrfScore", 0.0),
-                (double) d1.getMetadata().getOrDefault("rrfScore", 0.0)));
+        rrfCandidates.sort((d1, d2) -> Double.compare((double) d2.getMetadata().getOrDefault("rrfScore", 0.0), (double)
+                d1.getMetadata().getOrDefault("rrfScore", 0.0)));
 
         // 4. 可选 Rerank 精排
         if (properties.isRerankEnabled() && reranker != null) {

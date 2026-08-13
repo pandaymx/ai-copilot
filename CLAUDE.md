@@ -108,3 +108,18 @@ task dev
 
 - **Verification Protocol**:
   - Always execute `bun run lint` and `bun run build` (in `frontend/`) and `./gradlew test` (in `backend/`) after making non-trivial code modifications.
+
+---
+
+## 📝 Git Commit Conventions
+
+Commits are enforced by husky + commitlint (root `package.json` + `.husky/`) and a Gradle Spotless plugin (backend). The same checks run remotely via the `commitlint` CI job on pull requests.
+
+- **Format**: Conventional Commits `type(scope): subject`.
+  - Types: `feat`, `fix`, `refactor`, `style`, `docs`, `chore`, `ci`, `test`, `perf`, `build`, `revert`.
+  - Scopes: `backend`, `frontend`, `ci`, `docs`, `deps`, `release`, `root`.
+  - Example: `fix(backend): validate API key before provider registration`
+- **Pre-commit gates** (run by `.husky/pre-commit` on the changed subtree only):
+  - Frontend → `bun run lint` (Biome).
+  - Backend → `./gradlew spotlessCheck` (AOSP 4-space style via Palantir Java Format). Run `./gradlew spotlessApply` to auto-format if it fails.
+- **Enable hooks**: `bun install` at repo root (the `prepare` script points `core.hooksPath` to `.husky`). Never commit with `--no-verify` to bypass gates.

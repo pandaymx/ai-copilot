@@ -14,12 +14,10 @@ import java.math.BigDecimal;
  * @param requestCount     请求数
  */
 public record UsageModelDetailSummary(
-		String modelId,
-		String providerId,
-		long promptTokens,
-		long completionTokens,
-		long totalTokens,
-		BigDecimal totalCost,
-		long requestCount
-) {
-}
+        String modelId,
+        String providerId,
+        long promptTokens,
+        long completionTokens,
+        long totalTokens,
+        BigDecimal totalCost,
+        long requestCount) {}

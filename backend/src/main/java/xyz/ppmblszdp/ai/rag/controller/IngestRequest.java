@@ -27,5 +27,4 @@ public record IngestRequest(
         String targetUrl,
         String fileStoragePath,
         String fileName,
-        @Nullable ConflictPolicy conflictPolicy
-) {}
+        @Nullable ConflictPolicy conflictPolicy) {}

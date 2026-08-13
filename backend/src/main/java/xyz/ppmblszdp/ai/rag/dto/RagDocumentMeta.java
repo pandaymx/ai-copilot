@@ -25,5 +25,4 @@ public record RagDocumentMeta(
         String userId,
         int chunkCount,
         String ingestedAt,
-        String contentHash
-) {}
+        String contentHash) {}

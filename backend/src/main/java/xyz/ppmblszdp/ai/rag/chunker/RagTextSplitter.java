@@ -1,9 +1,8 @@
 package xyz.ppmblszdp.ai.rag.chunker;
 
-import org.springframework.ai.document.Document;
-
 import java.util.List;
 import java.util.function.Function;
+import org.springframework.ai.document.Document;
 
 /**
  * RAG 文本切片策略接口（回应风险2：分词器匹配度）。
@@ -13,5 +12,4 @@ import java.util.function.Function;
  * + 自实现 overlap 包装），备选 {@link CharacterBasedRagTextSplitter} 按字符/段落维度切片。
  */
 @FunctionalInterface
-public interface RagTextSplitter extends Function<List<Document>, List<Document>> {
-}
+public interface RagTextSplitter extends Function<List<Document>, List<Document>> {}
