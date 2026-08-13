@@ -1,6 +1,14 @@
 "use client";
 
-import { FileText, Link2, Loader2, Trash2, Type, UploadCloud, X } from "lucide-react";
+import {
+  FileText,
+  Link2,
+  Loader2,
+  Trash2,
+  Type,
+  UploadCloud,
+  X,
+} from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -315,7 +323,11 @@ export function KnowledgeUpload({ onSuccess }: KnowledgeUploadProps) {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400">
                 <span>
-                  已选择 <strong className="font-semibold text-zinc-700 dark:text-zinc-200">{selectedFiles.length}</strong> 个文件（共 {formatFileSize(totalFilesSize)}）
+                  已选择{" "}
+                  <strong className="font-semibold text-zinc-700 dark:text-zinc-200">
+                    {selectedFiles.length}
+                  </strong>{" "}
+                  个文件（共 {formatFileSize(totalFilesSize)}）
                 </span>
                 <button
                   type="button"
@@ -412,4 +424,3 @@ export function KnowledgeUpload({ onSuccess }: KnowledgeUploadProps) {
     </Card>
   );
 }
-
