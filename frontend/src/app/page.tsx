@@ -139,7 +139,10 @@ export default function Home() {
   const { loading, error, send, stop, streamStore } = useSpringAiStream({
     endpoint: "/api/chat/stream",
     onConversationId: (serverConvId) => {
-      if (serverConvId && activeId && serverConvId !== activeId) {
+      if (!serverConvId) return;
+      // 首次发送时 activeId 为 null，必须无条件设置；
+      // 后续仅在会话 ID 变更时更新（避免不必要的重渲染）。
+      if (!activeId || serverConvId !== activeId) {
         setActiveId(serverConvId);
         void mutateSessions(
           (prev) =>
