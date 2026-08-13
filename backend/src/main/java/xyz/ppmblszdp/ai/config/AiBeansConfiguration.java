@@ -10,6 +10,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.reactive.CorsWebFilter;
 
@@ -31,9 +33,11 @@ import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.SecondClassProviderRegistrar;
 import xyz.ppmblszdp.ai.spi.CustomChatModelSupplier;
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
+import org.springframework.web.server.WebFilter;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 统一抽象层的 Bean 装配。
@@ -44,7 +48,8 @@ import java.util.Map;
  * 两个 Registrar 的产出合成一个不可变 {@link ProviderRegistry}。
  */
 @Configuration
-@EnableConfigurationProperties({AiProviderProperties.class, CorsProperties.class, AuthProperties.class, RagProperties.class})
+@EnableConfigurationProperties({ AiProviderProperties.class, CorsProperties.class, AuthProperties.class,
+		RagProperties.class })
 public class AiBeansConfiguration {
 
 	@Bean
@@ -102,6 +107,35 @@ public class AiBeansConfiguration {
 		source.registerCorsConfiguration("/**", corsConfig);
 
 		return new CorsWebFilter(source);
+	}
+
+	@Bean
+	@Order(Ordered.HIGHEST_PRECEDENCE)
+	public WebFilter hostValidationWebFilter(CorsProperties corsProperties) {
+		Set<String> allowedHosts = corsProperties.resolveAllowedHosts();
+		return (exchange, chain) -> {
+			if (allowedHosts.contains("*")) {
+				return chain.filter(exchange);
+			}
+			String hostHeader = exchange.getRequest().getHeaders().getFirst("Host");
+			if (hostHeader == null || hostHeader.isBlank()) {
+				exchange.getResponse().setStatusCode(org.springframework.http.HttpStatus.BAD_REQUEST);
+				return exchange.getResponse().setComplete();
+			}
+			String cleanHost = hostHeader.trim();
+			boolean matches = allowedHosts.contains(cleanHost);
+			if (!matches && cleanHost.contains(":")) {
+				String hostNameOnly = cleanHost.substring(0, cleanHost.indexOf(':'));
+				matches = allowedHosts.contains(hostNameOnly);
+			}
+			if (!matches) {
+				Logger log = LoggerFactory.getLogger(AiBeansConfiguration.class);
+				log.warn("【DNS Rebinding 威胁被拦截】请求 Host 头 '{}' 不在允许的主机白名单列表中 {}", cleanHost, allowedHosts);
+				exchange.getResponse().setStatusCode(org.springframework.http.HttpStatus.FORBIDDEN);
+				return exchange.getResponse().setComplete();
+			}
+			return chain.filter(exchange);
+		};
 	}
 
 	public CorsWebFilter corsWebFilter(CorsProperties corsProperties) {

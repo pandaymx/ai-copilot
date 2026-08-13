@@ -7,6 +7,7 @@ import org.springframework.web.cors.reactive.CorsWebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
+import xyz.ppmblszdp.ai.identity.AuthProperties;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -117,13 +118,52 @@ class CorsConfigurationTest {
 	@Test
 	void corsWebFilter_WithStrictModeAndWildcard_ConstructsSuccessfullyWithWarning() {
 		CorsProperties corsProperties = new CorsProperties("*", false, "*");
-			xyz.ppmblszdp.ai.identity.AuthProperties strictAuth = new xyz.ppmblszdp.ai.identity.AuthProperties("strict", "X-User-Id", java.util.Set
+		AuthProperties strictAuth = new AuthProperties("strict", "X-User-Id", java.util.Set
 				.of("admin"));
 		AiBeansConfiguration beansConfig = new AiBeansConfiguration();
-				
+
 		CorsWebFilter filter = beansConfig.corsWebFilter(corsProperties, strictAuth);
 		assertThat(filter).isNotNull();
 	}
-}
 
-				
+	@Test
+	void hostValidationWebFilter_ValidHost_AllowsChainExecution() {
+		CorsProperties corsProperties = new CorsProperties("http://localhost:3000,http://127.0.0.1:3000", false, null);
+		AiBeansConfiguration beansConfig = new AiBeansConfiguration();
+		org.springframework.web.server.WebFilter hostFilter = beansConfig.hostValidationWebFilter(corsProperties);
+
+		MockServerWebExchange exchange = MockServerWebExchange.from(
+				MockServerHttpRequest.get("http://localhost:3000/api/chat")
+						.header("Host", "localhost:3000")
+						.build());
+
+		WebFilterChain filterChain = ex -> {
+			ex.getResponse().setStatusCode(org.springframework.http.HttpStatus.OK);
+			return Mono.empty();
+		};
+
+		StepVerifier.create(hostFilter.filter(exchange, filterChain))
+				.verifyComplete();
+
+		assertThat(exchange.getResponse().getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.OK);
+	}
+
+	@Test
+	void hostValidationWebFilter_InvalidRebindingHost_ReturnsForbidden() {
+		CorsProperties corsProperties = new CorsProperties("http://localhost:3000,http://127.0.0.1:3000", false, null);
+		AiBeansConfiguration beansConfig = new AiBeansConfiguration();
+		org.springframework.web.server.WebFilter hostFilter = beansConfig.hostValidationWebFilter(corsProperties);
+
+		MockServerWebExchange exchange = MockServerWebExchange.from(
+				MockServerHttpRequest.get("http://attacker.com/api/chat")
+						.header("Host", "attacker.com")
+						.build());
+
+		WebFilterChain filterChain = ex -> Mono.empty();
+
+		StepVerifier.create(hostFilter.filter(exchange, filterChain))
+				.verifyComplete();
+
+		assertThat(exchange.getResponse().getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.FORBIDDEN);
+	}
+}
