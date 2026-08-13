@@ -125,7 +125,7 @@ describe("MessageBubble Component Tests - components/chat/message-bubble.tsx", (
     expect(container.textContent).toContain("Spring AI Core");
     expect(container.textContent).toContain("Tokens: 200");
     expect(container.textContent).toContain("约 ¥0.0015");
-    expect(container.textContent).toContain("思考过程");
+    expect(container.textContent).toContain("思维链推理过程");
     expect(container.textContent).toContain(
       "Analyzing React 19 release notes...",
     );

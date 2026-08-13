@@ -120,6 +120,7 @@ export interface ArtifactItem {
 export interface StreamData {
   content: string;
   thinking: string;
+  reasoningDurationMs?: number;
   usage: {
     promptTokens: number;
     completionTokens: number;
@@ -153,8 +154,13 @@ export class StreamStore {
     };
   };
 
-  update(content: string, thinking: string, usage: StreamData["usage"]) {
-    this.data = { ...this.data, content, thinking, usage };
+  update(
+    content: string,
+    thinking: string,
+    usage: StreamData["usage"],
+    reasoningDurationMs?: number,
+  ) {
+    this.data = { ...this.data, content, thinking, usage, reasoningDurationMs };
     for (const listener of this.listeners) {
       listener();
     }
@@ -322,6 +328,8 @@ export function useSpringAiStream(
   const streamStoreRef = useRef(new StreamStore());
   const contentRef = useRef("");
   const thinkingRef = useRef("");
+  const reasoningStartTimeRef = useRef<number | null>(null);
+  const reasoningDurationMsRef = useRef<number | null>(null);
   const usageRef = useRef<{
     promptTokens: number;
     completionTokens: number;
@@ -339,6 +347,7 @@ export function useSpringAiStream(
       contentRef.current,
       thinkingRef.current,
       usageRef.current,
+      reasoningDurationMsRef.current ?? undefined,
     );
     setStreamData({
       content: contentRef.current,
@@ -359,6 +368,7 @@ export function useSpringAiStream(
         contentRef.current,
         thinkingRef.current,
         usageRef.current,
+        reasoningDurationMsRef.current ?? undefined,
       );
       setStreamData({
         content: contentRef.current,
@@ -385,6 +395,8 @@ export function useSpringAiStream(
     }
     contentRef.current = "";
     thinkingRef.current = "";
+    reasoningStartTimeRef.current = null;
+    reasoningDurationMsRef.current = null;
     usageRef.current = null;
     streamStoreRef.current.reset();
     setStreamData({ content: "", thinking: "" });
@@ -421,6 +433,8 @@ export function useSpringAiStream(
       }
       contentRef.current = "";
       thinkingRef.current = "";
+      reasoningStartTimeRef.current = null;
+      reasoningDurationMsRef.current = null;
       usageRef.current = null;
       streamStoreRef.current.reset();
       setStreamData({ content: "", thinking: "" });
@@ -456,6 +470,11 @@ export function useSpringAiStream(
                   return;
                 }
                 if (parsed?.type === "reasoning" && parsed.reasoning) {
+                  if (reasoningStartTimeRef.current === null) {
+                    reasoningStartTimeRef.current = Date.now();
+                  }
+                  reasoningDurationMsRef.current =
+                    Date.now() - reasoningStartTimeRef.current;
                   thinkingRef.current += parsed.reasoning;
                   scheduleUpdate();
                   onReasoningRef.current?.(parsed.reasoning);

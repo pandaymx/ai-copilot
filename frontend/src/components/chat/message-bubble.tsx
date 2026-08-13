@@ -28,13 +28,14 @@ import { cn } from "@/lib/utils";
 import { tts } from "@/lib/voice";
 import { ChatMessageErrorBoundary } from "./error-boundary";
 import { Markdown } from "./markdown";
+import { ReasoningView } from "./reasoning-view";
 import { ToolCard } from "./tool-card";
 
 export interface AttachmentItem {
   id: string;
   name: string;
   type: "image" | "file";
-  mimeType: string;
+  mimeType?: string;
   url: string;
   size?: number;
   /** 非图片文件的文本内容（readAsText 读取后存储） */
@@ -46,6 +47,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   thinking?: string;
+  reasoningDurationMs?: number;
   usage?: {
     promptTokens: number;
     completionTokens: number;
@@ -194,30 +196,13 @@ function MessageBubbleBase({
           </div>
         )}
 
-        {/* 思考过程折叠盒（针对推理型输出） */}
+        {/* 结构化思维链可视化展示（针对推理型输出） */}
         {!isUser && message.thinking && (
-          <div className="mb-1.5 w-full min-w-0 overflow-hidden rounded-xl border border-indigo-200/60 bg-indigo-50/40 text-xs dark:border-indigo-900/50 dark:bg-indigo-950/30">
-            <button
-              type="button"
-              onClick={() => setShowThinking((prev) => !prev)}
-              className="flex w-full items-center justify-between px-3 py-2 text-indigo-700 hover:bg-indigo-100/50 dark:text-indigo-300 dark:hover:bg-indigo-900/30 font-medium"
-            >
-              <div className="flex items-center gap-1.5">
-                <Brain className="size-3.5 animate-pulse text-indigo-500" />
-                <span>思考过程 ({streaming ? "推理中..." : "已完成"})</span>
-              </div>
-              {showThinking ? (
-                <ChevronDown className="size-3.5" />
-              ) : (
-                <ChevronRight className="size-3.5" />
-              )}
-            </button>
-            {showThinking && (
-              <div className="border-t border-indigo-200/40 p-3 text-zinc-600 leading-relaxed dark:border-indigo-900/40 dark:text-zinc-400">
-                {message.thinking}
-              </div>
-            )}
-          </div>
+          <ReasoningView
+            thinking={message.thinking}
+            streaming={streaming}
+            durationMs={message.reasoningDurationMs}
+          />
         )}
 
         {/* 多模态附件渲染 */}
@@ -410,8 +395,14 @@ export function LiveMessageBubble({
   streamStore,
   conversationId,
 }: LiveMessageBubbleProps) {
-  const { content, thinking, usage, toolCalls, artifacts } =
-    useStreamData(streamStore);
+  const {
+    content,
+    thinking,
+    reasoningDurationMs,
+    usage,
+    toolCalls,
+    artifacts,
+  } = useStreamData(streamStore);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll into view on streaming content update
@@ -423,6 +414,7 @@ export function LiveMessageBubble({
     ...message,
     content: content || message.content,
     thinking: thinking || message.thinking,
+    reasoningDurationMs: reasoningDurationMs ?? message.reasoningDurationMs,
     usage: usage ?? message.usage,
     // 将流式 Map 转为数组（保留 callId 作 ToolCard key, artifactId 作 ImageArtifactViewer key）
     toolCalls: Object.values(toolCalls),
