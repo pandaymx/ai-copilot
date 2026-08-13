@@ -1,0 +1,54 @@
+{
+  "common": {
+    "title": "AI Copilot Pro",
+    "subtitle": "Smart AI Assistant",
+    "description": "High-availability personal AI assistant based on Spring AI and Next.js",
+    "toggleTheme": "Toggle Theme",
+    "language": "Language",
+    "chinese": "中文",
+    "english": "English",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "search": "Search",
+    "loading": "Loading...",
+    "error": "Error Occurred"
+  },
+  "nav": {
+    "chat": "Chat",
+    "knowledge": "Knowledge Base",
+    "memory": "Memory Hall",
+    "usage": "Usage Stats"
+  },
+  "chat": {
+    "newChat": "New Chat",
+    "inputPlaceholder": "Type your message or question...",
+    "send": "Send",
+    "stop": "Stop",
+    "clearHistory": "Clear History",
+    "models": "Model Selection",
+    "systemPrompt": "System Prompt",
+    "copy": "Copy",
+    "copied": "Copied"
+  },
+  "knowledge": {
+    "title": "Knowledge Base & RAG Retrieval",
+    "upload": "Upload Document",
+    "dragDrop": "Drag and drop files here, or click to select",
+    "docList": "Document List",
+    "emptyDocs": "No documents found"
+  },
+  "memory": {
+    "title": "AI Long-term & Short-term Memory",
+    "sessionMemory": "Session Memory",
+    "longTermMemory": "Long-term Memory",
+    "empty": "No memory records"
+  },
+  "usage": {
+    "title": "Token & Cost Usage Statistics",
+    "totalTokens": "Total Tokens Consumed",
+    "totalCost": "Estimated Total Cost",
+    "modelUsage": "Model Breakdown",
+    "userUsage": "User Breakdown"
+  }
+}

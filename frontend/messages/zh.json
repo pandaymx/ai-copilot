@@ -1,0 +1,54 @@
+{
+  "common": {
+    "title": "AI Copilot Pro",
+    "subtitle": "智能 AI 助手",
+    "description": "基于 Spring AI 与 Next.js 的高可用个人 AI 助手与智能 Copilot",
+    "toggleTheme": "切换主题",
+    "language": "语言",
+    "chinese": "中文",
+    "english": "English",
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "search": "搜索",
+    "loading": "加载中...",
+    "error": "发生错误"
+  },
+  "nav": {
+    "chat": "对话问答",
+    "knowledge": "知识库管理",
+    "memory": "记忆大厅",
+    "usage": "用量统计"
+  },
+  "chat": {
+    "newChat": "新建对话",
+    "inputPlaceholder": "输入您的消息或问题...",
+    "send": "发送",
+    "stop": "停止",
+    "clearHistory": "清空历史",
+    "models": "模型选择",
+    "systemPrompt": "系统提示词",
+    "copy": "复制",
+    "copied": "已复制"
+  },
+  "knowledge": {
+    "title": "知识库与文档检索 (RAG)",
+    "upload": "上传文档",
+    "dragDrop": "拖拽文件至此，或点击选择文件",
+    "docList": "文档列表",
+    "emptyDocs": "暂无文档"
+  },
+  "memory": {
+    "title": "AI 长期与短期记忆",
+    "sessionMemory": "会话记忆",
+    "longTermMemory": "长期记忆",
+    "empty": "暂无记忆记录"
+  },
+  "usage": {
+    "title": " Token 与费用用量统计",
+    "totalTokens": "总 Token 消耗",
+    "totalCost": "预估总费用",
+    "modelUsage": "模型分布",
+    "userUsage": "用户使用分布"
+  }
+}
