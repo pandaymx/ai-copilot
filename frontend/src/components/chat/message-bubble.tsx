@@ -57,6 +57,9 @@ export interface ChatMessage {
   attachments?: AttachmentItem[];
   /** 工具调用列表（已完成消息持久化用；流式消息由 streamStore.toolCalls 驱动）。 */
   toolCalls?: ToolCallItem[];
+  /** 意图识别标识与中文标签 */
+  intent?: string;
+  intentLabel?: string;
   /** 产物列表（包含图片 artifact 等） */
   artifacts?: ArtifactItem[];
 }
@@ -179,6 +182,11 @@ function MessageBubbleBase({
             <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-800/50">
               Spring AI Core
             </span>
+            {message.intentLabel && (
+              <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-semibold text-purple-600 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200/50 dark:border-purple-800/50 flex items-center gap-1 shadow-2xs">
+                <span>🏷️ {message.intentLabel}</span>
+              </span>
+            )}
             {message.usage && message.usage.totalTokens > 0 && (
               <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50">
                 <span>

@@ -34,6 +34,7 @@ import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
 import xyz.ppmblszdp.ai.dto.MediaDto;
 import xyz.ppmblszdp.ai.factory.ChatOptionsFactory;
+import xyz.ppmblszdp.ai.intent.IntentResult;
 import xyz.ppmblszdp.ai.memory.ChatRateLimiter.RateLimiter;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryAdvisorFactory;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryWriter;
@@ -91,6 +92,7 @@ public class ChatOrchestrator implements DisposableBean {
 	private final ObjectProvider<ToolSearchAdvisorFactory> toolSearchFactory;
 	private final AugmentedToolCallbackProvider augmentedToolCallbackProvider;
 	private final ImageRouter imageRouter;
+	private final IntentClassifier intentClassifier;
 
 	private final ConcurrentLinkedQueue<Disposable> fireAndForgetSubscriptions = new ConcurrentLinkedQueue<>();
 
@@ -113,7 +115,8 @@ public class ChatOrchestrator implements DisposableBean {
 			ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider,
 			ObjectProvider<ToolSearchAdvisorFactory> toolSearchFactory,
 			ObjectProvider<AugmentedToolCallbackProvider> augmentedToolProvider,
-			ImageRouter imageRouter
+			ImageRouter imageRouter,
+			IntentClassifier intentClassifier
 	) {
 		this.registry = registry;
 		this.contextAssembler = contextAssembler;
@@ -138,6 +141,7 @@ public class ChatOrchestrator implements DisposableBean {
 				? augmentedToolProvider.getIfAvailable()
 				: new AugmentedToolCallbackProvider();
 		this.imageRouter = imageRouter;
+		this.intentClassifier = intentClassifier;
 	}
 
 	@Override
@@ -187,6 +191,7 @@ public class ChatOrchestrator implements DisposableBean {
 		log.info("非流式请求 → 供应商={}, 模型={}, 记忆路径={}",
 				resolved.provider().providerId(), resolved.model().id(), useMemory(request));
 
+		IntentResult intentResult = intentClassifier.classify(request, resolved);
 		boolean memoryPath = useMemory(request);
 		ChatOptions options = buildChatOptions(resolved);
 
@@ -194,14 +199,14 @@ public class ChatOrchestrator implements DisposableBean {
 			ChatMemory memory = sessionChatMemory.getIfAvailable();
 			if (memory == null) {
 				log.warn("记忆路径已选但 ChatMemory 不可用，降级为单轮");
-				return callWithoutMemory(resolved, request, options, userId);
+				return callWithoutMemory(resolved, request, options, userId, intentResult);
 			}
 			ChatRequest req = ensureConversation(request);
 			ChatClient client = resolved.chatClient();
 			MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(memory).build();
 			List<Media> mediaList = convertMediaList(req.media());
 			CallResponseSpec spec = client.prompt()
-					.system(sp -> sp.text(resolveSystemPrompt(req)))
+					.system(sp -> sp.text(resolveSystemPrompt(req, intentResult)))
 					.user(u -> {
 						u.text(req.message());
 						if (!mediaList.isEmpty()) {
@@ -224,13 +229,14 @@ public class ChatOrchestrator implements DisposableBean {
 						ChatChunkDto.UsageDto usageDto = usageRecorder.extractUsageDto(resp, resolved);
 						usageRecorder.settleUsage(userId, resolved, req.conversationId(), usageDto, fireAndForgetSubscriptions);
 						return new ChatResponseDto(replyText, resolved.provider().providerId(),
-								resolved.model().id(), req.conversationId(), usageDto, null, false);
+								resolved.model().id(), req.conversationId(), usageDto, null, false,
+								intentResult.intent().name(), intentResult.label());
 					})
 					.timeout(CALL_TIMEOUT)
 					.onErrorResume(ex -> {
 						log.warn("记忆路径异常，降级为非记忆调用 → 供应商={}, 模型={}: {}",
 								resolved.provider().providerId(), resolved.model().id(), ex.getMessage());
-						return callWithoutMemory(resolved, request, options, userId);
+						return callWithoutMemory(resolved, request, options, userId, intentResult);
 					})
 					.onErrorResume(ex -> {
 						log.warn("主供应商请求失败 (记忆路径) → 供应商={}, 模型={}: {}",
@@ -241,7 +247,7 @@ public class ChatOrchestrator implements DisposableBean {
 					.subscribeOn(Schedulers.boundedElastic());
 		}
 
-		return callWithoutMemory(resolved, request, options, userId);
+		return callWithoutMemory(resolved, request, options, userId, intentResult);
 	}
 
 	/** 流式：结构化 ChatChunkDto Flux。 */
@@ -269,14 +275,15 @@ public class ChatOrchestrator implements DisposableBean {
 			return Flux.just(ChatChunkDto.error("RATE_LIMIT", "本月对话额度已用尽，请下月再试或联系管理员提升配额。"));
 		}
 
+		IntentResult intentResult = intentClassifier.classify(request, resolved);
 		boolean memoryPath = useMemory(request);
 		ChatOptions options = buildChatOptions(resolved);
-		boolean agentPath = useAgent(request);
+		boolean agentPath = useAgent(request, intentResult);
 
 		if (memoryPath) {
 			ChatMemory memory = sessionChatMemory.getIfAvailable();
 			if (memory == null) {
-				return streamChunksWithoutMemory(resolved, request, options, new AtomicReference<>(), userId);
+				return streamChunksWithoutMemory(resolved, request, options, new AtomicReference<>(), userId, intentResult);
 			}
 			ChatRequest req = ensureConversation(request);
 			ChatClient client = resolved.chatClient();
@@ -290,7 +297,7 @@ public class ChatOrchestrator implements DisposableBean {
 
 			Many<ChatChunkDto> toolSink = agentPath ? toolEventEmitter.newSink() : null;
 			ChatClientRequestSpec requestSpec = client.prompt()
-					.system(sp -> sp.text(resolveSystemPrompt(req)))
+					.system(sp -> sp.text(resolveSystemPrompt(req, intentResult)))
 					.user(u -> {
 						u.text(req.message());
 						if (!mediaList.isEmpty()) {
@@ -324,7 +331,9 @@ public class ChatOrchestrator implements DisposableBean {
 									req.conversationId(),
 									resolved.provider().providerId(),
 									resolved.model().id(),
-									false);
+									false,
+									intentResult.intent().name(),
+									intentResult.label());
 							return Flux.concat(Flux.just(initChunk), chunkFlux);
 						}
 						return chunkFlux;
@@ -349,7 +358,7 @@ public class ChatOrchestrator implements DisposableBean {
 								resolved.provider().providerId(), resolved.model().id(), hasEmittedFirstChunk[0], ex.getMessage());
 						healthTracker.recordFailure(resolved.provider().providerId(), resolved.model().id(), ex);
 						if (!hasEmittedFirstChunk[0]) {
-							return streamChunksWithoutMemory(resolved, req, options, lastUsage, userId);
+							return streamChunksWithoutMemory(resolved, req, options, lastUsage, userId, intentResult);
 						}
 						return Flux.just(ChatChunkDto.error("STREAM_ERROR", "输出中断：" + ex.getMessage()));
 					});
@@ -360,14 +369,14 @@ public class ChatOrchestrator implements DisposableBean {
 			return contentFlux;
 		}
 
-		return streamChunksWithoutMemory(resolved, request, options, new AtomicReference<>(), userId);
+		return streamChunksWithoutMemory(resolved, request, options, new AtomicReference<>(), userId, intentResult);
 	}
 
 	private Mono<ChatResponseDto> callWithoutMemory(ResolvedModel primaryResolved, ChatRequest request,
-			ChatOptions options, String userId) {
+			ChatOptions options, String userId, IntentResult intentResult) {
 		List<Media> mediaList = convertMediaList(request.media());
 		List<Message> messages = contextAssembler.assemble(
-				request.message(), request.history(), request.systemPrompt(),
+				request.message(), request.history(), resolveSystemPrompt(request, intentResult),
 				null, primaryResolved.model().maxContextTokens(), mediaList);
 		Prompt prompt = new Prompt(messages, options);
 
@@ -378,7 +387,9 @@ public class ChatOrchestrator implements DisposableBean {
 			usageRecorder.settleUsage(userId, primaryResolved, request.conversationId(), usageDto, fireAndForgetSubscriptions);
 			return new ChatResponseDto(
 					extractText(response), primaryResolved.provider().providerId(),
-					primaryResolved.model().id(), request.conversationId(), usageDto, null, false);
+					primaryResolved.model().id(), request.conversationId(), usageDto, null, false,
+					intentResult != null ? intentResult.intent().name() : null,
+					intentResult != null ? intentResult.label() : null);
 		})
 		.timeout(CALL_TIMEOUT)
 		.onErrorResume(ex -> {
@@ -391,10 +402,10 @@ public class ChatOrchestrator implements DisposableBean {
 	}
 
 	private Flux<ChatChunkDto> streamChunksWithoutMemory(ResolvedModel primaryResolved, ChatRequest request,
-			ChatOptions options, AtomicReference<ChatChunkDto.UsageDto> sharedUsage, String userId) {
+			ChatOptions options, AtomicReference<ChatChunkDto.UsageDto> sharedUsage, String userId, IntentResult intentResult) {
 		List<Media> mediaList = convertMediaList(request.media());
 		List<Message> messages = contextAssembler.assemble(
-				request.message(), request.history(), request.systemPrompt(),
+				request.message(), request.history(), resolveSystemPrompt(request, intentResult),
 				null, primaryResolved.model().maxContextTokens(), mediaList);
 		Prompt prompt = new Prompt(messages, options);
 
@@ -402,7 +413,7 @@ public class ChatOrchestrator implements DisposableBean {
 		AtomicReference<ChatChunkDto.UsageDto> usageAccum = (sharedUsage != null) ? sharedUsage : new AtomicReference<>();
 		AtomicBoolean settled = new AtomicBoolean(false);
 
-		boolean agentPath = useAgent(request);
+		boolean agentPath = useAgent(request, intentResult);
 		Many<ChatChunkDto> toolSink = agentPath ? toolEventEmitter.newSink() : null;
 
 		ChatClientRequestSpec requestSpec = primaryResolved.chatClient().prompt(prompt);
@@ -414,10 +425,22 @@ public class ChatOrchestrator implements DisposableBean {
 							ToolEventEmitter.CTX_EMITTER, toolEventEmitter,
 							ToolEventEmitter.CTX_USER_ID, userId));
 		}
-		Flux<ChatChunkDto> contentFlux = requestSpec.stream().chatResponse()
-				.timeout(STREAM_TIMEOUT)
-				.concatMap(resp -> usageRecorder.accumulateUsage(
-						processChatResponseToChunks(resp, fullContent, primaryResolved), usageAccum));
+
+		ChatChunkDto initChunk = ChatChunkDto.conversation(
+				request.conversationId(),
+				primaryResolved.provider().providerId(),
+				primaryResolved.model().id(),
+				false,
+				intentResult != null ? intentResult.intent().name() : null,
+				intentResult != null ? intentResult.label() : null);
+
+		Flux<ChatChunkDto> contentFlux = Flux.concat(
+				Flux.just(initChunk),
+				requestSpec.stream().chatResponse()
+						.timeout(STREAM_TIMEOUT)
+						.concatMap(resp -> usageRecorder.accumulateUsage(
+								processChatResponseToChunks(resp, fullContent, primaryResolved), usageAccum))
+		);
 
 		if (agentPath && toolSink != null) {
 			Flux<ChatChunkDto> merged = Flux.merge(contentFlux, toolSink.asFlux());
@@ -549,8 +572,11 @@ public class ChatOrchestrator implements DisposableBean {
 		return merged;
 	}
 
-	private boolean useAgent(ChatRequest request) {
-		return agentEnabled && Boolean.TRUE.equals(request.agentEnabled());
+	private boolean useAgent(ChatRequest request, IntentResult intentResult) {
+		if (request != null && request.agentEnabled() != null) {
+			return agentEnabled && request.agentEnabled();
+		}
+		return agentEnabled && (intentResult != null && intentResult.enableTools());
 	}
 
 	private boolean useMemory(ChatRequest request) {
@@ -599,10 +625,14 @@ public class ChatOrchestrator implements DisposableBean {
 		}
 	}
 
-	private String resolveSystemPrompt(ChatRequest request) {
-		return (request.systemPrompt() != null && !request.systemPrompt().isBlank())
+	private String resolveSystemPrompt(ChatRequest request, IntentResult intentResult) {
+		String base = (request.systemPrompt() != null && !request.systemPrompt().isBlank())
 				? request.systemPrompt()
 				: contextAssembler.defaultSystemPrompt();
+		if (intentResult != null && intentResult.systemPromptTemplate() != null && !intentResult.systemPromptTemplate().isBlank()) {
+			return base + "\n\n" + intentResult.systemPromptTemplate();
+		}
+		return base;
 	}
 
 	private void recordLongTermMemoryAsync(String userId, String conversationId, String userMessage, String assistantReply) {

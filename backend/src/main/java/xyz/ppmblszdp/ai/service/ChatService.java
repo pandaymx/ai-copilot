@@ -110,11 +110,12 @@ public class ChatService implements DisposableBean {
 		UsageRecorder uRecorder = new UsageRecorder(usageRepository, usageQuota);
 		ImageRouter iRouter = new ImageRouter(imageGenerationServiceProvider, properties);
 		VoiceService vService = new VoiceService(speechModelProvider, registry);
+		IntentClassifier intentClassifier = new IntentClassifier();
 		ChatOrchestrator cOrchestrator = new ChatOrchestrator(
 				registry, contextAssembler, sessionChatMemory, longTermFactory, longTermWriter,
 				longTermProcessor, rateLimiter, uRecorder, safeGuardAdvisor, ragAdvisorFactory,
 				healthTracker, sessionService, properties, toolEventEmitter, toolCallbacks,
-				mcpToolProvider, toolSearchFactory, augmentedToolProvider, iRouter
+				mcpToolProvider, toolSearchFactory, augmentedToolProvider, iRouter, intentClassifier
 		);
 		this.orchestrator = cOrchestrator;
 		this.imageRouter = iRouter;

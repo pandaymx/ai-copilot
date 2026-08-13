@@ -53,6 +53,8 @@ export interface UseSpringAiStreamOptions {
   parseChunk?: (data: string) => string | null;
   /** 在收到后端返回的会话 ID 时回调 */
   onConversationId?: (conversationId: string) => void;
+  /** 在收到后端识别的意图与意图中文标签时回调 */
+  onIntent?: (intent: string, intentLabel: string) => void;
   /** 收到 Reasoning/Thinking 思考过程增量时的回调 */
   onReasoning?: (reasoningDelta: string) => void;
   /** 收到 Token 用量统计时的回调 */
@@ -279,6 +281,7 @@ export function useSpringAiStream(
     buildBody = defaultBuildBody,
     parseChunk = defaultParseChunk,
     onConversationId,
+    onIntent,
     onReasoning,
     onUsage,
     onArtifact,
@@ -290,6 +293,7 @@ export function useSpringAiStream(
   // 回调 ref：流一旦启动就会跨多个渲染周期运行，必须用 ref 避免捕获旧闭包，
   // 否则 onFinish 等回调会读到调用 send 瞬间的过期状态（如 activeId=null）。
   const onConversationIdRef = useRef(onConversationId);
+  const onIntentRef = useRef(onIntent);
   const onReasoningRef = useRef(onReasoning);
   const onUsageRef = useRef(onUsage);
   const onArtifactRef = useRef(onArtifact);
@@ -298,6 +302,7 @@ export function useSpringAiStream(
   const onFinishRef = useRef(onFinish);
   useEffect(() => {
     onConversationIdRef.current = onConversationId;
+    onIntentRef.current = onIntent;
     onReasoningRef.current = onReasoning;
     onUsageRef.current = onUsage;
     onArtifactRef.current = onArtifact;
@@ -306,6 +311,7 @@ export function useSpringAiStream(
     onFinishRef.current = onFinish;
   }, [
     onConversationId,
+    onIntent,
     onReasoning,
     onUsage,
     onArtifact,
@@ -459,8 +465,13 @@ export function useSpringAiStream(
               if (!ev.data) return;
               try {
                 const parsed = JSON.parse(ev.data);
-                if (parsed?.type === "conversation" && parsed.conversationId) {
-                  onConversationIdRef.current?.(parsed.conversationId);
+                if (parsed?.type === "conversation") {
+                  if (parsed.conversationId) {
+                    onConversationIdRef.current?.(parsed.conversationId);
+                  }
+                  if (parsed.intent && parsed.intentLabel) {
+                    onIntentRef.current?.(parsed.intent, parsed.intentLabel);
+                  }
                   return;
                 }
                 // 业务级错误帧：统一置位 error，渲染错误卡片并终止后续增量处理。

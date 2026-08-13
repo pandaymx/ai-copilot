@@ -153,6 +153,13 @@ export default function Home() {
         }
       }
     },
+    onIntent: (intent, intentLabel) => {
+      const liveId = liveIdRef.current;
+      if (!liveId) return;
+      setMessages((prev) =>
+        prev.map((m) => (m.id === liveId ? { ...m, intent, intentLabel } : m)),
+      );
+    },
     onFinish: (finalContent, finalThinking, finalUsage) => {
       const liveId = liveIdRef.current;
       if (!liveId || !activeId) return;

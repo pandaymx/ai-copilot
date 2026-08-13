@@ -17,7 +17,9 @@ public record ChatResponseDto(
 		String conversationId,
 		Object usage,
 		String finishReason,
-		Boolean isFallback
+		Boolean isFallback,
+		String intent,
+		String intentLabel
 ) {
 	public ChatResponseDto(
 			String content,
@@ -27,6 +29,18 @@ public record ChatResponseDto(
 			Object usage,
 			String finishReason
 	) {
-		this(content, provider, model, conversationId, usage, finishReason, false);
+		this(content, provider, model, conversationId, usage, finishReason, false, null, null);
+	}
+
+	public ChatResponseDto(
+			String content,
+			String provider,
+			String model,
+			String conversationId,
+			Object usage,
+			String finishReason,
+			Boolean isFallback
+	) {
+		this(content, provider, model, conversationId, usage, finishReason, isFallback, null, null);
 	}
 }
