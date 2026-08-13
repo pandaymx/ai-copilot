@@ -115,10 +115,6 @@ public class FirstClassProviderRegistrar {
 			log.debug("一等公民供应商 '{}' 的 ChatModel Bean 不可用，跳过注册", providerId);
 			return;
 		}
-		if (cfg != null && !cfg.isEnabled()) {
-			log.info("一等公民供应商 '{}' 已配置为禁用，跳过注册", providerId);
-			return;
-		}
 
 		List<ModelConfig> modelCfgs = (cfg != null) ? cfg.resolveModels() : List.of();
 		Map<String, ModelDescriptor> models = buildModelIndex(modelCfgs, properties.resolveContext().resolveDefaultMaxContextTokens());
