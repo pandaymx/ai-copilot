@@ -16,9 +16,10 @@ import {
   it,
   mock,
 } from "bun:test";
-import React, { act } from "react";
+import type React from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { ChatSession, Sidebar } from "../components/chat/sidebar";
+import { type ChatSession, Sidebar } from "../components/chat/sidebar";
 
 const FIXED_NOW = 1700000000000; // Fixed timestamp for deterministic relative time tests
 const realDateNow = Date.now;

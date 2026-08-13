@@ -545,7 +545,7 @@ export function KnowledgeQueryRenderer({
 
             return (
               <div
-                key={idx}
+                key={`${meta.source || meta.url || meta.title || "doc"}-${idx}`}
                 className="rounded-lg border border-emerald-500/15 bg-black/40 p-2.5 space-y-1.5 transition-all hover:border-emerald-500/30"
               >
                 <div className="flex items-center justify-between gap-2">
@@ -671,7 +671,7 @@ export function WebSearchRenderer({
 
             return (
               <div
-                key={idx}
+                key={`${item.url || item.title || "result"}-${idx}`}
                 className="rounded-lg border border-purple-500/15 bg-black/40 p-2.5 space-y-1 transition-all hover:border-purple-500/30 hover:bg-black/60 group/item"
               >
                 <div className="flex items-start justify-between gap-2">

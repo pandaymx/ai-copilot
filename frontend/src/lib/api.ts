@@ -309,6 +309,11 @@ export interface MemoryItem {
   category: string | null;
   confidence: number | null;
   updatedAt: string | null;
+  priority?: number | null;
+  accessCount?: number | null;
+  lastAccessedAt?: string | null;
+  priorityScore?: number | null;
+  archived?: boolean | null;
 }
 
 export interface MemoryListResponse {
@@ -316,9 +321,10 @@ export interface MemoryListResponse {
   total: number;
 }
 
-/** 拉取当前用户的全部长期记忆（分页 + 关键字过滤）。 */
+/** 拉取当前用户的长期记忆（支持状态过滤：active / archived / all，分页 + 关键字过滤）。 */
 export async function memoryListApi(
   keyword?: string,
+  status?: "active" | "archived" | "all",
   limit = 50,
   offset = 0,
   signal?: AbortSignal,
@@ -326,6 +332,7 @@ export async function memoryListApi(
   const params = new URLSearchParams();
   const kw = keyword?.trim();
   if (kw) params.set("keyword", kw);
+  if (status) params.set("status", status);
   params.set("limit", String(limit));
   params.set("offset", String(offset));
   try {
@@ -338,17 +345,19 @@ export async function memoryListApi(
   }
 }
 
-/** 编辑单条记忆（内容 + 分类）。 */
+/** 编辑/更新单条记忆（内容、分类、优先级权重、归档状态）。 */
 export async function memoryUpdateApi(
   id: string,
   content: string,
   category: string | null,
+  priority?: number | null,
+  archived?: boolean | null,
 ): Promise<MemoryItem | null> {
   try {
     const res = await fetch(`/api/memory/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content, category }),
+      body: JSON.stringify({ content, category, priority, archived }),
     });
     if (!res.ok) return null;
     return (await res.json()) as MemoryItem;
@@ -366,6 +375,48 @@ export async function memoryDeleteApi(id: string): Promise<boolean> {
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+/** 触发记忆优先级时间衰减与自动归档/清理。 */
+export async function memoryDecayApi(): Promise<{
+  archived: number;
+  deleted: number;
+} | null> {
+  try {
+    const res = await fetch("/api/memory/decay", { method: "POST" });
+    if (!res.ok) return null;
+    return (await res.json()) as { archived: number; deleted: number };
+  } catch {
+    return null;
+  }
+}
+
+/** 触发细粒度记忆摘要压缩。 */
+export async function memoryCompressApi(): Promise<{
+  compressedCategories: number;
+} | null> {
+  try {
+    const res = await fetch("/api/memory/compress", { method: "POST" });
+    if (!res.ok) return null;
+    return (await res.json()) as { compressedCategories: number };
+  } catch {
+    return null;
+  }
+}
+
+/** 触发记忆冲突检测与合并。 */
+export async function memoryResolveConflictsApi(): Promise<{
+  resolvedConflicts: number;
+} | null> {
+  try {
+    const res = await fetch("/api/memory/resolve-conflicts", {
+      method: "POST",
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as { resolvedConflicts: number };
+  } catch {
+    return null;
   }
 }
 

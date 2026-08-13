@@ -8,10 +8,10 @@ if (typeof document === "undefined") {
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 import { afterAll, describe, expect, it, mock } from "bun:test";
-import React, { act } from "react";
+import type React from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { KnowledgeUpload } from "../components/knowledge/knowledge-upload";
-import * as api from "../lib/api";
 
 afterAll(() => {
   if (typeof document !== "undefined") {
@@ -81,7 +81,7 @@ describe("KnowledgeUpload Component Batch File Upload Tests", () => {
     // Mock globalThis.fetch
     const originalFetch = globalThis.fetch;
     let fetchCallCount = 0;
-    globalThis.fetch = mock(async (url: string | URL | Request) => {
+    globalThis.fetch = mock(async (_url: string | URL | Request) => {
       fetchCallCount++;
       return new Response(
         JSON.stringify({

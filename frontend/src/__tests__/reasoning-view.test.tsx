@@ -12,8 +12,8 @@ import type React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  ReasoningView,
   parseThinkingToSteps,
+  ReasoningView,
 } from "../components/chat/reasoning-view";
 
 afterAll(() => {

@@ -233,11 +233,17 @@ public class LongTermMemoryProcessor {
 				}
 			}
 
-			// 构建带有 userId、updated_at 与结构化字段的全新/已更新 Document
+			// 构建带有 userId、updated_at、priority、access_count 与结构化字段的全新 Document
 			Map<String, Object> metadata = new HashMap<>();
 			metadata.put("userId", userId);
-			metadata.put("updated_at", Instant.now().toString());
+			String nowStr = Instant.now().toString();
+			metadata.put("updated_at", nowStr);
 			metadata.put("sourceType", "long_term_memory");
+			metadata.put("priority", 1.0);
+			metadata.put("access_count", 0);
+			metadata.put("last_accessed_at", nowStr);
+			metadata.put("archived", false);
+
 			if (category != null && !category.isBlank()) {
 				metadata.put("category", category);
 			}

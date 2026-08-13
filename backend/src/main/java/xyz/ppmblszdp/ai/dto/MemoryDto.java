@@ -25,6 +25,21 @@ public class MemoryDto {
 	/** 更新时间戳（ISO-8601 字符串） */
 	private String updatedAt;
 
+	/** 记忆基础优先级权重 (0.1 ~ 2.0，默认 1.0) */
+	private Double priority;
+
+	/** 访问/命中累计次数 */
+	private Integer accessCount;
+
+	/** 最近访问/命中时间戳 */
+	private String lastAccessedAt;
+
+	/** 结合时间衰减与访问频次后的实时优先级评分 (0.0 ~ 2.0) */
+	private Double priorityScore;
+
+	/** 是否已归档 */
+	private Boolean archived;
+
 	/** 列表响应：总数（用于前端分页/徽标） */
 	private Long total;
 
@@ -32,18 +47,30 @@ public class MemoryDto {
 	}
 
 	public MemoryDto(String id, String content, String category, Double confidence, String updatedAt) {
+		this(id, content, category, confidence, updatedAt, 1.0, 0, updatedAt, 1.0, false);
+	}
+
+	public MemoryDto(String id, String content, String category, Double confidence, String updatedAt,
+			Double priority, Integer accessCount, String lastAccessedAt, Double priorityScore, Boolean archived) {
 		this.id = id;
 		this.content = content;
 		this.category = category;
 		this.confidence = confidence;
 		this.updatedAt = updatedAt;
+		this.priority = priority;
+		this.accessCount = accessCount;
+		this.lastAccessedAt = lastAccessedAt;
+		this.priorityScore = priorityScore;
+		this.archived = archived;
 	}
 
-	/** 编辑请求体 */
+	/** 编辑/状态更新请求体 */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public static class UpdateRequest {
 		private String content;
 		private String category;
+		private Double priority;
+		private Boolean archived;
 
 		public UpdateRequest() {
 		}
@@ -62,6 +89,22 @@ public class MemoryDto {
 
 		public void setCategory(String category) {
 			this.category = category;
+		}
+
+		public Double getPriority() {
+			return priority;
+		}
+
+		public void setPriority(Double priority) {
+			this.priority = priority;
+		}
+
+		public Boolean getArchived() {
+			return archived;
+		}
+
+		public void setArchived(Boolean archived) {
+			this.archived = archived;
 		}
 	}
 
@@ -136,6 +179,46 @@ public class MemoryDto {
 		this.updatedAt = updatedAt;
 	}
 
+	public Double getPriority() {
+		return priority;
+	}
+
+	public void setPriority(Double priority) {
+		this.priority = priority;
+	}
+
+	public Integer getAccessCount() {
+		return accessCount;
+	}
+
+	public void setAccessCount(Integer accessCount) {
+		this.accessCount = accessCount;
+	}
+
+	public String getLastAccessedAt() {
+		return lastAccessedAt;
+	}
+
+	public void setLastAccessedAt(String lastAccessedAt) {
+		this.lastAccessedAt = lastAccessedAt;
+	}
+
+	public Double getPriorityScore() {
+		return priorityScore;
+	}
+
+	public void setPriorityScore(Double priorityScore) {
+		this.priorityScore = priorityScore;
+	}
+
+	public Boolean getArchived() {
+		return archived;
+	}
+
+	public void setArchived(Boolean archived) {
+		this.archived = archived;
+	}
+
 	public Long getTotal() {
 		return total;
 	}
@@ -144,3 +227,4 @@ public class MemoryDto {
 		this.total = total;
 	}
 }
+

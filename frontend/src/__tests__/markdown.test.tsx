@@ -8,7 +8,8 @@ if (typeof document === "undefined") {
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 import { afterAll, describe, expect, it } from "bun:test";
-import React, { act } from "react";
+import type React from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { Markdown } from "../components/chat/markdown";
 

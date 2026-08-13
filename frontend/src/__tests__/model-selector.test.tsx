@@ -16,7 +16,8 @@ import {
   it,
   mock,
 } from "bun:test";
-import React, { act } from "react";
+import type React from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import {
   formatModelPriceText,

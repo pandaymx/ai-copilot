@@ -7,12 +7,16 @@ import { MemoryEditDialog } from "@/components/memory/memory-edit-dialog";
 import {
   MemoryDeleteDialog,
   MemoryList,
+  type MemoryStatusFilter,
 } from "@/components/memory/memory-list";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   type MemoryItem,
+  memoryCompressApi,
+  memoryDecayApi,
   memoryDeleteApi,
   memoryListApi,
+  memoryResolveConflictsApi,
   memoryUpdateApi,
 } from "@/lib/api";
 
@@ -26,7 +30,10 @@ export default function MemoryPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState("");
+  const [status, setStatus] = useState<MemoryStatusFilter>("active");
   const [toast, setToast] = useState<Toast | null>(null);
+
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const [editTarget, setEditTarget] = useState<MemoryItem | null>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -46,13 +53,13 @@ export default function MemoryPage() {
 
   const fetchMemories = useCallback(async () => {
     setLoading(true);
-    const data = await memoryListApi(keyword || undefined, 200, 0);
+    const data = await memoryListApi(keyword || undefined, status, 200, 0);
     if (data) {
       setItems(data.items);
       setTotal(data.total);
     }
     setLoading(false);
-  }, [keyword]);
+  }, [keyword, status]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -78,17 +85,42 @@ export default function MemoryPage() {
     id: string,
     content: string,
     category: string | null,
+    priority: number,
+    archived: boolean,
   ) => {
     setSavingEdit(true);
-    const updated = await memoryUpdateApi(id, content, category);
+    const updated = await memoryUpdateApi(
+      id,
+      content,
+      category,
+      priority,
+      archived,
+    );
     setSavingEdit(false);
     if (updated) {
       setEditOpen(false);
       setEditTarget(null);
-      showToast("success", "记忆已更新，后续对话立即生效。");
+      showToast("success", "记忆已更新，后续对话实时生效。");
       fetchMemories();
     } else {
       showToast("error", "更新失败，请重试。");
+    }
+  };
+
+  const handleToggleArchive = async (item: MemoryItem) => {
+    const newArchived = !(item.archived ?? false);
+    const updated = await memoryUpdateApi(
+      item.id,
+      item.content,
+      item.category,
+      item.priority ?? 1.0,
+      newArchived,
+    );
+    if (updated) {
+      showToast("success", newArchived ? "记忆已归档。" : "记忆已从归档恢复。");
+      fetchMemories();
+    } else {
+      showToast("error", "操作失败，请重试。");
     }
   };
 
@@ -105,6 +137,51 @@ export default function MemoryPage() {
     }
   };
 
+  const handleTriggerDecay = async () => {
+    setActionLoading("decay");
+    const res = await memoryDecayApi();
+    setActionLoading(null);
+    if (res) {
+      showToast(
+        "success",
+        `衰减清理完成：自动归档 ${res.archived} 条，清理过期 ${res.deleted} 条。`,
+      );
+      fetchMemories();
+    } else {
+      showToast("error", "衰减清理执行失败。");
+    }
+  };
+
+  const handleTriggerCompress = async () => {
+    setActionLoading("compress");
+    const res = await memoryCompressApi();
+    setActionLoading(null);
+    if (res) {
+      showToast(
+        "success",
+        `记忆压缩完成：共成功压缩提炼 ${res.compressedCategories} 个分类下的细粒度记忆。`,
+      );
+      fetchMemories();
+    } else {
+      showToast("error", "记忆压缩执行失败。");
+    }
+  };
+
+  const handleTriggerResolveConflicts = async () => {
+    setActionLoading("conflicts");
+    const res = await memoryResolveConflictsApi();
+    setActionLoading(null);
+    if (res) {
+      showToast(
+        "success",
+        `冲突清理完成：智能检测并解决/合并了 ${res.resolvedConflicts} 处记忆矛盾。`,
+      );
+      fetchMemories();
+    } else {
+      showToast("error", "冲突清理执行失败。");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-white dark:from-zinc-950 dark:to-zinc-900">
       <header className="sticky top-0 z-30 border-b border-zinc-200/60 bg-white/70 backdrop-blur-xl dark:border-zinc-800/60 dark:bg-zinc-950/70">
@@ -115,10 +192,10 @@ export default function MemoryPage() {
             </Link>
             <div>
               <h1 className="font-heading text-base font-bold text-zinc-800 dark:text-zinc-100">
-                长期记忆
+                长期记忆与遗忘管理
               </h1>
               <p className="text-[11px] text-zinc-400">
-                查看、编辑或删除 AI 记住的你的偏好与背景。
+                查看、编辑、优化记忆优先级，衰减清理过期记忆或智能判定矛盾冲突。
               </p>
             </div>
           </div>
@@ -133,9 +210,16 @@ export default function MemoryPage() {
           loading={loading}
           keyword={keyword}
           onKeywordChange={setKeyword}
+          status={status}
+          onStatusChange={setStatus}
           onRefresh={fetchMemories}
           onEdit={openEdit}
           onDelete={openDelete}
+          onToggleArchive={handleToggleArchive}
+          onTriggerDecay={handleTriggerDecay}
+          onTriggerCompress={handleTriggerCompress}
+          onTriggerResolveConflicts={handleTriggerResolveConflicts}
+          actionLoading={actionLoading}
         />
       </main>
 

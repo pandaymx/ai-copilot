@@ -53,7 +53,7 @@ public class LongTermMemoryConfig {
 		log.info("长期记忆工厂装配完成：SafeVectorStore (pgvector 检索 TopK={})", topK);
 		return (userId) -> {
 			FilterExpressionBuilder b = new FilterExpressionBuilder();
-			var filter = b.eq("userId", userId).build();
+			var filter = b.and(b.eq("userId", userId), b.ne("archived", true)).build();
 			SearchRequest search = SearchRequest.builder()
 					.topK(topK)
 					.filterExpression(filter)

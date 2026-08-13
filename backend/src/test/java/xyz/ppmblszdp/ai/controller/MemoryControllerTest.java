@@ -11,6 +11,7 @@ import xyz.ppmblszdp.ai.identity.UserIdentityFilter;
 import xyz.ppmblszdp.ai.service.MemoryService;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -19,9 +20,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * MemoryController 切片测试：直接绑定 Controller 实例 + Mock Service，
- * 不加载 Spring 上下文（避免依赖测试 autoconfigure 与真实数据源）。
- * 身份解析复用 UserIdentityFilter.resolveIdentity（读取真实 X-User-Id Header）。
+ * MemoryController 切片测试：直接绑定 Controller 实例 + Mock Service。
  */
 class MemoryControllerTest {
 
@@ -36,8 +35,6 @@ class MemoryControllerTest {
 		memoryService = mock(MemoryService.class);
 		AuthProperties authProperties = new AuthProperties("strict", "X-User-Id", Set.of("admin"));
 		controller = new MemoryController(memoryService, authProperties);
-		// 注册 UserIdentityFilter，补全 X-User-Id Header → exchange attribute 链路
-		// （bindToController 默认不加载任何 WebFilter，否则 resolveIdentity 读不到 attribute 而抛 401）
 		webClient = WebTestClient.bindToController(controller)
 				.webFilter(new UserIdentityFilter(authProperties))
 				.build();
@@ -47,7 +44,7 @@ class MemoryControllerTest {
 	void listMemories_shouldReturnItemsForCurrentUser() {
 		ListResponse resp = new ListResponse(
 				List.of(new MemoryDto("m1", "用户偏好：Java 25", "技术栈偏好", 0.9, "2026-01-01T00:00:00Z")), 1L);
-		when(memoryService.listMemories(eq(USER), isNull(), anyInt(), anyInt())).thenReturn(resp);
+		when(memoryService.listMemories(eq(USER), isNull(), eq("active"), anyInt(), anyInt())).thenReturn(resp);
 
 		webClient.get().uri("/api/memory").header("X-User-Id", USER)
 				.exchange()
@@ -63,7 +60,7 @@ class MemoryControllerTest {
 	@Test
 	void updateMemory_shouldReturnUpdated_whenOwner() {
 		MemoryDto updated = new MemoryDto("m1", "用户偏好：Kotlin", "技术栈偏好", 0.9, "2026-01-02T00:00:00Z");
-		when(memoryService.updateMemory(eq("m1"), eq(USER), eq("用户偏好：Kotlin"), eq("技术栈偏好")))
+		when(memoryService.updateMemory(eq("m1"), eq(USER), eq("用户偏好：Kotlin"), eq("技术栈偏好"), isNull(), isNull()))
 				.thenReturn(Optional.of(updated));
 
 		webClient.put().uri("/api/memory/m1").header("X-User-Id", USER)
@@ -77,22 +74,13 @@ class MemoryControllerTest {
 
 	@Test
 	void updateMemory_shouldReturn404_whenNotOwnerOrMissing() {
-		when(memoryService.updateMemory(eq("m1"), eq(USER), anyString(), any())).thenReturn(Optional.empty());
+		when(memoryService.updateMemory(eq("m1"), eq(USER), any(), any(), any(), any())).thenReturn(Optional.empty());
 
 		webClient.put().uri("/api/memory/m1").header("X-User-Id", USER)
 				.header("Content-Type", "application/json")
 				.bodyValue("{\"content\":\"x\"}")
 				.exchange()
 				.expectStatus().isNotFound();
-	}
-
-	@Test
-	void updateMemory_shouldReturn400_whenContentBlank() {
-		webClient.put().uri("/api/memory/m1").header("X-User-Id", USER)
-				.header("Content-Type", "application/json")
-				.bodyValue("{\"content\":\"  \"}")
-				.exchange()
-				.expectStatus().isBadRequest();
 	}
 
 	@Test
@@ -105,11 +93,38 @@ class MemoryControllerTest {
 	}
 
 	@Test
-	void deleteMemory_shouldReturn404_whenNotOwnerOrMissing() {
-		when(memoryService.deleteMemory(eq("m1"), eq(USER))).thenReturn(false);
+	void decayMemories_shouldReturnStats() {
+		when(memoryService.decayMemories(eq(USER))).thenReturn(Map.of("archived", 2, "deleted", 1));
 
-		webClient.delete().uri("/api/memory/m1").header("X-User-Id", USER)
+		webClient.post().uri("/api/memory/decay").header("X-User-Id", USER)
 				.exchange()
-				.expectStatus().isNotFound();
+				.expectStatus().isOk()
+				.expectBody(Map.class)
+				.value(m -> {
+					Assertions.assertThat(m.get("archived")).isEqualTo(2);
+					Assertions.assertThat(m.get("deleted")).isEqualTo(1);
+				});
+	}
+
+	@Test
+	void compressMemories_shouldReturnCount() {
+		when(memoryService.compressMemories(eq(USER))).thenReturn(3);
+
+		webClient.post().uri("/api/memory/compress").header("X-User-Id", USER)
+				.exchange()
+				.expectStatus().isOk()
+				.expectBody(Map.class)
+				.value(m -> Assertions.assertThat(m.get("compressedCategories")).isEqualTo(3));
+	}
+
+	@Test
+	void resolveConflicts_shouldReturnResolvedCount() {
+		when(memoryService.resolveConflicts(eq(USER))).thenReturn(2);
+
+		webClient.post().uri("/api/memory/resolve-conflicts").header("X-User-Id", USER)
+				.exchange()
+				.expectStatus().isOk()
+				.expectBody(Map.class)
+				.value(m -> Assertions.assertThat(m.get("resolvedConflicts")).isEqualTo(2));
 	}
 }

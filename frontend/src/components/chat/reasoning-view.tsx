@@ -55,7 +55,7 @@ export function parseThinkingToSteps(rawThinking: string): ReasoningStep[] {
   // 按照双换行、编号列表 (1. 2. 3.) 或 Markdown 标题/标记分块
   const rawChunks = rawThinking
     .split(
-      /(?:\r?\n){2,}|(?=\n\s*(?:[0-9]+\.|\*|-|Step\s*\d+|Phase\s*\d+|Goal|Analysis|Decision|Conclusion|\[|\#))/i,
+      /(?:\r?\n){2,}|(?=\n\s*(?:[0-9]+\.|\*|-|Step\s*\d+|Phase\s*\d+|Goal|Analysis|Decision|Conclusion|\[|#))/i,
     )
     .map((c) => c.trim())
     .filter(Boolean);

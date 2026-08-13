@@ -5,8 +5,11 @@ import {
   fetchSessionDetailApi,
   fetchSessionsApi,
   fetchUsageDashboardApi,
+  memoryCompressApi,
+  memoryDecayApi,
   memoryDeleteApi,
   memoryListApi,
+  memoryResolveConflictsApi,
   memoryUpdateApi,
   ragDeleteApi,
   ragListApi,
@@ -274,16 +277,16 @@ describe("API Layer Unit Tests - lib/api.ts", () => {
   });
 
   describe("Memory APIs", () => {
-    it("memoryListApi constructs keyword and pagination parameters", async () => {
+    it("memoryListApi constructs keyword, status, and pagination parameters", async () => {
       const mockMemories = { items: [], total: 0 };
       mockFetch.mockResolvedValueOnce(
         new Response(JSON.stringify(mockMemories), { status: 200 }),
       );
 
-      const res = await memoryListApi(" preference ", 10, 20);
+      const res = await memoryListApi(" preference ", "active", 10, 20);
       expect(res).toEqual(mockMemories);
       expect(mockFetch).toHaveBeenCalledWith(
-        "/api/memory?keyword=preference&limit=10&offset=20",
+        "/api/memory?keyword=preference&status=active&limit=10&offset=20",
         { signal: undefined },
       );
     });
@@ -295,6 +298,8 @@ describe("API Layer Unit Tests - lib/api.ts", () => {
         category: "coding",
         confidence: 0.9,
         updatedAt: "2026-08-12",
+        priority: 1.5,
+        archived: false,
       };
       mockFetch.mockResolvedValueOnce(
         new Response(JSON.stringify(updatedItem), { status: 200 }),
@@ -304,6 +309,8 @@ describe("API Layer Unit Tests - lib/api.ts", () => {
         "mem-1",
         "Prefers TypeScript",
         "coding",
+        1.5,
+        false,
       );
       expect(res).toEqual(updatedItem);
 
@@ -312,6 +319,29 @@ describe("API Layer Unit Tests - lib/api.ts", () => {
 
       mockFetch.mockResolvedValueOnce(new Response(null, { status: 500 }));
       expect(await memoryDeleteApi("mem-1")).toBeFalse();
+    });
+
+    it("memory action APIs trigger decay, compress, and resolve-conflicts", async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify({ archived: 1, deleted: 0 }), {
+          status: 200,
+        }),
+      );
+      expect(await memoryDecayApi()).toEqual({ archived: 1, deleted: 0 });
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify({ compressedCategories: 2 }), {
+          status: 200,
+        }),
+      );
+      expect(await memoryCompressApi()).toEqual({ compressedCategories: 2 });
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify({ resolvedConflicts: 3 }), { status: 200 }),
+      );
+      expect(await memoryResolveConflictsApi()).toEqual({
+        resolvedConflicts: 3,
+      });
     });
   });
 
