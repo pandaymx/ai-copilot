@@ -18,9 +18,9 @@
 
 {$CADDY_DOMAIN} {
 	# 整站 basic_auth：个人单用户场景最简单且安全边界清晰。
-	# 注意：Caddy 2.8+ 起 basicauth 已弃用，改用 basic_auth。
-	# 哈希为空时 Caddy 会拒绝启动（防止误开无鉴权的生产站点），
-	# 本地调试请先用 `caddy hash-password` 生成哈希填入 .env。
+	# 注意：CADDY_BASIC_AUTH_HASH 必须在 .env 中非空配置，compose 启动脚本会校验非空，
+	# 否则 Caddy 容器拒绝启动（防止误开无鉴权的生产站点）。
+	# 本地调试请先用 `docker run --rm caddy:2-alpine caddy hash-password '密码'` 生成哈希填入 .env。
 	basic_auth {
 		alice {$CADDY_BASIC_AUTH_HASH}
 	}

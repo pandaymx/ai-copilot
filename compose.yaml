@@ -137,6 +137,15 @@ services:
     environment:
       CADDY_DOMAIN: ${CADDY_DOMAIN:-localhost}
       CADDY_BASIC_AUTH_HASH: ${CADDY_BASIC_AUTH_HASH:-}
+    command: >
+      sh -c '
+        if [ -z "$$CADDY_BASIC_AUTH_HASH" ]; then
+          echo "[ERROR] CADDY_BASIC_AUTH_HASH is empty! Basic auth password hash must be set in .env." >&2;
+          echo "Generate hash using: docker run --rm caddy:2-alpine caddy hash-password '\''your_password'\''" >&2;
+          exit 1;
+        fi;
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+      '
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
