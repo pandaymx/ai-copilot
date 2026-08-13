@@ -2,6 +2,11 @@ services:
   postgres:
     image: 'pgvector/pgvector:pg18'
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1024M
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ai_copilot}
       POSTGRES_USER: ${POSTGRES_USER:-ai}
@@ -19,6 +24,11 @@ services:
   redis:
     image: 'redis:latest'
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
     ports:
       - '127.0.0.1:6379:6379'
     volumes:
@@ -32,6 +42,11 @@ services:
   ollama:
     image: 'ollama/ollama:latest'
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4096M
     ports:
       - '127.0.0.1:${OLLAMA_HOST_PORT:-11435}:11434'
     volumes:
@@ -47,6 +62,11 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1024M
     ports:
       - '127.0.0.1:8084:8084'
     environment:
@@ -81,6 +101,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
     ports:
       - '127.0.0.1:3000:3000'
     environment:
@@ -101,6 +126,11 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
     ports:
       - '80:80'
       - '443:443'
@@ -126,6 +156,11 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.114.0
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
     command: ["--config=/etc/otel-collector.yaml"]
     volumes:
       - ./monitor/otel-collector.yaml:/etc/otel-collector.yaml:ro
@@ -143,6 +178,11 @@ services:
   prometheus:
     image: prom/prometheus:v3.0.1
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
     volumes:
       - ./monitor/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
@@ -158,6 +198,11 @@ services:
   tempo:
     image: grafana/tempo:2.6.1
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - ./monitor/tempo.yaml:/etc/tempo.yaml:ro
@@ -175,6 +220,11 @@ services:
   grafana:
     image: grafana/grafana:11.4.0
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
