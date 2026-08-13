@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
+import { Toaster } from "sonner";
 import "./globals.css";
 import { PwaRegister } from "@/components/pwa-register";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -68,6 +69,7 @@ export default async function RootLayout({
           >
             {children}
             <PwaRegister />
+            <Toaster position="top-right" richColors />
           </ThemeProvider>
         </NextIntlClientProvider>
       </body>

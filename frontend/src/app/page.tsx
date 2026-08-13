@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import useSWR from "swr";
 import { ExportDialog } from "@/components/chat/export-dialog";
 import {
@@ -282,13 +283,13 @@ export default function Home() {
       const newAttachments: AttachmentItem[] = [];
       for (const file of fileList) {
         if (file.size > 10 * 1024 * 1024) {
-          alert(`文件 "${file.name}" 超过 10MB 限制`);
+          toast.error(`文件 "${file.name}" 超过 10MB 限制`);
           continue;
         }
 
         if (file.type.startsWith("image/")) {
           if (!currentSupportsVision) {
-            alert("当前模型不支持图片，请切换到支持图片的模型");
+            toast.error("当前模型不支持图片，请切换到支持图片的模型");
             continue;
           }
           const dataUrl = await new Promise<string>((resolve) => {
@@ -345,7 +346,7 @@ export default function Home() {
       if (imageFiles.length > 0) {
         e.preventDefault();
         if (!currentSupportsVision) {
-          alert("当前模型不支持图片，请切换到支持图片的模型");
+          toast.error("当前模型不支持图片，请切换到支持图片的模型");
           return;
         }
         void processFiles(imageFiles);
@@ -587,7 +588,7 @@ export default function Home() {
         .map((att) => ({ mimeType: att.mimeType, data: att.url }));
 
       if (mediaPayload.length > 0 && !currentSupportsVision) {
-        alert("当前模型不支持图片，请切换到支持图片的模型");
+        toast.error("当前模型不支持图片，请切换到支持图片的模型");
         return;
       }
 

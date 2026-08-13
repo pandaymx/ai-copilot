@@ -2,6 +2,7 @@
 
 import { FileText, Link2, Loader2, Type, UploadCloud } from "lucide-react";
 import { useRef, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -36,7 +37,7 @@ export function KnowledgeUpload({ onSuccess }: KnowledgeUploadProps) {
     if (!files || files.length === 0) return;
     const file = files[0];
     if (file.size > 10 * 1024 * 1024) {
-      alert(`文件 "${file.name}" 超过 10MB 限制`);
+      toast.error(`文件 "${file.name}" 超过 10MB 限制`);
       return;
     }
     const content = await file.text();
