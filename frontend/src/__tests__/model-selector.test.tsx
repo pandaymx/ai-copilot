@@ -19,6 +19,8 @@ import {
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  formatModelPriceText,
+  isFreePrice,
   isVisionModel,
   ModelSelector,
   type SelectedModel,
@@ -98,8 +100,22 @@ describe("ModelSelector Component Tests - components/chat/model-selector.tsx", (
     });
   });
 
+  describe("Price Estimation Utility", () => {
+    it("should correctly identify free models", () => {
+      expect(isFreePrice(0, 0)).toBeTrue();
+      expect(isFreePrice(undefined, undefined)).toBeTrue();
+      expect(isFreePrice(0.001, 0.002)).toBeFalse();
+    });
+
+    it("should format model estimated price correctly", () => {
+      expect(formatModelPriceText(0, 0)).toBe("免费");
+      expect(formatModelPriceText(0.001, 0.002)).toBe("预估 ¥0.0030/次");
+      expect(formatModelPriceText(0.018, 0.072)).toBe("预估 ¥0.0900/次");
+    });
+  });
+
   describe("ModelSelector UI Component", () => {
-    it("should render initial selected provider and model name", () => {
+    it("should render initial selected provider, model name, and estimated price", () => {
       const selected: SelectedModel = {
         provider: "google",
         model: "gemini-3.6-flash",
@@ -111,6 +127,7 @@ describe("ModelSelector Component Tests - components/chat/model-selector.tsx", (
 
       expect(container.textContent).toContain("Google Gemini");
       expect(container.textContent).toContain("Gemini 3.6 Flash");
+      expect(container.textContent).toContain("预估 ¥0.0025/次");
 
       unmount();
     });

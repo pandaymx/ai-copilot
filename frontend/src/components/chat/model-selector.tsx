@@ -22,6 +22,8 @@ export interface BackendModelEntry {
   badge?: string;
   tags?: string[];
   maxContextTokens?: number;
+  inputPricePerK?: number;
+  outputPricePerK?: number;
   status?: "UP" | "DOWN" | "HALF_OPEN";
   healthy?: boolean;
 }
@@ -41,6 +43,29 @@ export const TAG_MULTIMODAL = "multimodal";
 export function isVisionModel(entry?: BackendModelEntry | null): boolean {
   if (!entry?.tags) return false;
   return entry.tags.some((t) => t === TAG_VISION || t === TAG_MULTIMODAL);
+}
+
+export function isFreePrice(
+  inputPricePerK?: number,
+  outputPricePerK?: number,
+): boolean {
+  return (
+    (!inputPricePerK || inputPricePerK === 0) &&
+    (!outputPricePerK || outputPricePerK === 0)
+  );
+}
+
+export function formatModelPriceText(
+  inputPricePerK?: number,
+  outputPricePerK?: number,
+): string {
+  if (isFreePrice(inputPricePerK, outputPricePerK)) {
+    return "免费";
+  }
+  const inPrice = inputPricePerK ?? 0;
+  const outPrice = outputPricePerK ?? 0;
+  const estCost = inPrice + outPrice;
+  return `预估 ¥${estCost.toFixed(4)}/次`;
 }
 
 export interface SelectedModel {
@@ -70,6 +95,8 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         badge: "推荐",
         tags: ["chat"],
         maxContextTokens: 32768,
+        inputPricePerK: 0.001,
+        outputPricePerK: 0.002,
         status: "UP",
         healthy: true,
       },
@@ -89,6 +116,8 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         badge: "全能",
         tags: ["multimodal", "vision"],
         maxContextTokens: 128000,
+        inputPricePerK: 0.018,
+        outputPricePerK: 0.072,
         status: "UP",
         healthy: true,
       },
@@ -108,6 +137,8 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         badge: "极速",
         tags: ["multimodal", "vision"],
         maxContextTokens: 1048576,
+        inputPricePerK: 0.0005,
+        outputPricePerK: 0.002,
         status: "UP",
         healthy: true,
       },
@@ -117,6 +148,8 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         description: "Google 稳定版轻量多模态模型",
         tags: ["multimodal", "vision"],
         maxContextTokens: 1048576,
+        inputPricePerK: 0.0005,
+        outputPricePerK: 0.002,
         status: "UP",
         healthy: true,
       },
@@ -127,6 +160,8 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         badge: "预览",
         tags: ["multimodal", "vision"],
         maxContextTokens: 2097152,
+        inputPricePerK: 0.009,
+        outputPricePerK: 0.036,
         status: "UP",
         healthy: true,
       },
@@ -146,6 +181,8 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         badge: "强力",
         tags: ["chat"],
         maxContextTokens: 200000,
+        inputPricePerK: 0.0215,
+        outputPricePerK: 0.1075,
         status: "UP",
         healthy: true,
       },
@@ -165,6 +202,8 @@ const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
         badge: "本地",
         tags: ["local"],
         maxContextTokens: 8192,
+        inputPricePerK: 0,
+        outputPricePerK: 0,
         status: "UP",
         healthy: true,
       },
@@ -417,6 +456,33 @@ export function ModelSelector({
               ? `自定义 (${value.model})`
               : currentModelObj?.displayName || value.model}
           </span>
+          {/* 预估费用展示 */}
+          {currentModelObj && (
+            <span
+              className={cn(
+                "rounded px-1.5 py-0.5 font-mono text-[10px]",
+                isFreePrice(
+                  currentModelObj.inputPricePerK,
+                  currentModelObj.outputPricePerK,
+                )
+                  ? "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 font-semibold"
+                  : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
+              )}
+              title={
+                isFreePrice(
+                  currentModelObj.inputPricePerK,
+                  currentModelObj.outputPricePerK,
+                )
+                  ? "免费模型"
+                  : `输入: ¥${(currentModelObj.inputPricePerK ?? 0).toFixed(4)}/k · 输出: ¥${(currentModelObj.outputPricePerK ?? 0).toFixed(4)}/k`
+              }
+            >
+              {formatModelPriceText(
+                currentModelObj.inputPricePerK,
+                currentModelObj.outputPricePerK,
+              )}
+            </span>
+          )}
           {/* 健康指示灯 */}
           {isCurrentModelDown ? (
             <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
@@ -575,13 +641,31 @@ export function ModelSelector({
                           {m.description}
                         </p>
 
-                        {m.maxContextTokens && (
-                          <div className="pt-0.5">
-                            <span className="inline-flex items-center rounded-md bg-zinc-100 px-1.5 py-0.2 font-mono text-[9px] text-zinc-500 dark:bg-zinc-800/80 dark:text-zinc-400">
+                        <div className="pt-0.5 flex items-center gap-1.5 flex-wrap">
+                          {m.maxContextTokens && (
+                            <span className="inline-flex items-center rounded-md bg-zinc-100 px-1.5 py-0.5 font-mono text-[9px] text-zinc-500 dark:bg-zinc-800/80 dark:text-zinc-400">
                               上下文: {Math.round(m.maxContextTokens / 1024)}k
                             </span>
-                          </div>
-                        )}
+                          )}
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-md px-1.5 py-0.5 font-mono text-[9px]",
+                              isFreePrice(m.inputPricePerK, m.outputPricePerK)
+                                ? "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 font-semibold"
+                                : "bg-indigo-500/10 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400 font-medium",
+                            )}
+                            title={
+                              isFreePrice(m.inputPricePerK, m.outputPricePerK)
+                                ? "免费模型"
+                                : `输入: ¥${(m.inputPricePerK ?? 0).toFixed(4)}/k · 输出: ¥${(m.outputPricePerK ?? 0).toFixed(4)}/k`
+                            }
+                          >
+                            {formatModelPriceText(
+                              m.inputPricePerK,
+                              m.outputPricePerK,
+                            )}
+                          </span>
+                        </div>
                       </div>
 
                       {isSelectedModel && (
