@@ -55,12 +55,8 @@ const ACTIVE_KEY = "ai-copilot-active";
 const MODEL_STORAGE_KEY = "ai-copilot-selected-model";
 const SESSIONS_STORAGE_KEY = "ai-copilot-sessions";
 
-let idCounter = 0;
-const nextId = () => `msg-${Date.now()}-${++idCounter}`;
-
-let sessionIdCounter = 0;
-const nextSessionId = () =>
-  `sess-${Date.now()}-${++sessionIdCounter}-${Math.random().toString(36).substring(2, 7)}`;
+const nextId = () => `msg-${crypto.randomUUID()}`;
+const nextSessionId = () => `sess-${crypto.randomUUID()}`;
 
 const SUGGESTED_PROMPTS = [
   {
