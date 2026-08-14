@@ -72,15 +72,7 @@ class ReActAgentTest {
 
         AtomicBoolean isAborted = new AtomicBoolean(false);
 
-        String answer = reActAgent.run(
-                "1+1 等于几",
-                null,
-                List.of(mockTool),
-                mockChatClient,
-                sink,
-                isAborted,
-                5
-        );
+        String answer = reActAgent.run("1+1 等于几", null, List.of(mockTool), mockChatClient, sink, isAborted, 5);
 
         assertThat(answer).contains("计算结果为 2");
         assertThat(capturedChunks).anyMatch(c -> "task_plan".equals(c.type()));
@@ -98,15 +90,7 @@ class ReActAgentTest {
         Sinks.Many<ChatChunkDto> sink = Sinks.many().multicast().onBackpressureBuffer();
         AtomicBoolean isAborted = new AtomicBoolean(true); // 模拟用户在开始前或首轮点击取消
 
-        String answer = reActAgent.run(
-                "耗时任务",
-                null,
-                List.of(),
-                mockChatClient,
-                sink,
-                isAborted,
-                5
-        );
+        String answer = reActAgent.run("耗时任务", null, List.of(), mockChatClient, sink, isAborted, 5);
 
         assertThat(answer).contains("取消");
     }

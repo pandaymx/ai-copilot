@@ -20,6 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
+import xyz.ppmblszdp.ai.dto.ChatFeedbackRequest;
 import xyz.ppmblszdp.ai.evaluation.dto.AbTestResultDto;
 import xyz.ppmblszdp.ai.evaluation.dto.BenchmarkCase;
 import xyz.ppmblszdp.ai.evaluation.dto.EvaluationMetrics;
@@ -469,7 +470,68 @@ public class EvaluationService {
         return Optional.empty();
     }
 
-    // ====================== 6. 大盘聚合统计 ======================
+    // ====================== 5b. 用户反馈注入评测集（质量闭环） ======================
+
+    /**
+     * 将用户点赞/点踩反馈注入评测历史，贡献模型满意度维度分。
+     *
+     * <p>规则：
+     * <ul>
+     *   <li>THUMBS_DOWN → humanScore = 0.0（不满意）</li>
+     *   <li>THUMBS_UP   → humanScore = 1.0（满意）</li>
+     *   <li>source 标签为 {@code "USER_FEEDBACK"}，与官方评测基线隔离</li>
+     * </ul>
+     *
+     * @param request 点赞/点踩反馈请求（含 modelId、userPrompt、assistantReply）
+     */
+    public void ingestFeedbackCase(ChatFeedbackRequest request) {
+        if (request == null || request.rating() == null || request.rating().isBlank()) return;
+
+        boolean isDown = "THUMBS_DOWN".equalsIgnoreCase(request.rating());
+        double score = isDown ? 0.0 : 1.0;
+        String prompt = request.userPrompt() != null ? request.userPrompt() : "（无 Prompt 信息）";
+        String reply = request.assistantReply() != null ? request.assistantReply() : "（无回答信息）";
+        String modelId = request.modelId() != null ? request.modelId() : "unknown";
+        String title = isDown ? "用户点踩-待改进" : "用户点赞-正向样本";
+
+        // 构建无裁判评分的反馈结果（metrics 全为 0，由 humanScore 体现满意度）
+        EvaluationMetrics feedbackMetrics = new EvaluationMetrics(0.0, 0.0, 0.0, 0.0, 0.0);
+        EvaluationResultDto result = new EvaluationResultDto(
+                "fb-" + UUID.randomUUID().toString().substring(0, 8),
+                null,
+                title,
+                /* provider */ "USER_FEEDBACK",
+                modelId,
+                /* judgeProvider */ "USER_FEEDBACK",
+                /* judgeModel   */ "human",
+                prompt,
+                reply,
+                null,
+                feedbackMetrics,
+                request.comment() != null ? request.comment() : "",
+                0L,
+                0,
+                score,
+                request.comment(),
+                System.currentTimeMillis());
+
+        evaluationHistory.add(0, result);
+        log.debug("[EvaluationService] 用户反馈注入评测集 [model={}, rating={}, score={}]", modelId, request.rating(), score);
+    }
+
+    /**
+     * 从评测历史中统计来源为 USER_FEEDBACK 的各模型满意度（点赞率）。
+     *
+     * @return Map，key 为 modelId，value 为满意度（0.0 ~ 1.0）
+     */
+    public Map<String, Double> getFeedbackSatisfactionByModel() {
+        return evaluationHistory.stream()
+                .filter(r -> "USER_FEEDBACK".equals(r.provider()))
+                .filter(r -> r.model() != null)
+                .collect(Collectors.groupingBy(
+                        EvaluationResultDto::model,
+                        Collectors.averagingDouble(r -> r.humanScore() != null ? r.humanScore() : 0.0)));
+    }
 
     public EvaluationSummaryDto getSummary() {
         long totalEvals = evaluationHistory.size();

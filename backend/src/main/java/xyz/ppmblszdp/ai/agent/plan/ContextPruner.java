@@ -50,7 +50,9 @@ public final class ContextPruner {
             if (step.toolName() != null && !step.toolName().isBlank()) {
                 sb.append("• Tool: ").append(step.toolName());
                 if (step.actionArgs() != null && !step.actionArgs().isBlank()) {
-                    sb.append(" (args: ").append(truncate(step.actionArgs(), 100)).append(")");
+                    sb.append(" (args: ")
+                            .append(truncate(step.actionArgs(), 100))
+                            .append(")");
                 }
                 sb.append("\n");
             }
@@ -60,7 +62,9 @@ public final class ContextPruner {
                 String prunedObs = pruneObservation(rawObs, MAX_HISTORICAL_OBSERVATION_CHARS);
                 sb.append("• Observation: ").append(prunedObs).append("\n");
             } else if (step.errorMessage() != null && !step.errorMessage().isBlank()) {
-                sb.append("• Error: ").append(truncate(step.errorMessage(), 150)).append("\n");
+                sb.append("• Error: ")
+                        .append(truncate(step.errorMessage(), 150))
+                        .append("\n");
             }
             sb.append("\n");
 

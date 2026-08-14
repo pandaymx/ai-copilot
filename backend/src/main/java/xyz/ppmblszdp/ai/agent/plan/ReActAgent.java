@@ -56,25 +56,25 @@ public class ReActAgent {
     private static final String REACT_STEP_PROMPT = """
             你是一个高级 ReAct 自主推理代理（Reasoning & Action Agent）。
             你当前正在按任务规划逐步执行多步复杂任务。
-            
+
             【总任务目标】: %s
             【当前步骤 (%d/%d)】: %s
             【步骤说明】: %s
             【预期产出】: %s
-            
+
             【历史步骤执行结果 (已剪枝)】:
             %s
-            
+
             【当前可用工具】:
             %s
-            
+
             请严格按照 Reason → Act 模式进行决策：
             1. Thought: 深入分析当前步骤的需求，结合历史 Observation，决定本步采取什么行动；
-            2. Action: 
+            2. Action:
                - 如果需要调用工具，指定 actionType 为 "TOOL_CALL"，并给出工具名和严格合法的 JSON 参数；
                - 如果当前步骤已成功无需调用工具或已达成目标，指定 actionType 为 "FINISH"；
                - 如果发现当前步骤方向错误需要调整计划，指定 actionType 为 "REPLAN"；
-            
+
             输出必须为纯 JSON 格式：
             {
               "thought": "你的思考逻辑与推理过程",
@@ -88,11 +88,11 @@ public class ReActAgent {
     private static final String FINAL_SYNTHESIS_PROMPT = """
             你是一个专业的高级 AI 助手。
             任务规划的所有多步推理与工具执行已经全部结束。
-            
+
             【用户原始任务目标】: %s
             【所有步骤执行记录与观察】:
             %s
-            
+
             请对上述所有步骤的产出与结果进行全面、专业、结构化的总结，直接向用户呈现最终解答与核心成果。
             要求：
             1. 条理清晰，使用精美的 Markdown 格式与要点排版；
@@ -168,14 +168,14 @@ public class ReActAgent {
                     currentStep.description(),
                     currentStep.expectedOutput() != null ? currentStep.expectedOutput() : "完成操作",
                     prunedHistory,
-                    toolsDesc
-            );
+                    toolsDesc);
 
             ReActStepAction action = decideAction(chatClient, stepPrompt, currentStep);
 
             // 推送 Thought 思考过程与 Step RUNNING 状态
             if (action.thought() != null && !action.thought().isBlank()) {
-                sink.tryEmitNext(ChatChunkDto.reasoning("💭 [步骤 " + currentStepIndex + "] " + action.thought() + "\n\n"));
+                sink.tryEmitNext(
+                        ChatChunkDto.reasoning("💭 [步骤 " + currentStepIndex + "] " + action.thought() + "\n\n"));
             }
             currentStep = currentStep.withExecution(action.thought(), action.toolName(), action.toolArgs());
             updateStepInPlan(plan, currentStep);
@@ -184,18 +184,21 @@ public class ReActAgent {
             // 5. 根据决策动作执行
             if ("FINISH".equalsIgnoreCase(action.actionType())) {
                 log.info("步骤 {} 标记完成: {}", currentStepIndex, action.explanation());
-                currentStep = currentStep.withObservation(action.explanation() != null ? action.explanation() : "步骤已成功完成", true, null);
+                currentStep = currentStep.withObservation(
+                        action.explanation() != null ? action.explanation() : "步骤已成功完成", true, null);
                 updateStepInPlan(plan, currentStep);
                 emitStep(sink, currentStep);
                 currentStepIndex++;
             } else if ("REPLAN".equalsIgnoreCase(action.actionType())) {
                 log.info("步骤 {} 触发主动重规划", currentStepIndex);
                 totalReplans++;
-                plan = taskPlanner.replan(plan, currentStepIndex, action.thought(), totalReplans, toolsDesc, chatClient);
+                plan = taskPlanner.replan(
+                        plan, currentStepIndex, action.thought(), totalReplans, toolsDesc, chatClient);
                 emitPlan(sink, plan);
             } else if ("SKIP".equalsIgnoreCase(action.actionType())) {
                 log.info("步骤 {} 被跳过: {}", currentStepIndex, action.explanation());
-                currentStep = currentStep.withStatus("SKIPPED").withObservation("已跳过: " + action.explanation(), true, null);
+                currentStep =
+                        currentStep.withStatus("SKIPPED").withObservation("已跳过: " + action.explanation(), true, null);
                 updateStepInPlan(plan, currentStep);
                 emitStep(sink, currentStep);
                 currentStepIndex++;
@@ -205,7 +208,8 @@ public class ReActAgent {
                 String toolArgs = action.toolArgs() != null ? action.toolArgs() : "{}";
                 log.info("ReAct 步骤 {} 调用工具: {} (args={})", currentStepIndex, toolName, toolArgs);
 
-                ToolExecutionResult execResult = executeToolInVirtualThread(toolMap, toolName, toolArgs, sink, isAborted);
+                ToolExecutionResult execResult =
+                        executeToolInVirtualThread(toolMap, toolName, toolArgs, sink, isAborted);
 
                 if (execResult.success()) {
                     currentStep = currentStep.withObservation(execResult.output(), true, null);
@@ -216,7 +220,8 @@ public class ReActAgent {
                     // 工具执行失败：触发动态重规划
                     log.warn("步骤 {} 工具执行异常: {}，准备触发自适应重规划", currentStepIndex, execResult.errorMessage());
                     totalReplans++;
-                    plan = taskPlanner.replan(plan, currentStepIndex, execResult.errorMessage(), totalReplans, toolsDesc, chatClient);
+                    plan = taskPlanner.replan(
+                            plan, currentStepIndex, execResult.errorMessage(), totalReplans, toolsDesc, chatClient);
                     emitPlan(sink, plan);
                 }
             }
@@ -230,10 +235,11 @@ public class ReActAgent {
         String finalSynthesisPrompt = String.format(FINAL_SYNTHESIS_PROMPT, plan.goal(), fullHistory);
 
         try {
-            String finalAnswer = chatClient.prompt(new Prompt(List.of(
-                    new SystemMessage("你是一个专业的总结呈现助手。"),
-                    new UserMessage(finalSynthesisPrompt)
-            ))).call().content();
+            String finalAnswer = chatClient
+                    .prompt(new Prompt(
+                            List.of(new SystemMessage("你是一个专业的总结呈现助手。"), new UserMessage(finalSynthesisPrompt))))
+                    .call()
+                    .content();
 
             plan = plan.withSummary(finalAnswer);
             emitPlan(sink, plan);
@@ -250,10 +256,11 @@ public class ReActAgent {
 
     private ReActStepAction decideAction(ChatClient chatClient, String stepPrompt, TaskStepDto step) {
         try {
-            String rawJson = chatClient.prompt(new Prompt(List.of(
-                    new SystemMessage("你是一个 ReAct 任务决策器。严格输出 JSON。"),
-                    new UserMessage(stepPrompt)
-            ))).call().content();
+            String rawJson = chatClient
+                    .prompt(new Prompt(
+                            List.of(new SystemMessage("你是一个 ReAct 任务决策器。严格输出 JSON。"), new UserMessage(stepPrompt))))
+                    .call()
+                    .content();
 
             String cleanJson = TaskPlanner.extractJsonBlock(rawJson);
             JsonNode root = MAPPER.readTree(cleanJson);
@@ -262,7 +269,9 @@ public class ReActAgent {
             String actionType = root.path("actionType").asText("TOOL_CALL");
             String toolName = root.path("toolName").asText(step.toolName() != null ? step.toolName() : "NONE");
             JsonNode toolArgsNode = root.path("toolArgs");
-            String toolArgs = toolArgsNode.isObject() ? MAPPER.writeValueAsString(toolArgsNode) : root.path("toolArgs").asText("{}");
+            String toolArgs = toolArgsNode.isObject()
+                    ? MAPPER.writeValueAsString(toolArgsNode)
+                    : root.path("toolArgs").asText("{}");
             String explanation = root.path("explanation").asText(null);
 
             if ("NONE".equalsIgnoreCase(toolName) && "TOOL_CALL".equalsIgnoreCase(actionType)) {
@@ -273,12 +282,7 @@ public class ReActAgent {
         } catch (Exception e) {
             log.warn("ReAct 决策 JSON 解析异常: {}，降级为默认工具调用", e.getMessage());
             return new ReActStepAction(
-                    "根据预定计划执行步骤",
-                    step.toolName() != null ? "TOOL_CALL" : "FINISH",
-                    step.toolName(),
-                    "{}",
-                    "按默认步骤执行"
-            );
+                    "根据预定计划执行步骤", step.toolName() != null ? "TOOL_CALL" : "FINISH", step.toolName(), "{}", "按默认步骤执行");
         }
     }
 
@@ -301,13 +305,15 @@ public class ReActAgent {
         String callId = ToolEventEmitter.newCallId();
         sink.tryEmitNext(ChatChunkDto.toolCall(callId, toolName, toolArgs));
 
-        CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
-            try {
-                return callback.call(toolArgs);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        }, VIRTUAL_THREAD_POOL);
+        CompletableFuture<String> future = CompletableFuture.supplyAsync(
+                () -> {
+                    try {
+                        return callback.call(toolArgs);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                },
+                VIRTUAL_THREAD_POOL);
 
         try {
             String result = future.get(45, TimeUnit.SECONDS);
@@ -338,8 +344,11 @@ public class ReActAgent {
         StringBuilder sb = new StringBuilder();
         for (ToolCallback cb : callbacks) {
             if (cb.getToolDefinition() != null) {
-                sb.append("• `").append(cb.getToolDefinition().name()).append("`: ")
-                        .append(cb.getToolDefinition().description()).append("\n");
+                sb.append("• `")
+                        .append(cb.getToolDefinition().name())
+                        .append("`: ")
+                        .append(cb.getToolDefinition().description())
+                        .append("\n");
             }
         }
         return sb.toString();
@@ -366,13 +375,15 @@ public class ReActAgent {
     private void emitPlan(Sinks.Many<ChatChunkDto> sink, TaskPlanDto plan) {
         try {
             sink.tryEmitNext(ChatChunkDto.taskPlan(MAPPER.writeValueAsString(plan)));
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
     }
 
     private void emitStep(Sinks.Many<ChatChunkDto> sink, TaskStepDto step) {
         try {
             sink.tryEmitNext(ChatChunkDto.taskStep(MAPPER.writeValueAsString(step)));
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
     }
 
     private record ToolExecutionResult(boolean success, String output, String errorMessage) {}

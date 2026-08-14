@@ -31,19 +31,10 @@ public record TaskStepDto(
         Integer replanCount,
         String errorMessage) {
 
-    public static TaskStepDto pending(int stepId, String title, String description, String toolName, String expectedOutput) {
+    public static TaskStepDto pending(
+            int stepId, String title, String description, String toolName, String expectedOutput) {
         return new TaskStepDto(
-                stepId,
-                title,
-                description,
-                toolName,
-                expectedOutput,
-                null,
-                null,
-                null,
-                "PENDING",
-                0,
-                null);
+                stepId, title, description, toolName, expectedOutput, null, null, null, "PENDING", 0, null);
     }
 
     public TaskStepDto withStatus(String status) {

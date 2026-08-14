@@ -12,12 +12,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * @param explanation 决策说明或最终完成总结
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record ReActStepAction(
-        String thought,
-        String actionType,
-        String toolName,
-        String toolArgs,
-        String explanation) {
+public record ReActStepAction(String thought, String actionType, String toolName, String toolArgs, String explanation) {
 
     public static ReActStepAction toolCall(String thought, String toolName, String toolArgs) {
         return new ReActStepAction(thought, "TOOL_CALL", toolName, toolArgs, null);

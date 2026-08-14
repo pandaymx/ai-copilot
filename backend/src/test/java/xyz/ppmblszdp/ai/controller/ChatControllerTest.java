@@ -93,7 +93,8 @@ class ChatControllerTest {
 
     @Test
     void testFeedbackEndpoint() {
-        ChatFeedbackRequest req = new ChatFeedbackRequest("conv-1", "msg-1", "THUMBS_UP", "Good", "user-1");
+        ChatFeedbackRequest req =
+                new ChatFeedbackRequest("conv-1", "msg-1", "THUMBS_UP", "Good", "user-1", null, null, null, null);
 
         StepVerifier.create(chatController.feedback(req, exchangeWithUser("user-1")))
                 .assertNext(map -> {

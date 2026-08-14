@@ -68,8 +68,7 @@ class TaskPlannerTest {
 
     @Test
     void replan_shouldAdaptAndModifyRemainingSteps() {
-        TaskStepDto s1 = TaskStepDto.pending(1, "克隆", "克隆成功", "git_clone", "完成")
-                .withObservation("Cloned", true, null);
+        TaskStepDto s1 = TaskStepDto.pending(1, "克隆", "克隆成功", "git_clone", "完成").withObservation("Cloned", true, null);
         TaskStepDto s2 = TaskStepDto.pending(2, "搜索代码", "执行正则搜索", "code_search_regex", "匹配文件");
 
         TaskPlanDto initialPlan = TaskPlanDto.of("plan_1", "原计划", "目标", List.of(s1, s2));
@@ -96,14 +95,8 @@ class TaskPlannerTest {
         when(reqSpec.call()).thenReturn(callSpec);
         when(callSpec.content()).thenReturn(mockReplanJson);
 
-        TaskPlanDto newPlan = taskPlanner.replan(
-                initialPlan,
-                2,
-                "正则未匹配到任何文件",
-                0,
-                "code_search_semantic",
-                mockChatClient
-        );
+        TaskPlanDto newPlan =
+                taskPlanner.replan(initialPlan, 2, "正则未匹配到任何文件", 0, "code_search_semantic", mockChatClient);
 
         assertThat(newPlan).isNotNull();
         assertThat(newPlan.status()).isEqualTo("REPLANNING");
@@ -121,14 +114,7 @@ class TaskPlannerTest {
         TaskPlanDto initialPlan = TaskPlanDto.of("plan_1", "原计划", "目标", List.of(s1));
 
         // 当该步 replanCount >= 2 时，直接熔断跳过，不应继续调用 LLM
-        TaskPlanDto plan = taskPlanner.replan(
-                initialPlan,
-                1,
-                "持续超时",
-                2,
-                "tool_a",
-                mockChatClient
-        );
+        TaskPlanDto plan = taskPlanner.replan(initialPlan, 1, "持续超时", 2, "tool_a", mockChatClient);
 
         assertThat(plan).isNotNull();
         assertThat(plan.steps().get(0).status()).isEqualTo("FAILED");

@@ -93,6 +93,7 @@ public class ChatOrchestrator implements DisposableBean {
     private final IntentClassifier intentClassifier;
     private final VisionService visionService;
     private final ObjectProvider<xyz.ppmblszdp.ai.agent.plan.ReActAgent> reActAgentProvider;
+    private final ObjectProvider<xyz.ppmblszdp.ai.feedback.IntentFeedbackAccumulator> intentFeedbackAccumulatorProvider;
 
     private final ConcurrentLinkedQueue<Disposable> fireAndForgetSubscriptions = new ConcurrentLinkedQueue<>();
 
@@ -120,7 +121,8 @@ public class ChatOrchestrator implements DisposableBean {
             ImageRouter imageRouter,
             IntentClassifier intentClassifier,
             VisionService visionService,
-            ObjectProvider<xyz.ppmblszdp.ai.agent.plan.ReActAgent> reActAgentProvider) {
+            ObjectProvider<xyz.ppmblszdp.ai.agent.plan.ReActAgent> reActAgentProvider,
+            ObjectProvider<xyz.ppmblszdp.ai.feedback.IntentFeedbackAccumulator> intentFeedbackAccumulatorProvider) {
         this.registry = registry;
         this.contextAssembler = contextAssembler;
         this.sessionChatMemory = sessionChatMemory;
@@ -150,6 +152,7 @@ public class ChatOrchestrator implements DisposableBean {
         this.intentClassifier = intentClassifier;
         this.visionService = (visionService != null) ? visionService : new VisionService();
         this.reActAgentProvider = reActAgentProvider;
+        this.intentFeedbackAccumulatorProvider = intentFeedbackAccumulatorProvider;
     }
 
     @Override
@@ -319,22 +322,47 @@ public class ChatOrchestrator implements DisposableBean {
         }
 
         IntentResult intentResult = intentClassifier.classify(request, resolved);
-        if (Boolean.TRUE.equals(request.reactEnabled()) && reActAgentProvider != null && reActAgentProvider.getIfAvailable() != null) {
-            return streamReAct(resolved, request, userId, intentResult);
+
+        // 意图告警自愈路由：若当前意图点踩率 > 30%，自动切换至默认模型
+        xyz.ppmblszdp.ai.feedback.IntentFeedbackAccumulator intentAccumulator =
+                intentFeedbackAccumulatorProvider != null ? intentFeedbackAccumulatorProvider.getIfAvailable() : null;
+        final ResolvedModel effectiveResolved;
+        if (intentAccumulator != null
+                && intentResult != null
+                && intentAccumulator.isAlerting(intentResult.intent().name())) {
+            ResolvedModel fallback = registry.resolve(null, null);
+            if (!fallback.model().id().equals(resolved.model().id())) {
+                log.warn(
+                        "⚠️ [AutoHeal] 意图 [{}] 告警（点踩率 ≥ 30%），自动切换模型: {} → {}",
+                        intentResult.intent().name(),
+                        resolved.model().id(),
+                        fallback.model().id());
+                effectiveResolved = fallback;
+            } else {
+                effectiveResolved = resolved;
+            }
+        } else {
+            effectiveResolved = resolved;
+        }
+
+        if (Boolean.TRUE.equals(request.reactEnabled())
+                && reActAgentProvider != null
+                && reActAgentProvider.getIfAvailable() != null) {
+            return streamReAct(effectiveResolved, request, userId, intentResult);
         }
 
         boolean memoryPath = useMemory(request);
-        ChatOptions options = buildChatOptions(resolved);
+        ChatOptions options = buildChatOptions(effectiveResolved);
         boolean agentPath = useAgent(request, intentResult);
 
         if (memoryPath) {
             ChatMemory memory = sessionChatMemory.getIfAvailable();
             if (memory == null) {
                 return streamChunksWithoutMemory(
-                        resolved, request, options, new AtomicReference<>(), userId, intentResult);
+                        effectiveResolved, request, options, new AtomicReference<>(), userId, intentResult);
             }
             ChatRequest req = ensureConversation(request);
-            ChatClient client = resolved.chatClient();
+            ChatClient client = effectiveResolved.chatClient();
             MessageChatMemoryAdvisor memoryAdvisor =
                     MessageChatMemoryAdvisor.builder(memory).build();
             StringBuilder fullContent = new StringBuilder();
@@ -380,15 +408,15 @@ public class ChatOrchestrator implements DisposableBean {
                         boolean isFirst = !hasEmittedFirstChunk[0];
                         hasEmittedFirstChunk[0] = true;
                         healthTracker.recordSuccess(
-                                resolved.provider().providerId(),
-                                resolved.model().id());
+                                effectiveResolved.provider().providerId(),
+                                effectiveResolved.model().id());
                         Flux<ChatChunkDto> chunkFlux = usageRecorder.accumulateUsage(
-                                processChatResponseToChunks(resp, fullContent, resolved), lastUsage);
+                                processChatResponseToChunks(resp, fullContent, effectiveResolved), lastUsage);
                         if (isFirst) {
                             ChatChunkDto initChunk = ChatChunkDto.conversation(
                                     req.conversationId(),
-                                    resolved.provider().providerId(),
-                                    resolved.model().id(),
+                                    effectiveResolved.provider().providerId(),
+                                    effectiveResolved.model().id(),
                                     false,
                                     intentResult.intent().name(),
                                     intentResult.label());
@@ -408,12 +436,12 @@ public class ChatOrchestrator implements DisposableBean {
                         log.debug(
                                 "流式记忆路径订阅结束 (signal={}) → 供应商={}, 模型={}",
                                 signalType,
-                                resolved.provider().providerId(),
-                                resolved.model().id());
+                                effectiveResolved.provider().providerId(),
+                                effectiveResolved.model().id());
                         if (usageSettled.compareAndSet(false, true)) {
                             usageRecorder.settleUsage(
                                     userId,
-                                    resolved,
+                                    effectiveResolved,
                                     req.conversationId(),
                                     lastUsage.get(),
                                     fireAndForgetSubscriptions);
@@ -422,16 +450,17 @@ public class ChatOrchestrator implements DisposableBean {
                     .onErrorResume(ex -> {
                         log.warn(
                                 "流式主供应商请求失败 (记忆路径) → 供应商={}, 模型={}, 首帧下发状态={}: {}",
-                                resolved.provider().providerId(),
-                                resolved.model().id(),
+                                effectiveResolved.provider().providerId(),
+                                effectiveResolved.model().id(),
                                 hasEmittedFirstChunk[0],
                                 ex.getMessage());
                         healthTracker.recordFailure(
-                                resolved.provider().providerId(),
-                                resolved.model().id(),
+                                effectiveResolved.provider().providerId(),
+                                effectiveResolved.model().id(),
                                 ex);
                         if (!hasEmittedFirstChunk[0]) {
-                            return streamChunksWithoutMemory(resolved, req, options, lastUsage, userId, intentResult);
+                            return streamChunksWithoutMemory(
+                                    effectiveResolved, req, options, lastUsage, userId, intentResult);
                         }
                         return Flux.just(ChatChunkDto.error("STREAM_ERROR", "输出中断：" + ex.getMessage()));
                     });
@@ -442,7 +471,8 @@ public class ChatOrchestrator implements DisposableBean {
             return contentFlux;
         }
 
-        return streamChunksWithoutMemory(resolved, request, options, new AtomicReference<>(), userId, intentResult);
+        return streamChunksWithoutMemory(
+                effectiveResolved, request, options, new AtomicReference<>(), userId, intentResult);
     }
 
     private Mono<ChatResponseDto> callWithoutMemory(
@@ -849,18 +879,17 @@ public class ChatOrchestrator implements DisposableBean {
      * ReAct 闭环任务规划流式执行器。
      */
     public Flux<ChatChunkDto> streamReAct(
-            ResolvedModel resolved,
-            ChatRequest request,
-            String userId,
-            IntentResult intentResult) {
+            ResolvedModel resolved, ChatRequest request, String userId, IntentResult intentResult) {
 
-        xyz.ppmblszdp.ai.agent.plan.ReActAgent agent = reActAgentProvider != null ? reActAgentProvider.getIfAvailable() : null;
+        xyz.ppmblszdp.ai.agent.plan.ReActAgent agent =
+                reActAgentProvider != null ? reActAgentProvider.getIfAvailable() : null;
         if (agent == null) {
             return Flux.just(ChatChunkDto.error("REACT_UNAVAILABLE", "ReAct 规划引擎未初始化"));
         }
 
         ChatRequest req = ensureConversation(request);
-        Many<ChatChunkDto> sink = reactor.core.publisher.Sinks.many().multicast().onBackpressureBuffer();
+        Many<ChatChunkDto> sink =
+                reactor.core.publisher.Sinks.many().multicast().onBackpressureBuffer();
         AtomicBoolean isAborted = new AtomicBoolean(false);
 
         ChatChunkDto initChunk = ChatChunkDto.conversation(
@@ -877,15 +906,7 @@ public class ChatOrchestrator implements DisposableBean {
 
         java.util.concurrent.CompletableFuture.runAsync(() -> {
             try {
-                agent.run(
-                        req.message(),
-                        req.systemPrompt(),
-                        toolList,
-                        resolved.chatClient(),
-                        sink,
-                        isAborted,
-                        8
-                );
+                agent.run(req.message(), req.systemPrompt(), toolList, resolved.chatClient(), sink, isAborted, 8);
             } catch (Exception e) {
                 log.error("ReAct 执行异常: {}", e.getMessage(), e);
                 sink.tryEmitNext(ChatChunkDto.error("REACT_ERROR", "任务规划执行异常: " + e.getMessage()));
@@ -894,10 +915,9 @@ public class ChatOrchestrator implements DisposableBean {
             }
         });
 
-        return sink.asFlux()
-                .doOnCancel(() -> {
-                    log.info("客户端取消 ReAct 连接 (convId={})", req.conversationId());
-                    isAborted.set(true);
-                });
+        return sink.asFlux().doOnCancel(() -> {
+            log.info("客户端取消 ReAct 连接 (convId={})", req.conversationId());
+            isAborted.set(true);
+        });
     }
 }

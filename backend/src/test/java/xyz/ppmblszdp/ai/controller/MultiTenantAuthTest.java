@@ -148,7 +148,8 @@ class MultiTenantAuthTest {
 
     @Test
     void feedbackUsesServerIdentityNotDtoUserId() {
-        ChatFeedbackRequest req = new ChatFeedbackRequest("conv-1", "msg-1", "THUMBS_UP", "Good", "spoofed-user");
+        ChatFeedbackRequest req =
+                new ChatFeedbackRequest("conv-1", "msg-1", "THUMBS_UP", "Good", "spoofed-user", null, null, null, null);
         doNothing().when(feedbackService).saveFeedback(eq("alice"), eq(req));
         StepVerifier.create(chatController.feedback(req, exchangeWithUser("alice")))
                 .assertNext(map -> assertEquals(true, map.get("success")))

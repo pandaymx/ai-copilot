@@ -37,10 +37,10 @@ public class TaskPlanner {
     private static final String PLAN_SYSTEM_PROMPT = """
             你是一个专业的高级 AI 任务规划专家（Task Planner）。
             你的职责是将用户的复杂任务目标分解为一个清晰、有逻辑、可逐步执行的多步计划（2 ~ 6 个步骤）。
-            
+
             可供执行的工具列表如下：
             %s
-            
+
             请严格以 JSON 格式输出规划结果，不要包含任何额外的自然语言说明，格式如下：
             {
               "title": "简短任务标题",
@@ -59,12 +59,12 @@ public class TaskPlanner {
     private static final String REPLAN_SYSTEM_PROMPT = """
             你是一个高级 AI 任务自适应重规划专家（Replanner）。
             当前任务在执行步骤 %d 时遇到了错误或偏离了预期。
-            
+
             【原始目标】: %s
             【失败步骤】: %s
             【错误/观察详情】: %s
             【可供使用的工具】: %s
-            
+
             请根据已发生的错误，对当前未完成的步骤进行自适应修正、补救或替换。
             要求：
             1. 避免重复执行已经失败且无法成功的相同动作；
@@ -89,14 +89,15 @@ public class TaskPlanner {
      */
     public TaskPlanDto generatePlan(String goal, String context, String availableToolsDesc, ChatClient chatClient) {
         String planId = "plan_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-        String sysPrompt = String.format(PLAN_SYSTEM_PROMPT, availableToolsDesc != null ? availableToolsDesc : "（通用工具集）");
+        String sysPrompt =
+                String.format(PLAN_SYSTEM_PROMPT, availableToolsDesc != null ? availableToolsDesc : "（通用工具集）");
         String userPrompt = "【任务目标】: " + goal + (context != null && !context.isBlank() ? "\n【额外上下文】: " + context : "");
 
         try {
-            String rawJson = chatClient.prompt(new Prompt(List.of(
-                    new SystemMessage(sysPrompt),
-                    new UserMessage(userPrompt)
-            ))).call().content();
+            String rawJson = chatClient
+                    .prompt(new Prompt(List.of(new SystemMessage(sysPrompt), new UserMessage(userPrompt))))
+                    .call()
+                    .content();
 
             return parsePlanJson(rawJson, planId, goal);
         } catch (Exception ex) {
@@ -133,8 +134,11 @@ public class TaskPlanner {
         int stepReplanCount = (failedStep != null && failedStep.replanCount() != null) ? failedStep.replanCount() : 0;
 
         if (stepReplanCount >= MAX_REPLAN_PER_STEP || totalReplansSoFar >= MAX_TOTAL_REPLANS) {
-            log.warn("触发重规划防死循环熔断 (stepReplan={}, totalReplans={})，标记步骤 {} 为 FAILED 并尝试优雅降级",
-                    stepReplanCount, totalReplansSoFar, failedStepId);
+            log.warn(
+                    "触发重规划防死循环熔断 (stepReplan={}, totalReplans={})，标记步骤 {} 为 FAILED 并尝试优雅降级",
+                    stepReplanCount,
+                    totalReplansSoFar,
+                    failedStepId);
             return handleReplanLoopExceeded(currentPlan, failedStepId, failureReason);
         }
 
@@ -147,14 +151,13 @@ public class TaskPlanner {
                 stepDesc,
                 failureReason,
                 availableToolsDesc != null ? availableToolsDesc : "（通用工具）",
-                failedStepId
-        );
+                failedStepId);
 
         try {
-            String rawJson = chatClient.prompt(new Prompt(List.of(
-                    new SystemMessage(sysPrompt),
-                    new UserMessage("请立即生成重规划后的新步骤 JSON。")
-            ))).call().content();
+            String rawJson = chatClient
+                    .prompt(new Prompt(List.of(new SystemMessage(sysPrompt), new UserMessage("请立即生成重规划后的新步骤 JSON。"))))
+                    .call()
+                    .content();
 
             return mergeReplannedSteps(currentPlan, failedStepId, rawJson);
         } catch (Exception ex) {
@@ -179,7 +182,8 @@ public class TaskPlanner {
                     String desc = s.path("description").asText("");
                     String tool = s.path("toolName").asText("NONE");
                     String exp = s.path("expectedOutput").asText("");
-                    steps.add(TaskStepDto.pending(stepId, stepTitle, desc, "NONE".equalsIgnoreCase(tool) ? null : tool, exp));
+                    steps.add(TaskStepDto.pending(
+                            stepId, stepTitle, desc, "NONE".equalsIgnoreCase(tool) ? null : tool, exp));
                 }
             } else {
                 steps.add(TaskStepDto.pending(1, "执行综合任务", goal, null, "完成任务目标"));
@@ -213,7 +217,8 @@ public class TaskPlanner {
                     String desc = s.path("description").asText("");
                     String tool = s.path("toolName").asText("NONE");
                     String exp = s.path("expectedOutput").asText("");
-                    TaskStepDto newStep = TaskStepDto.pending(nextId, stepTitle, desc, "NONE".equalsIgnoreCase(tool) ? null : tool, exp)
+                    TaskStepDto newStep = TaskStepDto.pending(
+                                    nextId, stepTitle, desc, "NONE".equalsIgnoreCase(tool) ? null : tool, exp)
                             .incrementReplan(desc, tool);
                     newStepsList.add(newStep);
                     nextId++;
@@ -232,7 +237,8 @@ public class TaskPlanner {
         List<TaskStepDto> updatedSteps = new ArrayList<>();
         for (TaskStepDto step : currentPlan.steps()) {
             if (step.stepId() == failedStepId) {
-                updatedSteps.add(step.withObservation("重试达到上限，已跳过此步骤: " + failureReason, false, failureReason).withStatus("FAILED"));
+                updatedSteps.add(step.withObservation("重试达到上限，已跳过此步骤: " + failureReason, false, failureReason)
+                        .withStatus("FAILED"));
             } else if (step.stepId() > failedStepId && "PENDING".equalsIgnoreCase(step.status())) {
                 updatedSteps.add(step.withStatus("SKIPPED"));
             } else {
@@ -240,14 +246,13 @@ public class TaskPlanner {
             }
         }
         // 追加一个兜底的总结步骤
-        updatedSteps.add(TaskStepDto.pending(updatedSteps.size() + 1, "异常降级总结", "针对已获取的信息进行总结输出，并说明跳过步骤原因", null, "部分结果总结"));
+        updatedSteps.add(
+                TaskStepDto.pending(updatedSteps.size() + 1, "异常降级总结", "针对已获取的信息进行总结输出，并说明跳过步骤原因", null, "部分结果总结"));
         return currentPlan.withSteps(updatedSteps).withStatus("EXECUTING");
     }
 
     private TaskPlanDto buildFallbackPlan(String planId, String goal) {
-        List<TaskStepDto> steps = List.of(
-                TaskStepDto.pending(1, "执行核心任务", goal, null, "完成目标")
-        );
+        List<TaskStepDto> steps = List.of(TaskStepDto.pending(1, "执行核心任务", goal, null, "完成目标"));
         return TaskPlanDto.of(planId, "单步执行规划", goal, steps);
     }
 
