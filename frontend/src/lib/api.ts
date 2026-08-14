@@ -516,3 +516,92 @@ export async function updateQuotaConfigApi(
     return null;
   }
 }
+
+// ====================== 会话结构化摘要与知识沉淀 API ======================
+
+export interface ConversationSummary {
+  conversationId: string;
+  title: string;
+  summary: string;
+  keyDecisions: string[];
+  todos: string[];
+  references: string[];
+  openIssues: string[];
+  tags: string[];
+  messageCount: number;
+  createdAt: number;
+}
+
+export interface KnowledgeCaptureResult {
+  success: boolean;
+  fileName: string;
+  title: string;
+  ingestedChunks: number;
+  skippedChunks: number;
+  sourceType: string;
+  error?: string;
+}
+
+/** 生成/重新提炼会话结构化摘要。 */
+export async function generateSessionSummaryApi(
+  sessionId: string,
+  provider?: string,
+  model?: string,
+  signal?: AbortSignal,
+): Promise<ConversationSummary | null> {
+  try {
+    const res = await fetch(`/api/chat/sessions/${sessionId}/summary`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, model }),
+      signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as ConversationSummary;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}
+
+/** 一键将当前会话摘要沉淀入库为 RAG 知识库文档。 */
+export async function saveSessionToKnowledgeApi(
+  sessionId: string,
+  summary: ConversationSummary,
+  customTitle?: string,
+  signal?: AbortSignal,
+): Promise<KnowledgeCaptureResult | null> {
+  try {
+    const res = await fetch(`/api/chat/sessions/${sessionId}/knowledge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ summary, customTitle }),
+      signal,
+    });
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      return {
+        success: false,
+        fileName: "",
+        title: "",
+        ingestedChunks: 0,
+        skippedChunks: 0,
+        sourceType: "CONVERSATION_SUMMARY",
+        error: errJson.error || "存入知识库失败",
+      };
+    }
+    return (await res.json()) as KnowledgeCaptureResult;
+  } catch (err: unknown) {
+    return {
+      success: false,
+      fileName: "",
+      title: "",
+      ingestedChunks: 0,
+      skippedChunks: 0,
+      sourceType: "CONVERSATION_SUMMARY",
+      error: err instanceof Error ? err.message : "请求失败",
+    };
+  }
+}

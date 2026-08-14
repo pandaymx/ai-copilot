@@ -21,6 +21,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
+import { ConversationSummaryModal } from "@/components/chat/conversation-summary-modal";
 import { ExportDialog } from "@/components/chat/export-dialog";
 import {
   type AttachmentItem,
@@ -227,6 +228,7 @@ export default function Home() {
   const [imageMode, setImageMode] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -879,6 +881,17 @@ export default function Home() {
               <Button
                 variant="ghost"
                 size="icon-sm"
+                onClick={() => setShowSummary(true)}
+                disabled={messages.length === 0}
+                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors"
+                aria-label="会话摘要与知识沉淀"
+                title="会话摘要与知识沉淀"
+              >
+                <Sparkles className="size-4 text-indigo-500" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 onClick={() => setShowExport(true)}
                 disabled={messages.length === 0}
                 className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors"
@@ -1219,6 +1232,15 @@ export default function Home() {
         onSelectResult={(sessionId, messageId) =>
           selectSession(sessionId, messageId)
         }
+      />
+
+      {/* 会话结构化摘要与知识沉淀弹窗 */}
+      <ConversationSummaryModal
+        isOpen={showSummary}
+        onClose={() => setShowSummary(false)}
+        sessionId={activeId || ""}
+        provider={model?.provider}
+        model={model?.model}
       />
     </div>
   );

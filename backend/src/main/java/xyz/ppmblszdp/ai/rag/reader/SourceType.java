@@ -13,5 +13,7 @@ public enum SourceType {
     /** 网页 URL（基于 Jsoup 抓取 + SsrfGuard 安全校验，清洗 HTML 噪音） */
     URL,
     /** 纯文本（直接构造 Document，不经过读取器） */
-    TEXT
+    TEXT,
+    /** 会话结构化摘要与知识沉淀 */
+    CONVERSATION_SUMMARY
 }

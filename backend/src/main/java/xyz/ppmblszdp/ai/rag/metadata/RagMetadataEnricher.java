@@ -45,6 +45,18 @@ public class RagMetadataEnricher {
             String url,
             String title,
             String userId) {
+        return enrich(documents, sourceType, source, fileName, url, title, userId, null);
+    }
+
+    public static List<Document> enrich(
+            List<Document> documents,
+            String sourceType,
+            String source,
+            String fileName,
+            String url,
+            String title,
+            String userId,
+            Map<String, ?> extraMetadata) {
         if (documents == null || documents.isEmpty()) {
             return documents;
         }
@@ -64,6 +76,13 @@ public class RagMetadataEnricher {
             }
             meta.put("ingestedAt", timestamp);
             meta.put("userId", (userId != null) ? userId : "system");
+            if (extraMetadata != null) {
+                for (Map.Entry<String, ?> entry : extraMetadata.entrySet()) {
+                    if (entry.getValue() != null) {
+                        meta.put(entry.getKey(), String.valueOf(entry.getValue()));
+                    }
+                }
+            }
             // PDF 的 pageNumber 已在 DocumentReaderFactory 中以 String 写入，此处不覆盖
             if (doc.getMetadata().containsKey("pageNumber")) {
                 meta.put("pageNumber", String.valueOf(doc.getMetadata().get("pageNumber")));

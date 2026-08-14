@@ -1,22 +1,27 @@
 package xyz.ppmblszdp.ai.controller;
 
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
+import xyz.ppmblszdp.ai.dto.ConversationSummaryDto;
 import xyz.ppmblszdp.ai.dto.SessionDto;
 import xyz.ppmblszdp.ai.identity.AuthProperties;
 import xyz.ppmblszdp.ai.identity.UserIdentityFilter;
+import xyz.ppmblszdp.ai.service.ConversationSummaryService;
 import xyz.ppmblszdp.ai.service.SessionService;
 
 /**
- * 会话元数据与全量历史 Controller。
+ * 会话元数据、全量历史、结构化摘要与知识库沉淀 Controller。
  *
  * <p>所有端点均需经身份解析：从受信任 {@code X-User-Id} Header 读取用户身份，
  * 跨用户访问返回 404（不可区分「不存在」与「不属于你」）。
@@ -26,11 +31,20 @@ import xyz.ppmblszdp.ai.service.SessionService;
 public class SessionController {
 
     private final SessionService sessionService;
+    private final ConversationSummaryService summaryService;
     private final AuthProperties authProperties;
 
-    public SessionController(SessionService sessionService, AuthProperties authProperties) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public SessionController(
+            SessionService sessionService, ConversationSummaryService summaryService, AuthProperties authProperties) {
         this.sessionService = sessionService;
+        this.summaryService = summaryService;
         this.authProperties = authProperties;
+    }
+
+    /** 兼容测试套件 2 参数构造器 */
+    public SessionController(SessionService sessionService, AuthProperties authProperties) {
+        this(sessionService, null, authProperties);
     }
 
     /** 从请求交换解析当前用户身份（严格模式缺 Header 抛 401） */
@@ -54,6 +68,44 @@ public class SessionController {
                 .getSessionDetail(id, userId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    /** 生成/提炼会话结构化摘要 */
+    @PostMapping("/{id}/summary")
+    public Mono<ResponseEntity<ConversationSummaryDto>> generateSummary(
+            @PathVariable("id") String id,
+            @RequestBody(required = false) SummaryRequest request,
+            ServerWebExchange exchange) {
+        String userId = resolveIdentity(exchange);
+        String provider = request != null ? request.provider() : null;
+        String model = request != null ? request.model() : null;
+
+        return summaryService
+                .generateSummary(id, userId, provider, model)
+                .map(ResponseEntity::ok)
+                .onErrorResume(
+                        IllegalArgumentException.class,
+                        e -> Mono.just(ResponseEntity.notFound().build()))
+                .onErrorResume(
+                        Exception.class,
+                        e -> Mono.just(ResponseEntity.internalServerError().build()));
+    }
+
+    /** 一键将当前会话/摘要沉淀至 RAG 个人知识库 */
+    @PostMapping("/{id}/knowledge")
+    public ResponseEntity<Map<String, Object>> saveToKnowledge(
+            @PathVariable("id") String id, @RequestBody KnowledgeSaveRequest request, ServerWebExchange exchange) {
+        String userId = resolveIdentity(exchange);
+        if (request == null || request.summary() == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "summary 不能为空"));
+        }
+        try {
+            Map<String, Object> result =
+                    summaryService.saveToKnowledgeBase(id, userId, request.summary(), request.customTitle());
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        }
     }
 
     /** 重命名会话（仅会话所有者），跨用户返回 404 */
@@ -82,4 +134,8 @@ public class SessionController {
         }
         return ResponseEntity.ok().build();
     }
+
+    public record SummaryRequest(String provider, String model) {}
+
+    public record KnowledgeSaveRequest(ConversationSummaryDto summary, String customTitle) {}
 }

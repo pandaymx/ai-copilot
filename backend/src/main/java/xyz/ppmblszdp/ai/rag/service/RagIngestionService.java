@@ -1,6 +1,7 @@
 package xyz.ppmblszdp.ai.rag.service;
 
 import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
@@ -102,6 +103,20 @@ public class RagIngestionService {
     @Transactional
     public IngestResult ingest(
             SourceType sourceType, String source, String fileName, String userId, ConflictPolicy conflictPolicy) {
+        return ingest(sourceType, source, fileName, userId, conflictPolicy, null);
+    }
+
+    /**
+     * 带冲突策略与业务元数据的入库入口：读取 → 切片 → 注入元数据 → 结构化抽取 → 策略处理（SKIP/OVERWRITE/FORCE_ADD） → 写入。
+     */
+    @Transactional
+    public IngestResult ingest(
+            SourceType sourceType,
+            String source,
+            String fileName,
+            String userId,
+            ConflictPolicy conflictPolicy,
+            Map<String, ?> extraMetadata) {
         if (source == null || source.isBlank()) {
             log.warn("入库源为空，跳过: sourceType={} fileName={}", sourceType, fileName);
             return new IngestResult(0, 0);
@@ -109,12 +124,13 @@ public class RagIngestionService {
 
         ConflictPolicy policy = conflictPolicy != null ? conflictPolicy : ConflictPolicy.SKIP;
         log.info(
-                "RAG 入库开始: sourceType={} source={} fileName={} userId={} policy={}",
+                "RAG 入库开始: sourceType={} source={} fileName={} userId={} policy={} extraMeta={}",
                 sourceType,
                 source,
                 fileName,
                 userId,
-                policy);
+                policy,
+                extraMetadata != null ? extraMetadata.keySet() : "none");
 
         // 如果是 OVERWRITE 模式，在事务内先严格清理旧数据
         if (policy == ConflictPolicy.OVERWRITE) {
@@ -145,7 +161,7 @@ public class RagIngestionService {
                 break;
             }
         }
-        RagMetadataEnricher.enrich(chunks, sourceType.name(), source, fileName, url, title, userId);
+        RagMetadataEnricher.enrich(chunks, sourceType.name(), source, fileName, url, title, userId, extraMetadata);
 
         // 3.1 结构化知识抽取 (若开启 extraction-enabled 且 extractionService 可用)
         if (properties.isExtractionEnabled() && extractionService != null) {

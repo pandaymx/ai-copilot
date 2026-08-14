@@ -89,7 +89,7 @@ public class DocumentReaderFactory {
             case TIKA -> readTika(source, fileName);
             case MARKDOWN -> readMarkdown(source, fileName);
             case URL -> readUrl(source);
-            case TEXT -> readText(source, fileName);
+            case TEXT, CONVERSATION_SUMMARY -> readText(source, fileName);
         };
     }
 

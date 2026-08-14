@@ -77,9 +77,9 @@ public class RagController {
 
         String source = "";
         switch (sourceType) {
-            case TEXT -> {
+            case TEXT, CONVERSATION_SUMMARY -> {
                 if (request.rawText() == null || request.rawText().isBlank()) {
-                    return ResponseEntity.badRequest().body(Map.of("error", "TEXT 类型需提供 rawText"));
+                    return ResponseEntity.badRequest().body(Map.of("error", sourceType + " 类型需提供 rawText"));
                 }
                 source = request.rawText();
             }
@@ -217,9 +217,9 @@ public class RagController {
 
         String source = "";
         switch (sourceType) {
-            case TEXT -> {
+            case TEXT, CONVERSATION_SUMMARY -> {
                 if (request.rawText() == null || request.rawText().isBlank()) {
-                    return ResponseEntity.badRequest().body(Map.of("error", "TEXT 类型需提供 rawText"));
+                    return ResponseEntity.badRequest().body(Map.of("error", sourceType + " 类型需提供 rawText"));
                 }
                 source = request.rawText();
             }
