@@ -25,6 +25,7 @@ public class AgentToolRegistry {
     @Bean
     public ToolCallback[] agentToolCallbacks(
             CalculatorTool calculatorTool,
+            CodeExecutionTool codeExecutionTool,
             HttpRequestTool httpRequestTool,
             FileTool fileTool,
             KnowledgeQueryTool knowledgeQueryTool,
@@ -34,6 +35,9 @@ public class AgentToolRegistry {
         // ToolCallbacks.from 自动扫描对象上所有 @Tool 注解方法，FileTool 含 fileRead/fileWrite 两个
         List<ToolCallback> all = new ArrayList<>();
         all.addAll(Arrays.asList(ToolCallbacks.from(calculatorTool)));
+        if (properties.resolveAgent().resolveCodeSandbox().isEnabled()) {
+            all.addAll(Arrays.asList(ToolCallbacks.from(codeExecutionTool)));
+        }
         all.addAll(Arrays.asList(ToolCallbacks.from(httpRequestTool)));
         all.addAll(Arrays.asList(ToolCallbacks.from(fileTool)));
         all.addAll(Arrays.asList(ToolCallbacks.from(knowledgeQueryTool)));

@@ -10,11 +10,16 @@ import {
   ChevronRight,
   Code2,
   Copy,
+  Download,
   ExternalLink,
   FileText,
   Globe,
+  ImageIcon,
+  Loader2,
+  Maximize2,
   Search,
   Server,
+  Terminal,
 } from "lucide-react";
 import { useState } from "react";
 import { PrismLight as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -37,6 +42,7 @@ import tsx from "react-syntax-highlighter/dist/esm/languages/prism/tsx";
 import typescript from "react-syntax-highlighter/dist/esm/languages/prism/typescript";
 import yaml from "react-syntax-highlighter/dist/esm/languages/prism/yaml";
 import oneDark from "react-syntax-highlighter/dist/esm/styles/prism/one-dark";
+import { ImagePreviewModal } from "@/components/chat/image-preview-modal";
 
 import { cn } from "@/lib/utils";
 
@@ -753,6 +759,381 @@ export function DefaultToolRenderer({
 }
 
 // ----------------------------------------------------------------------
+// Code Execution Sandbox Renderer
+// ----------------------------------------------------------------------
+interface CodeExecutionArgs {
+  language?: string;
+  code?: string;
+}
+
+interface CodeExecutionImage {
+  name: string;
+  mimeType: string;
+  data: string;
+}
+
+interface CodeExecutionResult {
+  status?: string;
+  language?: string;
+  sandboxType?: string;
+  exitCode?: number;
+  stdout?: string;
+  stderr?: string;
+  executionTimeMs?: number;
+  images?: CodeExecutionImage[];
+  truncated?: boolean;
+}
+
+export function CodeExecutionRenderer({
+  argsJson,
+  resultJson,
+}: {
+  argsJson: string;
+  resultJson?: string;
+}) {
+  const [activeTab, setActiveTab] = useState<"stdout" | "stderr" | "images">(
+    "stdout",
+  );
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [isCodeExpanded, setIsCodeExpanded] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  // 解析入参代码与语言
+  let args: CodeExecutionArgs = {};
+  try {
+    args = JSON.parse(argsJson || "{}");
+  } catch {
+    args = { code: argsJson };
+  }
+
+  const language = (args.language || "python").toLowerCase();
+  const code = args.code || "";
+  const isPython = language.includes("py");
+
+  // 解析沙箱执行返回
+  let result: CodeExecutionResult | null = null;
+  const isCalling = !resultJson;
+
+  if (resultJson) {
+    try {
+      result = JSON.parse(resultJson);
+    } catch {
+      result = { stdout: resultJson };
+    }
+  }
+
+  const handleCopyCode = async () => {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    } catch {
+      // ignore
+    }
+  };
+
+  // 执行中（Calling）骨架状态
+  if (isCalling || !result) {
+    return (
+      <div className="space-y-2.5 overflow-hidden rounded-xl border border-violet-500/30 bg-violet-950/10 p-3 dark:bg-violet-950/20 backdrop-blur-md">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="flex size-6 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500/20 to-indigo-500/20 text-violet-400">
+              <Terminal className="size-3.5" />
+            </span>
+            <span className="font-semibold text-xs text-violet-300">
+              {isPython ? "Python 3.11" : "Node.js 20"} 沙箱环境
+            </span>
+            <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] text-violet-300 font-mono">
+              隔离容器
+            </span>
+          </div>
+          <span className="flex items-center gap-1.5 text-[11px] text-violet-400 animate-pulse font-medium">
+            <Loader2 className="size-3.5 animate-spin" />
+            正在沙箱容器中安全运行并捕获图表...
+          </span>
+        </div>
+
+        {/* 代码快照预览 */}
+        {code && (
+          <div className="rounded-lg border border-white/5 bg-zinc-950/80 p-2.5 font-mono text-[11px] text-zinc-300">
+            <div className="mb-1 text-[10px] text-zinc-500 font-sans">
+              待执行源代码
+            </div>
+            <pre className="max-h-32 overflow-x-auto whitespace-pre-wrap">
+              {code}
+            </pre>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const exitCode = result.exitCode ?? 0;
+  const isSuccess = exitCode === 0;
+  const stdout = result.stdout || "";
+  const stderr = result.stderr || "";
+  const images = result.images || [];
+  const executionTimeMs = result.executionTimeMs ?? 0;
+  const sandboxLabel =
+    result.sandboxType === "docker"
+      ? "Docker 容器隔离"
+      : result.sandboxType === "local-blocked"
+        ? "安全拦截"
+        : "本地进程沙箱";
+
+  // 默认 Tab 优先级：若有图表且无 stdout 则优先图表；若有错误优先 stderr
+  const hasImages = images.length > 0;
+  const hasStderr = stderr.length > 0;
+  const effectiveTab =
+    activeTab === "stdout" && !stdout && hasImages
+      ? "images"
+      : activeTab === "stdout" && !stdout && hasStderr
+        ? "stderr"
+        : activeTab;
+
+  return (
+    <div className="space-y-3 overflow-hidden rounded-xl border border-zinc-200/80 bg-zinc-50/50 p-3 dark:border-zinc-800/80 dark:bg-zinc-900/50 backdrop-blur-md">
+      {/* 顶部运行状态与沙箱信息 */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200/60 pb-2.5 dark:border-zinc-800/60">
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "flex size-6.5 items-center justify-center rounded-lg text-xs font-bold shadow-xs",
+              isPython
+                ? "bg-gradient-to-br from-sky-500/20 to-indigo-500/20 text-sky-600 dark:text-sky-400"
+                : "bg-gradient-to-br from-emerald-500/20 to-teal-500/20 text-emerald-600 dark:text-emerald-400",
+            )}
+          >
+            <Terminal className="size-3.5" />
+          </span>
+          <div className="flex flex-col">
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold text-xs text-zinc-900 dark:text-zinc-100">
+                {isPython ? "Python 3.11" : "Node.js 20"}
+              </span>
+              <span
+                className={cn(
+                  "rounded-full px-2 py-0.2 text-[10px] font-medium border",
+                  result.sandboxType === "docker"
+                    ? "border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300"
+                    : result.sandboxType === "local-blocked"
+                      ? "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300"
+                      : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                )}
+              >
+                {sandboxLabel}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* 耗时与退出码 */}
+        <div className="flex items-center gap-2 text-xs">
+          <span className="font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
+            ⏱️ {executionTimeMs}ms
+          </span>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold font-mono",
+              isSuccess
+                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                : "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+            )}
+          >
+            {isSuccess ? "Exit 0 (OK)" : `Exit ${exitCode}`}
+          </span>
+        </div>
+      </div>
+
+      {/* 源代码折叠/展开预览 */}
+      {code && (
+        <div className="rounded-xl border border-zinc-200/80 bg-zinc-950 dark:border-zinc-800/80 overflow-hidden shadow-inner">
+          <div className="flex items-center justify-between border-b border-zinc-800/80 bg-zinc-900/90 px-3 py-1.5 text-[11px] text-zinc-400">
+            <button
+              type="button"
+              onClick={() => setIsCodeExpanded((prev) => !prev)}
+              className="flex items-center gap-1 font-medium hover:text-zinc-200 transition-colors"
+            >
+              {isCodeExpanded ? (
+                <ChevronDown className="size-3.5 text-zinc-400" />
+              ) : (
+                <ChevronRight className="size-3.5 text-zinc-400" />
+              )}
+              <Code2 className="size-3.5 text-indigo-400" />
+              <span>执行源代码 ({code.split("\n").length} 行)</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleCopyCode}
+              className="flex items-center gap-1 text-[10px] hover:text-zinc-200 transition-colors"
+              title="复制代码"
+            >
+              {copiedCode ? (
+                <Check className="size-3 text-emerald-400" />
+              ) : (
+                <Copy className="size-3" />
+              )}
+              <span>{copiedCode ? "已复制" : "复制"}</span>
+            </button>
+          </div>
+          <div
+            className={cn(
+              !isCodeExpanded && "max-h-24 overflow-hidden relative",
+            )}
+          >
+            <pre className="p-3 text-[11px] font-mono leading-relaxed text-zinc-200 overflow-x-auto whitespace-pre-wrap">
+              {code}
+            </pre>
+            {!isCodeExpanded && (
+              <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-zinc-950 to-transparent pointer-events-none" />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 选项卡导航：标准输出 / 错误日志 / 图表可视化 */}
+      <div className="flex items-center gap-1.5 border-b border-zinc-200 dark:border-zinc-800 pb-1">
+        <button
+          type="button"
+          onClick={() => setActiveTab("stdout")}
+          className={cn(
+            "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors",
+            effectiveTab === "stdout"
+              ? "bg-indigo-600 text-white shadow-xs"
+              : "text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60",
+          )}
+        >
+          <Terminal className="size-3.5" />
+          <span>标准输出</span>
+          {stdout && <span className="size-1.5 rounded-full bg-emerald-400" />}
+        </button>
+
+        {stderr && (
+          <button
+            type="button"
+            onClick={() => setActiveTab("stderr")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors",
+              effectiveTab === "stderr"
+                ? "bg-rose-600 text-white shadow-xs"
+                : "text-rose-600 hover:bg-rose-100/60 dark:text-rose-400 dark:hover:bg-rose-950/40",
+            )}
+          >
+            <AlertCircle className="size-3.5" />
+            <span>错误输出</span>
+            <span className="size-1.5 rounded-full bg-rose-400" />
+          </button>
+        )}
+
+        {hasImages && (
+          <button
+            type="button"
+            onClick={() => setActiveTab("images")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors",
+              effectiveTab === "images"
+                ? "bg-purple-600 text-white shadow-xs"
+                : "text-purple-600 hover:bg-purple-100/60 dark:text-purple-400 dark:hover:bg-purple-950/40",
+            )}
+          >
+            <ImageIcon className="size-3.5" />
+            <span>生成图表 ({images.length})</span>
+            <span className="size-1.5 rounded-full bg-purple-400" />
+          </button>
+        )}
+      </div>
+
+      {/* 截断警告提示 */}
+      {result.truncated && (
+        <div className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-950/20 px-2.5 py-1.5 text-xs text-amber-300">
+          <AlertCircle className="size-3.5 shrink-0 text-amber-400" />
+          <span>输出内容已达到 64KB 上限并进行了截断保护。</span>
+        </div>
+      )}
+
+      {/* 选项卡内容区 */}
+      {effectiveTab === "stdout" && (
+        <div className="relative rounded-xl border border-zinc-800/80 bg-zinc-950 p-3 shadow-inner">
+          {stdout ? (
+            <pre className="max-h-60 overflow-auto font-mono text-[11px] leading-relaxed text-zinc-100 whitespace-pre-wrap select-text">
+              {stdout}
+            </pre>
+          ) : (
+            <div className="py-4 text-center text-xs text-zinc-500 font-mono">
+              (无标准输出内容)
+            </div>
+          )}
+        </div>
+      )}
+
+      {effectiveTab === "stderr" && (
+        <div className="relative rounded-xl border border-rose-900/60 bg-rose-950/40 p-3 shadow-inner">
+          <pre className="max-h-60 overflow-auto font-mono text-[11px] leading-relaxed text-rose-200 whitespace-pre-wrap select-text">
+            {stderr}
+          </pre>
+        </div>
+      )}
+
+      {effectiveTab === "images" && hasImages && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {images.map((img) => (
+              <div
+                key={img.name}
+                className="group relative flex flex-col overflow-hidden rounded-xl border border-zinc-200/80 bg-white/80 dark:border-zinc-800 dark:bg-zinc-950/80 shadow-sm"
+              >
+                <div className="relative aspect-video w-full overflow-hidden bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={img.data}
+                    alt={img.name}
+                    className="size-full object-contain transition-transform duration-300 group-hover:scale-102"
+                  />
+                  {/* 悬停放大蒙层按钮 */}
+                  <button
+                    type="button"
+                    onClick={() => setPreviewImage(img.data)}
+                    className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-zoom-in"
+                    title="点击放大查看"
+                  >
+                    <span className="flex size-9 items-center justify-center rounded-full bg-white/90 text-zinc-900 shadow-lg">
+                      <Maximize2 className="size-4.5" />
+                    </span>
+                  </button>
+                </div>
+                <div className="flex items-center justify-between px-2.5 py-1.5 border-t border-zinc-100 dark:border-zinc-800 text-[11px]">
+                  <span className="truncate font-mono font-medium text-zinc-700 dark:text-zinc-300">
+                    {img.name}
+                  </span>
+                  <a
+                    href={img.data}
+                    download={img.name}
+                    className="flex size-6 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white transition-colors"
+                    title="下载图表"
+                  >
+                    <Download className="size-3.5" />
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 图片全屏预览模态框 */}
+      {previewImage && (
+        <ImagePreviewModal
+          src={previewImage}
+          onClose={() => setPreviewImage(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
 // Main Dispatcher: ToolResultRenderer
 // ----------------------------------------------------------------------
 export function ToolResultRenderer({
@@ -782,6 +1163,18 @@ export function ToolResultRenderer({
   }
 
   // 根据工具名匹配专属渲染组件
+  if (
+    name === "code_execution" ||
+    name === "code_interpreter" ||
+    name === "python_interpreter" ||
+    name === "code_runner" ||
+    name.includes("code_execution")
+  ) {
+    return (
+      <CodeExecutionRenderer argsJson={argsJson} resultJson={resultJson} />
+    );
+  }
+
   if (
     name === "http_request" ||
     name === "http" ||

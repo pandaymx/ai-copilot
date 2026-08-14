@@ -231,11 +231,22 @@ public record AiProviderProperties(
             @Name("worker-provider") @Nullable String workerProvider,
             @Name("worker-model") @Nullable String workerModel,
             @Name("worker-max-tokens") @Nullable Integer workerMaxTokens,
-            @Name("max-worker-depth") @Nullable Integer maxWorkerDepth) {
+            @Name("max-worker-depth") @Nullable Integer maxWorkerDepth,
+            @Name("code-sandbox") @Nullable CodeSandboxConfig codeSandbox) {
 
         public static AgentConfig defaults() {
             return new AgentConfig(
-                    true, 5, 30, false, ToolSearchAdvisorPropertiesConfig.defaults(), false, null, null, 2048, 1);
+                    true,
+                    5,
+                    30,
+                    false,
+                    ToolSearchAdvisorPropertiesConfig.defaults(),
+                    false,
+                    null,
+                    null,
+                    2048,
+                    1,
+                    CodeSandboxConfig.defaults());
         }
 
         public boolean isEnabled() {
@@ -256,6 +267,10 @@ public record AiProviderProperties(
 
         public ToolSearchAdvisorPropertiesConfig resolveToolSearchAdvisor() {
             return toolSearchAdvisor != null ? toolSearchAdvisor : ToolSearchAdvisorPropertiesConfig.defaults();
+        }
+
+        public CodeSandboxConfig resolveCodeSandbox() {
+            return codeSandbox != null ? codeSandbox : CodeSandboxConfig.defaults();
         }
 
         /** 调度者-工作者模式是否开启。 */
@@ -283,6 +298,72 @@ public record AiProviderProperties(
         /** 允许的最大 Worker 嵌套深度（默认 1，只允许 Orchestrator→Worker 单层）。 */
         public int resolveMaxWorkerDepth() {
             return (maxWorkerDepth != null && maxWorkerDepth >= 0) ? maxWorkerDepth : 1;
+        }
+    }
+
+    /**
+     * 代码执行沙箱配置（绑定 {@code app.ai.agent.code-sandbox.*}）。
+     *
+     * @param enabled            是否开启代码沙箱工具
+     * @param timeoutSeconds     代码执行超时（秒），默认 15s
+     * @param maxOutputLength    标准输出/错误截断上限（字符数），默认 65536
+     * @param dockerEnabled      是否优先采用 Docker 隔离容器运行，默认 true
+     * @param allowLocalFallback 当 Docker 不可用时是否允许回退为本地安全进程沙箱，默认 true
+     * @param pythonImage        Python Docker 镜像名称，默认 "python:3.11-slim"
+     * @param nodeImage          Node.js Docker 镜像名称，默认 "node:20-alpine"
+     * @param memoryLimit        Docker 内存限制，默认 "256m"
+     * @param cpuLimit           Docker CPU 限制，默认 "1.0"
+     */
+    public record CodeSandboxConfig(
+            @Nullable Boolean enabled,
+            @Name("timeout-seconds") @Nullable Integer timeoutSeconds,
+            @Name("max-output-length") @Nullable Integer maxOutputLength,
+            @Name("docker-enabled") @Nullable Boolean dockerEnabled,
+            @Name("allow-local-fallback") @Nullable Boolean allowLocalFallback,
+            @Name("python-image") @Nullable String pythonImage,
+            @Name("node-image") @Nullable String nodeImage,
+            @Name("memory-limit") @Nullable String memoryLimit,
+            @Name("cpu-limit") @Nullable String cpuLimit) {
+
+        public static CodeSandboxConfig defaults() {
+            return new CodeSandboxConfig(
+                    true, 15, 65536, true, true, "python:3.11-slim", "node:20-alpine", "256m", "1.0");
+        }
+
+        public boolean isEnabled() {
+            return enabled == null || enabled;
+        }
+
+        public int resolveTimeoutSeconds() {
+            return (timeoutSeconds != null && timeoutSeconds > 0) ? timeoutSeconds : 15;
+        }
+
+        public int resolveMaxOutputLength() {
+            return (maxOutputLength != null && maxOutputLength > 0) ? maxOutputLength : 65536;
+        }
+
+        public boolean isDockerEnabled() {
+            return dockerEnabled == null || dockerEnabled;
+        }
+
+        public boolean isAllowLocalFallback() {
+            return allowLocalFallback == null || allowLocalFallback;
+        }
+
+        public String resolvePythonImage() {
+            return (pythonImage != null && !pythonImage.isBlank()) ? pythonImage.trim() : "python:3.11-slim";
+        }
+
+        public String resolveNodeImage() {
+            return (nodeImage != null && !nodeImage.isBlank()) ? nodeImage.trim() : "node:20-alpine";
+        }
+
+        public String resolveMemoryLimit() {
+            return (memoryLimit != null && !memoryLimit.isBlank()) ? memoryLimit.trim() : "256m";
+        }
+
+        public String resolveCpuLimit() {
+            return (cpuLimit != null && !cpuLimit.isBlank()) ? cpuLimit.trim() : "1.0";
         }
     }
 
