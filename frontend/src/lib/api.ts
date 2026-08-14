@@ -605,3 +605,250 @@ export async function saveSessionToKnowledgeApi(
     };
   }
 }
+
+// ====================== AI 评测与评估体系 (Evaluation Framework) API ======================
+
+export interface BenchmarkCase {
+  id: string;
+  title: string;
+  category: string;
+  prompt: string;
+  expectedOutput: string;
+  context?: string;
+  tags?: string[];
+  createdAt?: number;
+}
+
+export interface EvaluationMetrics {
+  relevance: number;
+  accuracy: number;
+  completeness: number;
+  fluency: number;
+  safety: number;
+  overallScore: number;
+}
+
+export interface EvaluationResultDto {
+  id: string;
+  benchmarkId?: string;
+  benchmarkTitle?: string;
+  provider: string;
+  model: string;
+  judgeProvider: string;
+  judgeModel: string;
+  prompt: string;
+  responseText: string;
+  expectedOutput?: string;
+  metrics: EvaluationMetrics;
+  judgeFeedback: string;
+  latencyMs: number;
+  totalTokens?: number;
+  humanScore?: number;
+  humanAnnotation?: string;
+  evaluatedAt: number;
+}
+
+export interface AbTestResultDto {
+  id: string;
+  prompt: string;
+  context?: string;
+  providerA: string;
+  modelA: string;
+  responseA: string;
+  latencyMsA: number;
+  metricsA: EvaluationMetrics;
+  providerB: string;
+  modelB: string;
+  responseB: string;
+  latencyMsB: number;
+  metricsB: EvaluationMetrics;
+  judgeProvider: string;
+  judgeModel: string;
+  winner: "MODEL_A" | "MODEL_B" | "TIE";
+  comparisonReason: string;
+  executedAt: number;
+}
+
+export interface ModelLeaderboardEntry {
+  modelKey: string;
+  provider: string;
+  model: string;
+  count: number;
+  averageScore: number;
+  averageLatencyMs: number;
+  metrics: EvaluationMetrics;
+}
+
+export interface EvaluationSummaryDto {
+  totalEvaluations: number;
+  totalAbTests: number;
+  averageScore: number;
+  dimensionAverages: EvaluationMetrics;
+  leaderboard: ModelLeaderboardEntry[];
+  categoryDistribution: Record<string, number>;
+  recentResults: EvaluationResultDto[];
+  recentAbTests: AbTestResultDto[];
+}
+
+export async function fetchEvaluationSummaryApi(
+  signal?: AbortSignal,
+): Promise<EvaluationSummaryDto | null> {
+  try {
+    const res = await fetch("/api/evaluation/summary", { signal });
+    if (!res.ok) return null;
+    return (await res.json()) as EvaluationSummaryDto;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchBenchmarksApi(
+  category?: string,
+  signal?: AbortSignal,
+): Promise<BenchmarkCase[]> {
+  try {
+    const url = category
+      ? `/api/evaluation/benchmarks?category=${encodeURIComponent(category)}`
+      : "/api/evaluation/benchmarks";
+    const res = await fetch(url, { signal });
+    if (!res.ok) return [];
+    return (await res.json()) as BenchmarkCase[];
+  } catch {
+    return [];
+  }
+}
+
+export async function addBenchmarkApi(
+  benchmark: Partial<BenchmarkCase>,
+): Promise<BenchmarkCase | null> {
+  try {
+    const res = await fetch("/api/evaluation/benchmarks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(benchmark),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as BenchmarkCase;
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteBenchmarkApi(id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/evaluation/benchmarks/${id}`, {
+      method: "DELETE",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function runBatchEvaluationApi(
+  provider: string,
+  model: string,
+  judgeProvider?: string,
+  judgeModel?: string,
+  benchmarkIds?: string[],
+  category?: string,
+): Promise<EvaluationResultDto[]> {
+  try {
+    const res = await fetch("/api/evaluation/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider,
+        model,
+        judgeProvider,
+        judgeModel,
+        benchmarkIds,
+        category,
+      }),
+    });
+    if (!res.ok) return [];
+    return (await res.json()) as EvaluationResultDto[];
+  } catch {
+    return [];
+  }
+}
+
+export async function runAbTestApi(
+  prompt: string,
+  providerA: string,
+  modelA: string,
+  providerB: string,
+  modelB: string,
+  context?: string,
+  expectedOutput?: string,
+  judgeProvider?: string,
+  judgeModel?: string,
+): Promise<AbTestResultDto | null> {
+  try {
+    const res = await fetch("/api/evaluation/ab-test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt,
+        context,
+        expectedOutput,
+        providerA,
+        modelA,
+        providerB,
+        modelB,
+        judgeProvider,
+        judgeModel,
+      }),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as AbTestResultDto;
+  } catch {
+    return null;
+  }
+}
+
+export async function judgeSingleApi(
+  prompt: string,
+  responseText: string,
+  context?: string,
+  expectedOutput?: string,
+  judgeProvider?: string,
+  judgeModel?: string,
+): Promise<EvaluationResultDto | null> {
+  try {
+    const res = await fetch("/api/evaluation/judge-single", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt,
+        responseText,
+        context,
+        expectedOutput,
+        judgeProvider,
+        judgeModel,
+      }),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as EvaluationResultDto;
+  } catch {
+    return null;
+  }
+}
+
+export async function annotateEvaluationResultApi(
+  id: string,
+  humanScore: number,
+  humanAnnotation: string,
+): Promise<EvaluationResultDto | null> {
+  try {
+    const res = await fetch(`/api/evaluation/results/${id}/annotate`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ humanScore, humanAnnotation }),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as EvaluationResultDto;
+  } catch {
+    return null;
+  }
+}

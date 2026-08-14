@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Award,
   Brain,
   Calendar,
   Check,
@@ -225,6 +226,17 @@ export function Sidebar({
             >
               <Workflow className="size-4 text-purple-500 transition-transform duration-200 group-hover:scale-110" />
               <span>工作流编排</span>
+            </Link>
+          </div>
+
+          {/* AI 评估与评测中心入口 */}
+          <div className="px-0.5 pt-0.5">
+            <Link
+              href="/evaluation"
+              className="group flex items-center gap-2 rounded-xl border border-zinc-200/70 bg-white/70 px-3 py-2.5 text-xs font-semibold text-zinc-700 shadow-xs transition-all duration-200 hover:border-amber-500/40 hover:bg-white hover:text-amber-600 hover:shadow-md hover:shadow-amber-500/10 dark:border-zinc-800/70 dark:bg-zinc-900/50 dark:text-zinc-200 dark:hover:border-amber-500/50 dark:hover:bg-zinc-900 dark:hover:text-amber-400"
+            >
+              <Award className="size-4 text-amber-500 transition-transform duration-200 group-hover:scale-110" />
+              <span>评测中心 (A/B)</span>
             </Link>
           </div>
         </div>
