@@ -250,4 +250,22 @@ describe("MessageBubble Component Tests - components/chat/message-bubble.tsx", (
 
     unmount();
   });
+
+  it("should render Self-Reflection and Correction badge when message contains self-correction", () => {
+    const reflectedMsg: ChatMessage = {
+      id: "reflected-1",
+      role: "assistant",
+      content:
+        "这是原始回答。\n\n> 🔍 **AI 自我纠错与补充**\n> **自检要点**：修正了参数",
+    };
+
+    const { container, unmount } = renderComponent(
+      <MessageBubble message={reflectedMsg} />,
+    );
+
+    expect(container.textContent).toContain("已触发自我反思纠偏");
+    expect(container.textContent).toContain("AI 自我纠错与补充");
+
+    unmount();
+  });
 });

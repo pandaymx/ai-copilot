@@ -140,6 +140,7 @@ public class ChatService implements DisposableBean {
                 uRecorder,
                 safeGuardAdvisor,
                 null,
+                null,
                 ragAdvisorFactory,
                 healthTracker,
                 sessionService,

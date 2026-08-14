@@ -45,6 +45,7 @@ import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryAdvisorFactory
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryWriter;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryProcessor;
 import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig.RagAdvisorFactory;
+import xyz.ppmblszdp.ai.reflection.ReflectionAdvisor;
 import xyz.ppmblszdp.ai.registry.ModelHealthTracker;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
@@ -76,6 +77,7 @@ public class ChatOrchestrator implements DisposableBean {
     private final UsageRecorder usageRecorder;
     private final ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor;
     private final ObjectProvider<ClarificationAdvisor> clarificationAdvisor;
+    private final ObjectProvider<ReflectionAdvisor> reflectionAdvisor;
     private final ObjectProvider<RagAdvisorFactory> ragAdvisorFactory;
     private final ModelHealthTracker healthTracker;
     private final SessionService sessionService;
@@ -104,6 +106,7 @@ public class ChatOrchestrator implements DisposableBean {
             UsageRecorder usageRecorder,
             ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor,
             ObjectProvider<ClarificationAdvisor> clarificationAdvisor,
+            ObjectProvider<ReflectionAdvisor> reflectionAdvisor,
             ObjectProvider<RagAdvisorFactory> ragAdvisorFactory,
             ModelHealthTracker healthTracker,
             SessionService sessionService,
@@ -126,6 +129,7 @@ public class ChatOrchestrator implements DisposableBean {
         this.usageRecorder = usageRecorder;
         this.safeGuardAdvisor = safeGuardAdvisor;
         this.clarificationAdvisor = clarificationAdvisor;
+        this.reflectionAdvisor = reflectionAdvisor;
         this.ragAdvisorFactory = ragAdvisorFactory;
         this.healthTracker = healthTracker;
         this.sessionService = sessionService;
@@ -233,6 +237,7 @@ public class ChatOrchestrator implements DisposableBean {
                     .advisors(a -> applyLongTermAdvisor(a, userId))
                     .advisors(a -> applySafeGuardAdvisor(a))
                     .advisors(a -> applyClarificationAdvisor(a, req, false))
+                    .advisors(a -> applyReflectionAdvisor(a))
                     .advisors(a -> applyRagAdvisor(a, userId))
                     .options(options.mutate())
                     .call();
@@ -346,6 +351,7 @@ public class ChatOrchestrator implements DisposableBean {
                     .advisors(a -> applyLongTermAdvisor(a, userId))
                     .advisors(a -> applySafeGuardAdvisor(a))
                     .advisors(a -> applyClarificationAdvisor(a, req, agentPath))
+                    .advisors(a -> applyReflectionAdvisor(a))
                     .advisors(a -> applyRagAdvisor(a, userId))
                     .options(options.mutate());
             if (agentPath) {
@@ -807,6 +813,13 @@ public class ChatOrchestrator implements DisposableBean {
                 advisorSpec.param(ClarificationAdvisor.CTX_CLARIFICATION_MODE, req.clarificationMode());
             }
             advisorSpec.param(ClarificationAdvisor.CTX_IS_AGENT, isAgent);
+            advisorSpec.advisors(advisor);
+        }
+    }
+
+    private void applyReflectionAdvisor(ChatClient.AdvisorSpec advisorSpec) {
+        ReflectionAdvisor advisor = reflectionAdvisor != null ? reflectionAdvisor.getIfAvailable() : null;
+        if (advisor != null) {
             advisorSpec.advisors(advisor);
         }
     }
