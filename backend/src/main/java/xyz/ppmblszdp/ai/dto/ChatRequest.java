@@ -32,9 +32,33 @@ public record ChatRequest(
         String conversationId,
         String userId,
         List<MediaDto> media,
-        Boolean agentEnabled) {
+        Boolean agentEnabled,
+        List<String> mediaUrls) {
+
+    /** 兼容旧版 9 参数构造函数 */
+    public ChatRequest(
+            String message,
+            List<ChatMessageDto> history,
+            String provider,
+            String model,
+            String systemPrompt,
+            String conversationId,
+            String userId,
+            List<MediaDto> media,
+            Boolean agentEnabled) {
+        this(message, history, provider, model, systemPrompt, conversationId, userId, media, agentEnabled, List.of());
+    }
+
     public List<MediaDto> media() {
         return media == null ? List.of() : media;
+    }
+
+    public List<String> mediaUrls() {
+        return mediaUrls == null ? List.of() : mediaUrls;
+    }
+
+    public boolean hasMedia() {
+        return (media != null && !media.isEmpty()) || (mediaUrls != null && !mediaUrls.isEmpty());
     }
 
     public List<ChatMessageDto> history() {
@@ -55,7 +79,8 @@ public record ChatRequest(
 
     /** 返回一个带指定 conversationId 的副本（record 不可变，用于后端生成后回填）。 */
     public ChatRequest withConversationId(String id) {
-        return new ChatRequest(message, history, provider, model, systemPrompt, id, userId, media, agentEnabled);
+        return new ChatRequest(
+                message, history, provider, model, systemPrompt, id, userId, media, agentEnabled, mediaUrls);
     }
 
     /**

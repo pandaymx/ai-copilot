@@ -14,6 +14,7 @@ import {
   Send,
   Sparkles,
   Square,
+  UploadCloud,
   Wand2,
   X,
 } from "lucide-react";
@@ -35,6 +36,7 @@ import {
 } from "@/components/chat/model-selector";
 import { SearchDialog } from "@/components/chat/search-dialog";
 import { type ChatSession, Sidebar } from "@/components/chat/sidebar";
+import { VisionScenarioPills } from "@/components/chat/vision-scenario-pills";
 import { VoiceRecorderButton } from "@/components/chat/voice-recorder-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -47,6 +49,7 @@ import {
   fetchSessionsApi,
   renameSessionApi,
 } from "@/lib/api";
+import { compressImage } from "@/lib/image-compressor";
 import { fetchTitle } from "@/lib/title";
 import { cn } from "@/lib/utils";
 import { transcribe } from "@/lib/voice";
@@ -260,6 +263,12 @@ export default function Home() {
 
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [agentEnabled, setAgentEnabled] = useState<boolean>(false);
+  const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
+  const dragCounterRef = useRef<number>(0);
+  const lastPastedRef = useRef<{ time: number; key: string }>({
+    time: 0,
+    key: "",
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 语音录制：录音停止后自动上传转写并回填输入框
@@ -292,22 +301,24 @@ export default function Home() {
 
         if (file.type.startsWith("image/")) {
           if (!currentSupportsVision) {
-            toast.error("当前模型不支持图片，请切换到支持图片的模型");
+            toast.error(
+              "当前模型不支持图片，请切换到支持图片的模型 (如 GPT-4o, Gemini 等)",
+            );
             continue;
           }
-          const dataUrl = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.readAsDataURL(file);
-          });
-          newAttachments.push({
-            id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            name: file.name,
-            type: "image",
-            mimeType: file.type || "image/png",
-            url: dataUrl,
-            size: file.size,
-          });
+          try {
+            const compressed = await compressImage(file);
+            newAttachments.push({
+              id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              name: compressed.name,
+              type: "image",
+              mimeType: compressed.mimeType,
+              url: compressed.dataUrl,
+              size: compressed.size,
+            });
+          } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : "图片处理失败");
+          }
         } else {
           // 非图片文件：读取文本内容，存储为 AttachmentItem
           const textContent = await file.text();
@@ -343,17 +354,63 @@ export default function Home() {
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     if (e.clipboardData.files && e.clipboardData.files.length > 0) {
-      const imageFiles = Array.from(e.clipboardData.files).filter((f) =>
-        f.type.startsWith("image/"),
-      );
+      const files = Array.from(e.clipboardData.files);
+      const pasteKey = files.map((f) => `${f.name}-${f.size}`).join(",");
+      const now = Date.now();
+      if (
+        now - lastPastedRef.current.time < 500 &&
+        lastPastedRef.current.key === pasteKey
+      ) {
+        e.preventDefault();
+        return;
+      }
+      lastPastedRef.current = { time: now, key: pasteKey };
+
+      const imageFiles = files.filter((f) => f.type.startsWith("image/"));
       if (imageFiles.length > 0) {
         e.preventDefault();
         if (!currentSupportsVision) {
-          toast.error("当前模型不支持图片，请切换到支持图片的模型");
+          toast.error(
+            "当前模型不支持图片，请切换到支持图片的模型 (如 GPT-4o, Gemini 等)",
+          );
           return;
         }
         void processFiles(imageFiles);
       }
+    }
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current += 1;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDraggingOver(true);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDraggingOver(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDraggingOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      void processFiles(e.dataTransfer.files);
     }
   };
 
@@ -756,7 +813,31 @@ export default function Home() {
         aria-label="关闭侧边栏"
       />
 
-      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-transparent">
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: 页面级拖拽文件上传容器 */}
+      <div
+        className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-transparent"
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {/* 拖拽上传覆盖层 */}
+        {isDraggingOver && (
+          <div className="pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-indigo-950/70 backdrop-blur-sm border-2 border-dashed border-indigo-400 text-white animate-in fade-in duration-200">
+            <div className="flex size-16 items-center justify-center rounded-2xl bg-indigo-600/90 shadow-xl ring-4 ring-indigo-400/40 animate-bounce">
+              <UploadCloud className="size-8 text-white" />
+            </div>
+            <div className="text-center">
+              <p className="text-base font-semibold">
+                释放图片以添加至视觉对话
+              </p>
+              <p className="text-xs text-indigo-200 mt-1">
+                支持 JPG / PNG / WebP / GIF，客户端自动保真压缩 (≤ 4MB)
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* 顶部 Header */}
         <header className="shrink-0 z-10 border-b border-zinc-200/60 bg-white/70 backdrop-blur-xl dark:border-zinc-800/60 dark:bg-zinc-950/70">
           <div className="flex w-full items-center justify-between px-4 py-3 sm:px-6">
@@ -951,10 +1032,22 @@ export default function Home() {
               type="file"
               ref={fileInputRef}
               onChange={handleFileChange}
-              accept="image/*,.txt,.md,.json,.js,.ts,.java,.py"
+              accept="image/jpeg,image/png,image/webp,image/gif,text/*,.txt,.md,.json,.js,.ts,.tsx,.java,.py,.go,.rs"
               multiple
               className="hidden"
             />
+
+            {/* 视觉快捷场景胶囊栏：在有图片附件或多模态模式下动态展示 */}
+            {attachments.some((att) => att.type === "image") && (
+              <div className="px-2 pt-1.5 pb-1 border-b border-zinc-100 dark:border-zinc-800/60 bg-zinc-50/40 dark:bg-zinc-900/40 rounded-t-xl">
+                <VisionScenarioPills
+                  onSelect={(prompt) => {
+                    setInput(prompt);
+                    textareaRef.current?.focus();
+                  }}
+                />
+              </div>
+            )}
 
             {/* 待发送附件预览栏 */}
             {attachments.length > 0 && (
@@ -979,6 +1072,11 @@ export default function Home() {
                     <span className="max-w-[120px] truncate font-medium text-zinc-700 dark:text-zinc-300">
                       {att.name}
                     </span>
+                    {att.size && (
+                      <span className="text-[10px] text-zinc-400 font-mono">
+                        {(att.size / 1024).toFixed(0)}KB
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => removeAttachment(att.id)}
@@ -1009,7 +1107,11 @@ export default function Home() {
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
                 rows={1}
-                placeholder="给 Spring AI 发送指令、问题或拖入/粘贴图片..."
+                placeholder={
+                  currentSupportsVision
+                    ? "给 Spring AI 发送指令、问答或拖拽/粘贴图片..."
+                    : "给 Spring AI 发送指令、问答或文本文件..."
+                }
                 className="max-h-36 min-h-9 flex-1 resize-none bg-transparent px-2 py-1 text-sm text-zinc-900 caret-indigo-500 outline-none placeholder:text-zinc-400 dark:text-zinc-100 dark:caret-indigo-400 dark:placeholder:text-zinc-500 leading-relaxed"
               />
               {isStreaming ? (

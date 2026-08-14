@@ -261,7 +261,49 @@ public class ContextAssembler {
                 break;
             }
         }
-        return kept;
+        // 多模态历史保留策略：仅保留最近 1 轮 UserMessage 中的 Media 二进制实体，更早的历史轮次降级为文本占位符
+        return pruneHistoricalMedia(kept);
+    }
+
+    /**
+     * 对历史消息中的多模态 Media 进行降级瘦身：
+     * 倒序查找第一条带 Media 的 UserMessage（即最近 1 轮带有图片的请求），保留其 Media；
+     * 更早历史轮次的 UserMessage 移除 Media 实体并附带轻量占位说明，避免重复消耗高昂视觉 Token。
+     */
+    private List<Message> pruneHistoricalMedia(List<Message> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return List.of();
+        }
+        List<Message> processed = new ArrayList<>(messages.size());
+        int lastUserWithMediaIndex = -1;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            Message m = messages.get(i);
+            if (m instanceof UserMessage um
+                    && um.getMedia() != null
+                    && !um.getMedia().isEmpty()) {
+                lastUserWithMediaIndex = i;
+                break;
+            }
+        }
+
+        for (int i = 0; i < messages.size(); i++) {
+            Message m = messages.get(i);
+            if (m instanceof UserMessage um
+                    && um.getMedia() != null
+                    && !um.getMedia().isEmpty()) {
+                if (i != lastUserWithMediaIndex) {
+                    // 更早轮次：剔除二进制 Media，降级为占位提示
+                    String text = um.getText();
+                    String placeholder = (text != null && !text.isBlank()) ? text + " [历史附图]" : "[用户发送了图片]";
+                    processed.add(new UserMessage(placeholder));
+                } else {
+                    processed.add(m);
+                }
+            } else {
+                processed.add(m);
+            }
+        }
+        return processed;
     }
 
     private boolean isPaired(String role, String prevRole) {

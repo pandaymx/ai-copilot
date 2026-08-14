@@ -2,13 +2,11 @@
 
 import {
   Bot,
-  Brain,
   Check,
-  ChevronDown,
-  ChevronRight,
   Copy,
   FileText,
   Loader2,
+  Maximize2,
   RotateCcw,
   ThumbsDown,
   ThumbsUp,
@@ -17,6 +15,7 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { ImageArtifactViewer } from "@/components/artifacts/image-artifact-viewer";
+import { ImagePreviewModal } from "@/components/chat/image-preview-modal";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   type ArtifactItem,
@@ -80,7 +79,7 @@ function MessageBubbleBase({
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [liked, setLiked] = useState<boolean | null>(null);
-  const [showThinking, setShowThinking] = useState(true);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   // 语音播放：合成中状态与音频对象 URL
   const [speaking, setSpeaking] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -219,17 +218,27 @@ function MessageBubbleBase({
             {message.attachments.map((att) => (
               <div
                 key={att.id}
-                className="group/att relative overflow-hidden rounded-xl border border-zinc-200/80 bg-white/80 dark:border-zinc-800/80 dark:bg-zinc-900/80 p-1 shadow-xs"
+                className="group/att relative overflow-hidden rounded-xl border border-zinc-200/80 bg-white/80 dark:border-zinc-800/80 dark:bg-zinc-900/80 p-1 shadow-xs transition-all hover:border-indigo-300 dark:hover:border-indigo-700"
               >
                 {att.type === "image" ? (
-                  <div className="relative size-24 overflow-hidden rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewImage(att.url)}
+                    className="relative size-24 overflow-hidden rounded-lg cursor-zoom-in block text-left group/img"
+                    title="点击放大预览图片"
+                  >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={att.url}
                       alt={att.name}
-                      className="size-full object-cover transition-transform duration-300 group-hover/att:scale-105"
+                      className="size-full object-cover transition-transform duration-300 group-hover/img:scale-105"
                     />
-                  </div>
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 backdrop-blur-2xs transition-opacity duration-200 group-hover/img:opacity-100">
+                      <div className="flex size-7 items-center justify-center rounded-full bg-black/60 text-white shadow-md">
+                        <Maximize2 className="size-3.5" />
+                      </div>
+                    </div>
+                  </button>
                 ) : (
                   <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs">
                     <FileText className="size-4 shrink-0 text-indigo-500" />
@@ -379,6 +388,12 @@ function MessageBubbleBase({
           </div>
         )}
       </div>
+
+      {/* 图片全屏查看模态框 */}
+      <ImagePreviewModal
+        src={previewImage}
+        onClose={() => setPreviewImage(null)}
+      />
     </div>
   );
 }

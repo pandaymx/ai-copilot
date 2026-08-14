@@ -2,10 +2,8 @@ package xyz.ppmblszdp.ai.service;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -27,9 +25,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
-import org.springframework.util.MimeTypeUtils;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -41,7 +37,6 @@ import xyz.ppmblszdp.ai.context.ContextAssembler;
 import xyz.ppmblszdp.ai.dto.ChatChunkDto;
 import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
-import xyz.ppmblszdp.ai.dto.MediaDto;
 import xyz.ppmblszdp.ai.factory.ChatOptionsFactory;
 import xyz.ppmblszdp.ai.intent.IntentResult;
 import xyz.ppmblszdp.ai.memory.ChatRateLimiter.RateLimiter;
@@ -92,6 +87,7 @@ public class ChatOrchestrator implements DisposableBean {
     private final AugmentedToolCallbackProvider augmentedToolCallbackProvider;
     private final ImageRouter imageRouter;
     private final IntentClassifier intentClassifier;
+    private final VisionService visionService;
 
     private final ConcurrentLinkedQueue<Disposable> fireAndForgetSubscriptions = new ConcurrentLinkedQueue<>();
 
@@ -115,7 +111,8 @@ public class ChatOrchestrator implements DisposableBean {
             ObjectProvider<ToolSearchAdvisorFactory> toolSearchFactory,
             ObjectProvider<AugmentedToolCallbackProvider> augmentedToolProvider,
             ImageRouter imageRouter,
-            IntentClassifier intentClassifier) {
+            IntentClassifier intentClassifier,
+            VisionService visionService) {
         this.registry = registry;
         this.contextAssembler = contextAssembler;
         this.sessionChatMemory = sessionChatMemory;
@@ -141,6 +138,7 @@ public class ChatOrchestrator implements DisposableBean {
                         : new AugmentedToolCallbackProvider();
         this.imageRouter = imageRouter;
         this.intentClassifier = intentClassifier;
+        this.visionService = (visionService != null) ? visionService : new VisionService();
     }
 
     @Override
@@ -217,7 +215,7 @@ public class ChatOrchestrator implements DisposableBean {
             ChatClient client = resolved.chatClient();
             MessageChatMemoryAdvisor memoryAdvisor =
                     MessageChatMemoryAdvisor.builder(memory).build();
-            List<Media> mediaList = convertMediaList(req.media());
+            List<Media> mediaList = extractMedia(req);
             CallResponseSpec spec = client.prompt()
                     .system(sp -> sp.text(resolveSystemPrompt(req, intentResult)))
                     .user(u -> {
@@ -323,7 +321,7 @@ public class ChatOrchestrator implements DisposableBean {
             MessageChatMemoryAdvisor memoryAdvisor =
                     MessageChatMemoryAdvisor.builder(memory).build();
             StringBuilder fullContent = new StringBuilder();
-            List<Media> mediaList = convertMediaList(req.media());
+            List<Media> mediaList = extractMedia(req);
 
             boolean[] hasEmittedFirstChunk = new boolean[] {false};
             AtomicReference<ChatChunkDto.UsageDto> lastUsage = new AtomicReference<>();
@@ -434,7 +432,7 @@ public class ChatOrchestrator implements DisposableBean {
             ChatOptions options,
             String userId,
             IntentResult intentResult) {
-        List<Media> mediaList = convertMediaList(request.media());
+        List<Media> mediaList = extractMedia(request);
         List<Message> messages = contextAssembler.assemble(
                 request.message(),
                 request.history(),
@@ -486,7 +484,7 @@ public class ChatOrchestrator implements DisposableBean {
             AtomicReference<ChatChunkDto.UsageDto> sharedUsage,
             String userId,
             IntentResult intentResult) {
-        List<Media> mediaList = convertMediaList(request.media());
+        List<Media> mediaList = extractMedia(request);
         List<Message> messages = contextAssembler.assemble(
                 request.message(),
                 request.history(),
@@ -572,7 +570,7 @@ public class ChatOrchestrator implements DisposableBean {
                     primaryResolved.provider().providerId(),
                     fallbackResolved.provider().providerId());
 
-            List<Media> mediaList = convertMediaList(request.media());
+            List<Media> mediaList = extractMedia(request);
             ChatOptions fallbackOpts = ChatOptionsFactory.forProvider(fallbackResolved, 0.2);
             List<Message> messages = contextAssembler.assemble(
                     request.message(),
@@ -714,36 +712,12 @@ public class ChatOrchestrator implements DisposableBean {
     }
 
     private boolean hasMedia(ChatRequest request) {
-        return request != null && request.media() != null && !request.media().isEmpty();
+        return request != null && request.hasMedia();
     }
 
-    private List<Media> convertMediaList(List<MediaDto> dtos) {
-        if (dtos == null || dtos.isEmpty()) return List.of();
-        return dtos.stream().map(this::toMedia).filter(Objects::nonNull).toList();
-    }
-
-    private Media toMedia(MediaDto dto) {
-        if (dto == null || dto.data() == null || dto.data().isBlank()) return null;
-        try {
-            String dataStr = dto.data().trim();
-            String base64Data = dataStr;
-            String mimeTypeStr = dto.mimeType();
-
-            if (dataStr.contains(",") && dataStr.startsWith("data:")) {
-                String[] parts = dataStr.split(",", 2);
-                base64Data = parts[1];
-                String header = parts[0];
-                if (header.contains(":") && header.contains(";")) {
-                    mimeTypeStr = header.substring(header.indexOf(":") + 1, header.indexOf(";"));
-                }
-            }
-
-            byte[] bytes = Base64.getDecoder().decode(base64Data.trim());
-            return new Media(MimeTypeUtils.parseMimeType(mimeTypeStr), new ByteArrayResource(bytes));
-        } catch (Exception e) {
-            log.warn("多模态媒体 (Media) 数据解析异常: {}", e.getMessage());
-            return null;
-        }
+    private List<Media> extractMedia(ChatRequest request) {
+        if (request == null || !request.hasMedia()) return List.of();
+        return visionService.extractMedia(request.media(), request.mediaUrls());
     }
 
     private String resolveSystemPrompt(ChatRequest request, IntentResult intentResult) {

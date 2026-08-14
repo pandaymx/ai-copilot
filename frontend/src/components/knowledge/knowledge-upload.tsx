@@ -142,7 +142,6 @@ export function KnowledgeUpload({ onSuccess }: KnowledgeUploadProps) {
 
         let totalIngested = 0;
         let totalSkipped = 0;
-        let successCount = 0;
         let failCount = 0;
 
         setBatchProgress({ current: 0, total: selectedFiles.length });
@@ -165,10 +164,9 @@ export function KnowledgeUpload({ onSuccess }: KnowledgeUploadProps) {
               fileName: effectiveName,
             });
 
-            if (res && res.success) {
+            if (res?.success) {
               totalIngested += res.ingested;
               totalSkipped += res.skipped;
-              successCount++;
             } else {
               failCount++;
             }

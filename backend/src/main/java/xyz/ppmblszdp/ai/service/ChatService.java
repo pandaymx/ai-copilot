@@ -128,6 +128,7 @@ public class ChatService implements DisposableBean {
         ImageRouter iRouter = new ImageRouter(imageGenerationServiceProvider, properties);
         VoiceService vService = new VoiceService(speechModelProvider, registry);
         IntentClassifier intentClassifier = new IntentClassifier();
+        VisionService vVisionService = new VisionService();
         ChatOrchestrator cOrchestrator = new ChatOrchestrator(
                 registry,
                 contextAssembler,
@@ -148,7 +149,8 @@ public class ChatService implements DisposableBean {
                 toolSearchFactory,
                 augmentedToolProvider,
                 iRouter,
-                intentClassifier);
+                intentClassifier,
+                vVisionService);
         this.orchestrator = cOrchestrator;
         this.imageRouter = iRouter;
         this.voiceService = vService;

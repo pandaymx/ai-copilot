@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Clock,
   Compass,
-  FileText,
   Search,
   Sparkles,
   Target,
