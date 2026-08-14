@@ -33,7 +33,34 @@ public record ChatRequest(
         String userId,
         List<MediaDto> media,
         Boolean agentEnabled,
-        List<String> mediaUrls) {
+        List<String> mediaUrls,
+        String clarificationMode) {
+
+    /** 兼容 10 参数构造函数 */
+    public ChatRequest(
+            String message,
+            List<ChatMessageDto> history,
+            String provider,
+            String model,
+            String systemPrompt,
+            String conversationId,
+            String userId,
+            List<MediaDto> media,
+            Boolean agentEnabled,
+            List<String> mediaUrls) {
+        this(
+                message,
+                history,
+                provider,
+                model,
+                systemPrompt,
+                conversationId,
+                userId,
+                media,
+                agentEnabled,
+                mediaUrls,
+                null);
+    }
 
     /** 兼容旧版 9 参数构造函数 */
     public ChatRequest(
@@ -46,7 +73,18 @@ public record ChatRequest(
             String userId,
             List<MediaDto> media,
             Boolean agentEnabled) {
-        this(message, history, provider, model, systemPrompt, conversationId, userId, media, agentEnabled, List.of());
+        this(
+                message,
+                history,
+                provider,
+                model,
+                systemPrompt,
+                conversationId,
+                userId,
+                media,
+                agentEnabled,
+                List.of(),
+                null);
     }
 
     public List<MediaDto> media() {
@@ -80,7 +118,17 @@ public record ChatRequest(
     /** 返回一个带指定 conversationId 的副本（record 不可变，用于后端生成后回填）。 */
     public ChatRequest withConversationId(String id) {
         return new ChatRequest(
-                message, history, provider, model, systemPrompt, id, userId, media, agentEnabled, mediaUrls);
+                message,
+                history,
+                provider,
+                model,
+                systemPrompt,
+                id,
+                userId,
+                media,
+                agentEnabled,
+                mediaUrls,
+                clarificationMode);
     }
 
     /**

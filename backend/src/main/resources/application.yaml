@@ -228,6 +228,16 @@ app:
       worker-max-tokens: ${WORKER_MAX_TOKENS:2048}  # Worker 单次最大输出 token
       max-worker-depth: ${MAX_WORKER_DEPTH:1}       # Worker 嵌套深度上限（严禁 Worker→Worker 递归）
 
+    safeguard:
+      enabled: ${SAFEGUARD_ENABLED:true}
+      request-policy: ${SAFEGUARD_REQUEST_POLICY:BLOCK}
+      response-policy: ${SAFEGUARD_RESPONSE_POLICY:MASK}
+
+    clarification:
+      enabled: ${CLARIFICATION_ENABLED:true}
+      default-mode: ${CLARIFICATION_DEFAULT_MODE:SOFT}
+      agent-mode: ${CLARIFICATION_AGENT_MODE:STRICT}
+      max-questions: ${CLARIFICATION_MAX_QUESTIONS:3}
 
     image:
       default-provider: ${AI_IMAGE_DEFAULT_PROVIDER:openai}
@@ -451,19 +461,3 @@ app:
             default: true
             input-price-per-k: 0.0050
             output-price-per-k: 0.0050
-
-      # 自定义协议示例（需自行实现 CustomChatModelSupplier 并注册为名为 baiduNative 的 Bean）
-      # - id: baidu-native
-      #   display-name: 百度原生 AK/SK
-      #   protocol: custom
-      #   supplier: baiduNative
-      #   api-key: ${BAIDU_API_KEY:your_baidu_api_key_here}
-      #   models:
-      #             - id: ernie-native
-        #       name: ernie-4.0
-        #       display-name: 文心 4.0 (原生)
-        #       max-context-tokens: 8192
-        #       default: true
-
-
-
