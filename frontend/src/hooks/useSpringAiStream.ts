@@ -66,6 +66,10 @@ export interface UseSpringAiStreamOptions {
   }) => void;
   /** 收到 artifact 帧（可渲染产物）时的回调 */
   onArtifact?: (item: ArtifactItem) => void;
+  /** 收到 task_plan 帧（多步任务规划总览）时的回调 */
+  onTaskPlan?: (plan: TaskPlanState) => void;
+  /** 收到 task_step 帧（多步任务单步执行更新）时的回调 */
+  onTaskStep?: (step: TaskStepItem) => void;
   /** 收到 tool_call 帧（工具开始执行）时的回调 */
   onToolCall?: (item: ToolCallItem) => void;
   /** 收到 tool_result 帧（工具执行完成/失败）时的回调 */
@@ -119,6 +123,31 @@ export interface ArtifactItem {
   status?: "processing" | "complete" | "drafting" | "streaming" | "final";
 }
 
+export interface TaskStepItem {
+  stepId: number;
+  title: string;
+  description: string;
+  toolName?: string;
+  expectedOutput?: string;
+  thought?: string;
+  actionArgs?: string;
+  observation?: string;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "REPLANNING" | "SKIPPED";
+  replanCount?: number;
+  errorMessage?: string;
+}
+
+export interface TaskPlanState {
+  planId: string;
+  title: string;
+  goal: string;
+  status: "PLANNING" | "EXECUTING" | "COMPLETED" | "FAILED" | "REPLANNING" | "CANCELLED";
+  currentStep: number;
+  totalSteps: number;
+  steps: TaskStepItem[];
+  summary?: string;
+}
+
 export interface StreamData {
   content: string;
   thinking: string;
@@ -133,6 +162,8 @@ export interface StreamData {
   toolCalls: Record<string, ToolCallItem>;
   /** 可渲染产物列表，以 artifactId 为唯一 key。 */
   artifacts: Record<string, ArtifactItem>;
+  /** 结构化多步任务规划状态（若当前任务开启了 ReAct / Planning 模式）。 */
+  taskPlan?: TaskPlanState | null;
 }
 
 export class StreamStore {
@@ -142,6 +173,7 @@ export class StreamStore {
     usage: null,
     toolCalls: {},
     artifacts: {},
+    taskPlan: null,
   };
   private listeners = new Set<() => void>();
 
@@ -163,6 +195,35 @@ export class StreamStore {
     reasoningDurationMs?: number,
   ) {
     this.data = { ...this.data, content, thinking, usage, reasoningDurationMs };
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+
+  /** 更新多步任务计划总览 */
+  updateTaskPlan(plan: TaskPlanState) {
+    this.data = { ...this.data, taskPlan: plan };
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+
+  /** 增量更新多步任务单一步骤 */
+  updateTaskStep(step: TaskStepItem) {
+    if (!this.data.taskPlan) return;
+    const currentSteps = [...this.data.taskPlan.steps];
+    const idx = currentSteps.findIndex((s) => s.stepId === step.stepId);
+    if (idx >= 0) {
+      currentSteps[idx] = { ...currentSteps[idx], ...step };
+    } else {
+      currentSteps.push(step);
+    }
+    const updatedPlan: TaskPlanState = {
+      ...this.data.taskPlan,
+      steps: currentSteps,
+      currentStep: step.stepId,
+    };
+    this.data = { ...this.data, taskPlan: updatedPlan };
     for (const listener of this.listeners) {
       listener();
     }
@@ -211,6 +272,7 @@ export class StreamStore {
       usage: null,
       toolCalls: {},
       artifacts: {},
+      taskPlan: null,
     };
     for (const listener of this.listeners) {
       listener();
@@ -285,6 +347,8 @@ export function useSpringAiStream(
     onReasoning,
     onUsage,
     onArtifact,
+    onTaskPlan,
+    onTaskStep,
     onToolCall,
     onToolResult,
     onFinish,
@@ -297,6 +361,8 @@ export function useSpringAiStream(
   const onReasoningRef = useRef(onReasoning);
   const onUsageRef = useRef(onUsage);
   const onArtifactRef = useRef(onArtifact);
+  const onTaskPlanRef = useRef(onTaskPlan);
+  const onTaskStepRef = useRef(onTaskStep);
   const onToolCallRef = useRef(onToolCall);
   const onToolResultRef = useRef(onToolResult);
   const onFinishRef = useRef(onFinish);
@@ -306,6 +372,8 @@ export function useSpringAiStream(
     onReasoningRef.current = onReasoning;
     onUsageRef.current = onUsage;
     onArtifactRef.current = onArtifact;
+    onTaskPlanRef.current = onTaskPlan;
+    onTaskStepRef.current = onTaskStep;
     onToolCallRef.current = onToolCall;
     onToolResultRef.current = onToolResult;
     onFinishRef.current = onFinish;
@@ -315,6 +383,8 @@ export function useSpringAiStream(
     onReasoning,
     onUsage,
     onArtifact,
+    onTaskPlan,
+    onTaskStep,
     onToolCall,
     onToolResult,
     onFinish,
@@ -504,6 +574,24 @@ export function useSpringAiStream(
                   };
                   streamStoreRef.current.updateArtifact(item.artifactId, item);
                   onArtifactRef.current?.(item);
+                  return;
+                }
+                if (parsed?.type === "task_plan") {
+                  try {
+                    const raw = parsed.content || parsed.arguments || "{}";
+                    const plan: TaskPlanState = JSON.parse(raw);
+                    streamStoreRef.current.updateTaskPlan(plan);
+                    onTaskPlanRef.current?.(plan);
+                  } catch {}
+                  return;
+                }
+                if (parsed?.type === "task_step") {
+                  try {
+                    const raw = parsed.content || parsed.arguments || "{}";
+                    const step: TaskStepItem = JSON.parse(raw);
+                    streamStoreRef.current.updateTaskStep(step);
+                    onTaskStepRef.current?.(step);
+                  } catch {}
                   return;
                 }
                 if (parsed?.type === "tool_call") {

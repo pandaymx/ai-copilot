@@ -21,6 +21,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   type ArtifactItem,
   type StreamStore,
+  type TaskPlanState,
   type ToolCallItem,
   useStreamData,
 } from "@/hooks/useSpringAiStream";
@@ -29,6 +30,7 @@ import { tts } from "@/lib/voice";
 import { ChatMessageErrorBoundary } from "./error-boundary";
 import { Markdown } from "./markdown";
 import { ReasoningView } from "./reasoning-view";
+import { TaskPlanCard } from "./task-plan-card";
 import { ToolCard } from "./tool-card";
 
 export interface AttachmentItem {
@@ -62,6 +64,8 @@ export interface ChatMessage {
   intentLabel?: string;
   /** 产物列表（包含图片 artifact 等） */
   artifacts?: ArtifactItem[];
+  /** ReAct 多步任务规划状态与时间轴步骤 */
+  taskPlan?: TaskPlanState | null;
 }
 
 interface MessageBubbleProps {
@@ -219,6 +223,13 @@ function MessageBubbleBase({
             streaming={streaming}
             durationMs={message.reasoningDurationMs}
           />
+        )}
+
+        {/* ReAct 多步任务规划与执行看板 */}
+        {!isUser && message.taskPlan && (
+          <div className="w-full">
+            <TaskPlanCard plan={message.taskPlan} />
+          </div>
         )}
 
         {/* 多模态附件渲染 */}
@@ -434,13 +445,14 @@ export function LiveMessageBubble({
     usage,
     toolCalls,
     artifacts,
+    taskPlan,
   } = useStreamData(streamStore);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll into view on streaming content update
   useEffect(() => {
     containerRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [content, thinking, toolCalls, artifacts]);
+  }, [content, thinking, toolCalls, artifacts, taskPlan]);
 
   const liveMessage: ChatMessage = {
     ...message,
@@ -451,6 +463,7 @@ export function LiveMessageBubble({
     // 将流式 Map 转为数组（保留 callId 作 ToolCard key, artifactId 作 ImageArtifactViewer key）
     toolCalls: Object.values(toolCalls),
     artifacts: Object.values(artifacts),
+    taskPlan: taskPlan ?? message.taskPlan,
   };
 
   return (

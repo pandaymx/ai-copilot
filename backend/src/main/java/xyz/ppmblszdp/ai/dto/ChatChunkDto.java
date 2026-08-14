@@ -404,4 +404,66 @@ public record ChatChunkDto(
                 null,
                 null);
     }
+
+    /**
+     * 任务规划总览帧：推送当前 TaskPlan 结构 JSON。
+     */
+    public static ChatChunkDto taskPlan(String planJson) {
+        return new ChatChunkDto(
+                "task_plan",
+                null,
+                planJson,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    /**
+     * 任务步骤执行与状态更新帧：推送 TaskStep 结构 JSON。
+     */
+    public static ChatChunkDto taskStep(String stepJson) {
+        return new ChatChunkDto(
+                "task_step",
+                null,
+                stepJson,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
 }

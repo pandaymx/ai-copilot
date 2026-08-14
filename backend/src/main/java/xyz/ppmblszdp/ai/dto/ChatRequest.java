@@ -34,7 +34,36 @@ public record ChatRequest(
         List<MediaDto> media,
         Boolean agentEnabled,
         List<String> mediaUrls,
-        String clarificationMode) {
+        String clarificationMode,
+        Boolean reactEnabled) {
+
+    /** 兼容 11 参数构造函数 */
+    public ChatRequest(
+            String message,
+            List<ChatMessageDto> history,
+            String provider,
+            String model,
+            String systemPrompt,
+            String conversationId,
+            String userId,
+            List<MediaDto> media,
+            Boolean agentEnabled,
+            List<String> mediaUrls,
+            String clarificationMode) {
+        this(
+                message,
+                history,
+                provider,
+                model,
+                systemPrompt,
+                conversationId,
+                userId,
+                media,
+                agentEnabled,
+                mediaUrls,
+                clarificationMode,
+                false);
+    }
 
     /** 兼容 10 参数构造函数 */
     public ChatRequest(
@@ -59,7 +88,8 @@ public record ChatRequest(
                 media,
                 agentEnabled,
                 mediaUrls,
-                null);
+                null,
+                false);
     }
 
     /** 兼容旧版 9 参数构造函数 */

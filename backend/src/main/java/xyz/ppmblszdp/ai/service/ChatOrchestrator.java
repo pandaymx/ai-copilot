@@ -92,6 +92,7 @@ public class ChatOrchestrator implements DisposableBean {
     private final ImageRouter imageRouter;
     private final IntentClassifier intentClassifier;
     private final VisionService visionService;
+    private final ObjectProvider<xyz.ppmblszdp.ai.agent.plan.ReActAgent> reActAgentProvider;
 
     private final ConcurrentLinkedQueue<Disposable> fireAndForgetSubscriptions = new ConcurrentLinkedQueue<>();
 
@@ -118,7 +119,8 @@ public class ChatOrchestrator implements DisposableBean {
             ObjectProvider<AugmentedToolCallbackProvider> augmentedToolProvider,
             ImageRouter imageRouter,
             IntentClassifier intentClassifier,
-            VisionService visionService) {
+            VisionService visionService,
+            ObjectProvider<xyz.ppmblszdp.ai.agent.plan.ReActAgent> reActAgentProvider) {
         this.registry = registry;
         this.contextAssembler = contextAssembler;
         this.sessionChatMemory = sessionChatMemory;
@@ -147,6 +149,7 @@ public class ChatOrchestrator implements DisposableBean {
         this.imageRouter = imageRouter;
         this.intentClassifier = intentClassifier;
         this.visionService = (visionService != null) ? visionService : new VisionService();
+        this.reActAgentProvider = reActAgentProvider;
     }
 
     @Override
@@ -316,6 +319,10 @@ public class ChatOrchestrator implements DisposableBean {
         }
 
         IntentResult intentResult = intentClassifier.classify(request, resolved);
+        if (Boolean.TRUE.equals(request.reactEnabled()) && reActAgentProvider != null && reActAgentProvider.getIfAvailable() != null) {
+            return streamReAct(resolved, request, userId, intentResult);
+        }
+
         boolean memoryPath = useMemory(request);
         ChatOptions options = buildChatOptions(resolved);
         boolean agentPath = useAgent(request, intentResult);
@@ -836,5 +843,61 @@ public class ChatOrchestrator implements DisposableBean {
 
     private ChatOptions buildChatOptions(ResolvedModel resolved) {
         return ChatOptionsFactory.forProvider(resolved, 0.2);
+    }
+
+    /**
+     * ReAct 闭环任务规划流式执行器。
+     */
+    public Flux<ChatChunkDto> streamReAct(
+            ResolvedModel resolved,
+            ChatRequest request,
+            String userId,
+            IntentResult intentResult) {
+
+        xyz.ppmblszdp.ai.agent.plan.ReActAgent agent = reActAgentProvider != null ? reActAgentProvider.getIfAvailable() : null;
+        if (agent == null) {
+            return Flux.just(ChatChunkDto.error("REACT_UNAVAILABLE", "ReAct 规划引擎未初始化"));
+        }
+
+        ChatRequest req = ensureConversation(request);
+        Many<ChatChunkDto> sink = reactor.core.publisher.Sinks.many().multicast().onBackpressureBuffer();
+        AtomicBoolean isAborted = new AtomicBoolean(false);
+
+        ChatChunkDto initChunk = ChatChunkDto.conversation(
+                req.conversationId(),
+                resolved.provider().providerId(),
+                resolved.model().id(),
+                false,
+                intentResult != null ? intentResult.intent().name() : "PLANNING",
+                intentResult != null ? intentResult.label() : "多步任务规划");
+        sink.tryEmitNext(initChunk);
+
+        ToolCallback[] allTools = prepareAgentTools(req.conversationId());
+        List<ToolCallback> toolList = allTools != null ? java.util.Arrays.asList(allTools) : List.of();
+
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                agent.run(
+                        req.message(),
+                        req.systemPrompt(),
+                        toolList,
+                        resolved.chatClient(),
+                        sink,
+                        isAborted,
+                        8
+                );
+            } catch (Exception e) {
+                log.error("ReAct 执行异常: {}", e.getMessage(), e);
+                sink.tryEmitNext(ChatChunkDto.error("REACT_ERROR", "任务规划执行异常: " + e.getMessage()));
+            } finally {
+                sink.tryEmitComplete();
+            }
+        });
+
+        return sink.asFlux()
+                .doOnCancel(() -> {
+                    log.info("客户端取消 ReAct 连接 (convId={})", req.conversationId());
+                    isAborted.set(true);
+                });
     }
 }
