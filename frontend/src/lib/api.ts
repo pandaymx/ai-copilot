@@ -852,3 +852,143 @@ export async function annotateEvaluationResultApi(
     return null;
   }
 }
+
+// ---------------------------------------------------------------------------
+// 知识图谱（Knowledge Graph / GraphRAG）接口
+// ---------------------------------------------------------------------------
+
+export interface KnowledgeEntity {
+  id: string;
+  userId?: string;
+  documentId?: string;
+  name: string;
+  type:
+    | "CONCEPT"
+    | "TECHNOLOGY"
+    | "COMPONENT"
+    | "ORGANIZATION"
+    | "PERSON"
+    | "OTHER"
+    | string;
+  description?: string;
+  weight?: number;
+  createdAt?: number;
+}
+
+export interface KnowledgeRelation {
+  id: string;
+  userId?: string;
+  documentId?: string;
+  sourceEntityName: string;
+  relation: string;
+  targetEntityName: string;
+  description?: string;
+  weight?: number;
+  createdAt?: number;
+}
+
+export interface GraphStatsDto {
+  totalNodes: number;
+  totalEdges: number;
+  totalDocuments: number;
+  nodeTypeDistribution: Record<string, number>;
+  relationTypeDistribution: Record<string, number>;
+}
+
+export interface KnowledgeGraphDto {
+  nodes: KnowledgeEntity[];
+  edges: KnowledgeRelation[];
+  stats?: GraphStatsDto;
+}
+
+export async function ragGraphApi(
+  documentId?: string,
+  userId?: string,
+): Promise<KnowledgeGraphDto | null> {
+  try {
+    const params = new URLSearchParams();
+    if (documentId) params.append("documentId", documentId);
+    if (userId) params.append("userId", userId);
+    const res = await fetch(`/api/rag/graph?${params.toString()}`);
+    if (!res.ok) return null;
+    return (await res.json()) as KnowledgeGraphDto;
+  } catch {
+    return null;
+  }
+}
+
+export async function ragGraphSubgraphApi(params: {
+  seeds?: string;
+  query?: string;
+  maxHops?: number;
+  maxNodes?: number;
+  userId?: string;
+}): Promise<KnowledgeGraphDto | null> {
+  try {
+    const searchParams = new URLSearchParams();
+    if (params.seeds) searchParams.append("seeds", params.seeds);
+    if (params.query) searchParams.append("query", params.query);
+    if (params.maxHops) searchParams.append("maxHops", String(params.maxHops));
+    if (params.maxNodes)
+      searchParams.append("maxNodes", String(params.maxNodes));
+    if (params.userId) searchParams.append("userId", params.userId);
+    const res = await fetch(
+      `/api/rag/graph/subgraph?${searchParams.toString()}`,
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as KnowledgeGraphDto;
+  } catch {
+    return null;
+  }
+}
+
+export async function ragGraphStatsApi(
+  userId?: string,
+): Promise<GraphStatsDto | null> {
+  try {
+    const params = new URLSearchParams();
+    if (userId) params.append("userId", userId);
+    const res = await fetch(`/api/rag/graph/stats?${params.toString()}`);
+    if (!res.ok) return null;
+    return (await res.json()) as GraphStatsDto;
+  } catch {
+    return null;
+  }
+}
+
+export async function ragGraphExtractApi(
+  rawText: string,
+  documentId?: string,
+  userId?: string,
+): Promise<KnowledgeGraphDto | null> {
+  try {
+    const res = await fetch("/api/rag/graph/extract", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rawText, documentId, userId }),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as KnowledgeGraphDto;
+  } catch {
+    return null;
+  }
+}
+
+export async function ragGraphDeleteDocumentApi(
+  documentId: string,
+  userId?: string,
+): Promise<boolean> {
+  try {
+    const params = new URLSearchParams();
+    if (userId) params.append("userId", userId);
+    const res = await fetch(
+      `/api/rag/graph/documents/${encodeURIComponent(documentId)}?${params.toString()}`,
+      {
+        method: "DELETE",
+      },
+    );
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

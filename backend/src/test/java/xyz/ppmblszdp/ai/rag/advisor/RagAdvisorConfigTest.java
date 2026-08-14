@@ -30,6 +30,7 @@ class RagAdvisorConfigTest {
             true,
             false,
             true,
+            true,
             60,
             3,
             new RagProperties.SsrfConfig(5, 10_485_760L));
@@ -60,7 +61,7 @@ class RagAdvisorConfigTest {
     @Test
     void ragPropertiesShouldHaveSaneDefaults() {
         RagProperties defaults =
-                new RagProperties(true, null, null, null, null, null, null, null, null, null, null, null);
+                new RagProperties(true, null, null, null, null, null, null, null, null, null, null, null, null);
 
         assertThat(defaults.resolveTopK()).isEqualTo(4);
         assertThat(defaults.resolveChunkSize()).isEqualTo(900);
@@ -73,7 +74,7 @@ class RagAdvisorConfigTest {
     @Test
     void ragPropertiesSsrfDefaults() {
         RagProperties defaults =
-                new RagProperties(true, null, null, null, null, null, null, null, null, null, null, null);
+                new RagProperties(true, null, null, null, null, null, null, null, null, null, null, null, null);
         assertThat(defaults.resolveSsrf().resolveTimeoutSeconds()).isEqualTo(5);
         assertThat(defaults.resolveSsrf().resolveMaxBodyBytes()).isEqualTo(10_485_760L);
     }

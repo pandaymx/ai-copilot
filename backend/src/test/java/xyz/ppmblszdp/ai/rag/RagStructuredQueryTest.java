@@ -37,6 +37,7 @@ class RagStructuredQueryTest {
                 true,
                 false,
                 true,
+                true,
                 60,
                 3,
                 new RagProperties.SsrfConfig(5, 10_485_760L));
@@ -91,6 +92,7 @@ class RagStructuredQueryTest {
                 "CL100K_BASE",
                 "ai_rag_documents",
                 true,
+                false,
                 false,
                 false,
                 60,

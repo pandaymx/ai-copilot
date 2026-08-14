@@ -37,6 +37,7 @@ class RagHybridSearchTest {
                 true,
                 false,
                 true,
+                true,
                 60,
                 3,
                 new RagProperties.SsrfConfig(5, 10_485_760L));
@@ -81,6 +82,7 @@ class RagHybridSearchTest {
                 180,
                 "CL100K_BASE",
                 "ai_rag_documents",
+                false,
                 false,
                 false,
                 false,

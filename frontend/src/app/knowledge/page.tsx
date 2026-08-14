@@ -3,6 +3,7 @@
 import { ArrowLeft, CheckCircle2, Loader2, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { KnowledgeGraphViewer } from "@/components/knowledge/knowledge-graph-viewer";
 import {
   DeleteDialog,
   KnowledgeList,
@@ -20,6 +21,7 @@ import {
   ragReingestApi,
   ragStatusApi,
 } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 interface Toast {
   kind: "success" | "error";
@@ -150,6 +152,8 @@ export default function KnowledgePage() {
     [fetchDocuments, showToast],
   );
 
+  const [activeTab, setActiveTab] = useState<"docs" | "graph">("docs");
+
   return (
     <div className="relative min-h-dvh bg-ambient-mesh bg-zinc-50 dark:bg-zinc-950">
       {/* 顶部 Header */}
@@ -161,8 +165,36 @@ export default function KnowledgePage() {
               <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
             </span>
             <h1 className="font-heading text-sm font-bold tracking-tight text-zinc-800 dark:text-zinc-100">
-              知识库管理
+              知识库与图谱管理
             </h1>
+
+            {/* Tab 切换 */}
+            <div className="flex items-center rounded-xl border border-zinc-200/80 bg-zinc-100/80 p-0.5 text-xs dark:border-zinc-800 dark:bg-zinc-900/80 ml-4">
+              <button
+                type="button"
+                onClick={() => setActiveTab("docs")}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition-all",
+                  activeTab === "docs"
+                    ? "bg-white text-zinc-900 shadow-xs dark:bg-zinc-800 dark:text-white"
+                    : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100",
+                )}
+              >
+                <span>📚 知识库文档</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("graph")}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition-all",
+                  activeTab === "graph"
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100",
+                )}
+              >
+                <span>🕸️ 知识图谱 (GraphRAG)</span>
+              </button>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
@@ -181,26 +213,34 @@ export default function KnowledgePage() {
       </header>
 
       <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 sm:px-6">
-        <KnowledgeStatus status={status} loading={loadingStatus} />
+        {activeTab === "docs" ? (
+          <>
+            <KnowledgeStatus status={status} loading={loadingStatus} />
 
-        <div className="grid gap-5 lg:grid-cols-5">
-          <div className="lg:col-span-2">
-            <KnowledgeUpload onSuccess={handleUploadSuccess} />
+            <div className="grid gap-5 lg:grid-cols-5">
+              <div className="lg:col-span-2">
+                <KnowledgeUpload onSuccess={handleUploadSuccess} />
+              </div>
+              <div className="lg:col-span-3">
+                <KnowledgeList
+                  data={list}
+                  loading={loadingList}
+                  userIdFilter={userIdFilter}
+                  sourceTypeFilter={sourceTypeFilter}
+                  onUserIdFilterChange={setUserIdFilter}
+                  onSourceTypeFilterChange={setSourceTypeFilter}
+                  onRefresh={() => void fetchDocuments()}
+                  onDelete={(source, name) => setDeleteTarget({ source, name })}
+                  onReingest={handleReingest}
+                />
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="space-y-4">
+            <KnowledgeGraphViewer />
           </div>
-          <div className="lg:col-span-3">
-            <KnowledgeList
-              data={list}
-              loading={loadingList}
-              userIdFilter={userIdFilter}
-              sourceTypeFilter={sourceTypeFilter}
-              onUserIdFilterChange={setUserIdFilter}
-              onSourceTypeFilterChange={setSourceTypeFilter}
-              onRefresh={() => void fetchDocuments()}
-              onDelete={(source, name) => setDeleteTarget({ source, name })}
-              onReingest={handleReingest}
-            />
-          </div>
-        </div>
+        )}
       </main>
 
       <DeleteDialog

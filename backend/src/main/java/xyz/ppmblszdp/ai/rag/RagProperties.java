@@ -10,13 +10,14 @@ import org.springframework.boot.context.properties.bind.Name;
  * <p>独立 pgvector 表 {@code ai_rag_documents}，与长期记忆物理隔离。
  * 默认 {@code enabled=false}，开启后才能挂接 RagAdvisor 到对话链路并暴露入库接口。
  *
- * @param enabled       RAG 总开关；关闭时 RagAdvisor 不挂接、入库接口不可用
- * @param topK          文档相似检索 Top-K
- * @param chunkSize     TokenTextSplitter 每片 Token 数
- * @param overlap       相邻切片重叠 Token 数（≈ 20% chunk-size），防止上下文在切片边界丢失
- * @param encodingType  TokenTextSplitter 分词编码（CL100K_BASE / P50K_BASE / O200K_BASE）
- * @param collectionName 独立 pgvector 表名
- * @param ssrf           URL 抓取 SSRF/DoS 防护配置
+ * @param enabled           RAG 总开关；关闭时 RagAdvisor 不挂接、入库接口不可用
+ * @param topK              文档相似检索 Top-K
+ * @param chunkSize         TokenTextSplitter 每片 Token 数
+ * @param overlap           相邻切片重叠 Token 数（≈ 20% chunk-size），防止上下文在切片边界丢失
+ * @param encodingType      TokenTextSplitter 分词编码（CL100K_BASE / P50K_BASE / O200K_BASE）
+ * @param collectionName    独立 pgvector 表名
+ * @param ssrf              URL 抓取 SSRF/DoS 防护配置
+ * @param graphRagEnabled   知识图谱 GraphRAG 多跳推理与实体拓扑联合检索开关
  */
 @ConfigurationProperties(prefix = "app.ai.rag")
 public record RagProperties(
@@ -29,6 +30,7 @@ public record RagProperties(
         @Name("hybrid-search-enabled") @Nullable Boolean hybridSearchEnabled,
         @Name("rerank-enabled") @Nullable Boolean rerankEnabled,
         @Name("extraction-enabled") @Nullable Boolean extractionEnabled,
+        @Name("graph-rag-enabled") @Nullable Boolean graphRagEnabled,
         @Name("rrf-k") @Nullable Integer rrfK,
         @Name("candidate-pool-multiplier") @Nullable Integer candidatePoolMultiplier,
         @Nullable SsrfConfig ssrf) {
@@ -47,6 +49,10 @@ public record RagProperties(
 
     public boolean isExtractionEnabled() {
         return extractionEnabled == null || extractionEnabled;
+    }
+
+    public boolean isGraphRagEnabled() {
+        return graphRagEnabled == null || graphRagEnabled;
     }
 
     public int resolveRrfK() {

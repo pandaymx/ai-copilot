@@ -20,6 +20,7 @@ import xyz.ppmblszdp.ai.rag.chunker.TokenBasedRagTextSplitter;
 import xyz.ppmblszdp.ai.rag.dto.ConflictPolicy;
 import xyz.ppmblszdp.ai.rag.dto.RagExtractRequest;
 import xyz.ppmblszdp.ai.rag.dto.StructuredKnowledge;
+import xyz.ppmblszdp.ai.rag.graph.service.GraphRagService;
 import xyz.ppmblszdp.ai.rag.metadata.RagMetadataEnricher;
 import xyz.ppmblszdp.ai.rag.reader.DocumentReaderFactory;
 import xyz.ppmblszdp.ai.rag.reader.SourceType;
@@ -42,19 +43,37 @@ public class RagIngestionService {
     private final VectorStore ragVectorStore;
     private final RagProperties properties;
     private final RagExtractionService extractionService;
+    private final GraphRagService graphRagService;
 
     public RagIngestionService(
             DocumentReaderFactory readerFactory,
             TokenBasedRagTextSplitter splitter,
             @Qualifier("ragVectorStore") VectorStore ragVectorStore,
             RagProperties properties,
-            ObjectProvider<RagExtractionService> extractionServiceProvider) {
+            ObjectProvider<RagExtractionService> extractionServiceProvider,
+            ObjectProvider<GraphRagService> graphRagServiceProvider) {
         this(
                 readerFactory,
                 splitter,
                 ragVectorStore,
                 properties,
-                extractionServiceProvider != null ? extractionServiceProvider.getIfAvailable() : null);
+                extractionServiceProvider != null ? extractionServiceProvider.getIfAvailable() : null,
+                graphRagServiceProvider != null ? graphRagServiceProvider.getIfAvailable() : null);
+    }
+
+    public RagIngestionService(
+            DocumentReaderFactory readerFactory,
+            TokenBasedRagTextSplitter splitter,
+            VectorStore ragVectorStore,
+            RagProperties properties,
+            RagExtractionService extractionService,
+            GraphRagService graphRagService) {
+        this.readerFactory = readerFactory;
+        this.splitter = splitter;
+        this.ragVectorStore = ragVectorStore;
+        this.properties = properties;
+        this.extractionService = extractionService;
+        this.graphRagService = graphRagService;
     }
 
     public RagIngestionService(
@@ -63,11 +82,13 @@ public class RagIngestionService {
             VectorStore ragVectorStore,
             RagProperties properties,
             RagExtractionService extractionService) {
-        this.readerFactory = readerFactory;
-        this.splitter = splitter;
-        this.ragVectorStore = ragVectorStore;
-        this.properties = properties;
-        this.extractionService = extractionService;
+        this(
+                readerFactory,
+                splitter,
+                ragVectorStore,
+                properties,
+                extractionService,
+                (xyz.ppmblszdp.ai.rag.graph.service.GraphRagService) null);
     }
 
     public RagIngestionService(
@@ -75,7 +96,13 @@ public class RagIngestionService {
             TokenBasedRagTextSplitter splitter,
             VectorStore ragVectorStore,
             RagProperties properties) {
-        this(readerFactory, splitter, ragVectorStore, properties, (RagExtractionService) null);
+        this(
+                readerFactory,
+                splitter,
+                ragVectorStore,
+                properties,
+                (RagExtractionService) null,
+                (xyz.ppmblszdp.ai.rag.graph.service.GraphRagService) null);
     }
 
     /**
@@ -107,7 +134,8 @@ public class RagIngestionService {
     }
 
     /**
-     * 带冲突策略与业务元数据的入库入口：读取 → 切片 → 注入元数据 → 结构化抽取 → 策略处理（SKIP/OVERWRITE/FORCE_ADD） → 写入。
+     * 带冲突策略与业务元数据的入库入口：读取 → 切片 → 注入元数据 → 结构化抽取 → 策略处理（SKIP/OVERWRITE/FORCE_ADD） →
+     * 写入。
      */
     @Transactional
     public IngestResult ingest(
@@ -179,6 +207,16 @@ public class RagIngestionService {
                 } catch (Exception e) {
                     log.warn("RAG 结构化抽取降级（不阻断入库）: source={} error={}", source, e.getMessage());
                 }
+            }
+        }
+
+        // 3.2 知识图谱实体与关系三元组抽取 (若开启 graph-rag-enabled 且 graphRagService 可用)
+        if (properties.isGraphRagEnabled() && graphRagService != null) {
+            try {
+                String docId = (fileName != null && !fileName.isBlank()) ? fileName : source;
+                graphRagService.extractAndIndex(source, docId, userId);
+            } catch (Exception e) {
+                log.warn("GraphRAG 知识图谱抽取降级（不阻断入库）: source={} error={}", source, e.getMessage());
             }
         }
 

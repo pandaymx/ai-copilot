@@ -41,6 +41,7 @@ class RagIngestionServiceTest {
                 true,
                 false,
                 true,
+                true,
                 60,
                 3,
                 new RagProperties.SsrfConfig(5, 10_485_760L));

@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import xyz.ppmblszdp.ai.memory.SafeVectorStore;
 import xyz.ppmblszdp.ai.rag.RagProperties;
 import xyz.ppmblszdp.ai.rag.dto.RagDocumentMeta;
+import xyz.ppmblszdp.ai.rag.graph.service.GraphRagService;
 import xyz.ppmblszdp.ai.rag.repository.RagSearchRepository;
 import xyz.ppmblszdp.ai.rag.rerank.RagReranker;
 
@@ -47,16 +48,32 @@ public class RagQueryService {
     private final RagProperties properties;
     private final RagSearchRepository searchRepository;
     private final RagReranker reranker;
+    private final GraphRagService graphRagService;
 
     public RagQueryService(
             @Qualifier("ragVectorStore") VectorStore ragVectorStore,
             RagProperties properties,
             ObjectProvider<RagSearchRepository> searchRepositoryProvider,
-            ObjectProvider<RagReranker> rerankerProvider) {
+            ObjectProvider<RagReranker> rerankerProvider,
+            ObjectProvider<GraphRagService> graphRagServiceProvider) {
         this.ragVectorStore = ragVectorStore;
         this.properties = properties;
         this.searchRepository = searchRepositoryProvider != null ? searchRepositoryProvider.getIfAvailable() : null;
         this.reranker = rerankerProvider != null ? rerankerProvider.getIfAvailable() : null;
+        this.graphRagService = graphRagServiceProvider != null ? graphRagServiceProvider.getIfAvailable() : null;
+    }
+
+    public RagQueryService(
+            VectorStore ragVectorStore,
+            RagProperties properties,
+            RagSearchRepository searchRepository,
+            RagReranker reranker,
+            GraphRagService graphRagService) {
+        this.ragVectorStore = ragVectorStore;
+        this.properties = properties;
+        this.searchRepository = searchRepository;
+        this.reranker = reranker;
+        this.graphRagService = graphRagService;
     }
 
     public RagQueryService(
@@ -64,14 +81,11 @@ public class RagQueryService {
             RagProperties properties,
             RagSearchRepository searchRepository,
             RagReranker reranker) {
-        this.ragVectorStore = ragVectorStore;
-        this.properties = properties;
-        this.searchRepository = searchRepository;
-        this.reranker = reranker;
+        this(ragVectorStore, properties, searchRepository, reranker, (GraphRagService) null);
     }
 
     public RagQueryService(VectorStore ragVectorStore, RagProperties properties) {
-        this(ragVectorStore, properties, (RagSearchRepository) null, (RagReranker) null);
+        this(ragVectorStore, properties, (RagSearchRepository) null, (RagReranker) null, (GraphRagService) null);
     }
 
     /**
@@ -226,13 +240,31 @@ public class RagQueryService {
             }
         }
 
+        List<Document> baseResults;
         // 仅走单路向量检索逻辑（若关闭混合检索或未注入 RagSearchRepository）
         if (!properties.isHybridSearchEnabled() || searchRepository == null) {
-            return searchVectorOnly(query, userId, sourceType, targetTopK);
+            baseResults = searchVectorOnly(query, userId, sourceType, targetTopK);
+        } else {
+            // 双路召回 + RRF 融合逻辑
+            baseResults = searchHybridRrf(query, userId, sourceType, targetTopK);
         }
 
-        // 双路召回 + RRF 融合逻辑
-        return searchHybridRrf(query, userId, sourceType, targetTopK);
+        // 1. GraphRAG 知识图谱拓扑关系与多跳实体联合召回 (若开启 graph-rag-enabled 且 graphRagService 可用)
+        if (properties.isGraphRagEnabled() && graphRagService != null) {
+            try {
+                List<Document> graphDocs = graphRagService.retrieveGraphDocuments(query, userId, 2);
+                if (graphDocs != null && !graphDocs.isEmpty()) {
+                    log.info("GraphRAG 实体拓扑关联召回成功: query={} count={} userId={}", query, graphDocs.size(), userId);
+                    List<Document> combined = new ArrayList<>(graphDocs);
+                    combined.addAll(baseResults);
+                    return combined;
+                }
+            } catch (Exception e) {
+                log.warn("GraphRAG 检索探查异常（降级至常规检索）: query={} error={}", query, e.getMessage());
+            }
+        }
+
+        return baseResults;
     }
 
     private List<Document> searchVectorOnly(String query, String userId, String sourceType, int topK) {
