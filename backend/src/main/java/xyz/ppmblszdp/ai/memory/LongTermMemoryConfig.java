@@ -75,11 +75,13 @@ public class LongTermMemoryConfig {
     public LongTermMemoryProcessor longTermMemoryProcessor(
             ObjectProvider<VectorStore> vectorStore,
             ObjectProvider<ProviderRegistry> providerRegistry,
+            ObjectProvider<xyz.ppmblszdp.ai.service.MemoryForgetService> forgetServiceProvider,
             AiProviderProperties properties) {
         VectorStore vs = vectorStore.getIfAvailable();
         ProviderRegistry registry = providerRegistry.getIfAvailable();
-        log.info("长期记忆核心处理器 (LongTermMemoryProcessor) 装配完成");
-        return new LongTermMemoryProcessor(vs, registry, properties);
+        xyz.ppmblszdp.ai.service.MemoryForgetService forgetService = forgetServiceProvider.getIfAvailable();
+        log.info("长期记忆核心处理器 (LongTermMemoryProcessor) 装配完成 (包含冲突判定与衰减支持)");
+        return new LongTermMemoryProcessor(vs, registry, forgetService, properties);
     }
 
     @Bean

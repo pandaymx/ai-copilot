@@ -101,4 +101,47 @@ class LongTermMemoryProcessorTest {
         assertThat(added.get(0).getText()).isEqualTo("用户偏好：使用 PostgreSQL 数据库");
         assertThat(added.get(0).getMetadata()).containsKey("updated_at");
     }
+
+    @Test
+    void dedupAndUpsert_withConflictService_retainOld_shouldIgnoreNew() {
+        xyz.ppmblszdp.ai.service.MemoryForgetService forgetService =
+                mock(xyz.ppmblszdp.ai.service.MemoryForgetService.class);
+        processor = new LongTermMemoryProcessor(mockVectorStore, null, forgetService, properties);
+
+        Document existingDoc =
+                new Document("old-id", "用户偏好：主要使用 Java 21 进行后端开发", java.util.Map.of("userId", "user-123"));
+        when(mockVectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(existingDoc));
+        when(forgetService.evaluateConflict("用户偏好：主要使用 Java 21 进行后端开发", "用户偏好：主要使用 Java 21 进行后端开发"))
+                .thenReturn(
+                        new xyz.ppmblszdp.ai.service.MemoryForgetService.ConflictDecision("RETAIN_OLD", null, "保留旧记录"));
+
+        processor.dedupAndUpsert("user-123", "用户偏好：主要使用 Java 21 进行后端开发", "技术偏好", 0.9);
+
+        // 不应删除旧记录，也不应新增
+        verify(mockVectorStore, never()).delete(any(List.class));
+        verify(mockVectorStore, never()).add(any());
+    }
+
+    @Test
+    void dedupAndUpsert_withConflictService_merge_shouldInsertMerged() {
+        xyz.ppmblszdp.ai.service.MemoryForgetService forgetService =
+                mock(xyz.ppmblszdp.ai.service.MemoryForgetService.class);
+        processor = new LongTermMemoryProcessor(mockVectorStore, null, forgetService, properties);
+
+        Document existingDoc =
+                new Document("old-id", "用户偏好：主要使用 Java 21 进行后端开发", java.util.Map.of("userId", "user-123"));
+        when(mockVectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(existingDoc));
+        when(forgetService.evaluateConflict("用户新偏好：全面转为 Java 25 全栈开发", "用户偏好：主要使用 Java 21 进行后端开发"))
+                .thenReturn(new xyz.ppmblszdp.ai.service.MemoryForgetService.ConflictDecision(
+                        "MERGE", "用户偏好升级为 Java 25 全栈开发体系", "合并偏好"));
+
+        processor.dedupAndUpsert("user-123", "用户新偏好：全面转为 Java 25 全栈开发", "技术偏好", 0.95);
+
+        // 应删除旧记录，并添加合并后的新记录
+        verify(mockVectorStore).delete(List.of("old-id"));
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Document>> captor = ArgumentCaptor.forClass(List.class);
+        verify(mockVectorStore).add(captor.capture());
+        assertThat(captor.getValue().get(0).getText()).isEqualTo("用户偏好升级为 Java 25 全栈开发体系");
+    }
 }

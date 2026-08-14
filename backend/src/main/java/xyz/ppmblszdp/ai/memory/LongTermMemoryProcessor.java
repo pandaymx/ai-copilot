@@ -50,16 +50,26 @@ public class LongTermMemoryProcessor {
 
     private final VectorStore vectorStore;
     private final ProviderRegistry providerRegistry;
+    private final xyz.ppmblszdp.ai.service.MemoryForgetService forgetService;
     private final AiProviderProperties properties;
 
     /** 会话轮次计数器：conversationId -> atomic turn count */
     private final Map<String, AtomicInteger> sessionTurnCounters = new ConcurrentHashMap<>();
 
     public LongTermMemoryProcessor(
-            VectorStore vectorStore, ProviderRegistry providerRegistry, AiProviderProperties properties) {
+            VectorStore vectorStore,
+            ProviderRegistry providerRegistry,
+            xyz.ppmblszdp.ai.service.MemoryForgetService forgetService,
+            AiProviderProperties properties) {
         this.vectorStore = (vectorStore != null) ? new SafeVectorStore(vectorStore) : null;
         this.providerRegistry = providerRegistry;
+        this.forgetService = forgetService;
         this.properties = properties;
+    }
+
+    public LongTermMemoryProcessor(
+            VectorStore vectorStore, ProviderRegistry providerRegistry, AiProviderProperties properties) {
+        this(vectorStore, providerRegistry, null, properties);
     }
 
     /**
@@ -225,12 +235,37 @@ public class LongTermMemoryProcessor {
                 List<Document> similarDocs = vectorStore.similaritySearch(request);
                 if (!similarDocs.isEmpty()) {
                     Document existing = similarDocs.get(0);
-                    log.info(
-                            "向量去重命中（相似度 >= {}）-> 删除老记录以执行 Upsert 时间戳刷新: id={}, content='{}'",
-                            threshold,
-                            existing.getId(),
-                            content);
-                    vectorStore.delete(List.of(existing.getId()));
+                    if (forgetService != null) {
+                        xyz.ppmblszdp.ai.service.MemoryForgetService.ConflictDecision decision =
+                                forgetService.evaluateConflict(content, existing.getText());
+                        if ("RETAIN_OLD".equalsIgnoreCase(decision.getAction())) {
+                            log.info(
+                                    "冲突判定：保留旧记忆，忽略新记忆: id={}, old='{}', new='{}'",
+                                    existing.getId(),
+                                    existing.getText(),
+                                    content);
+                            return;
+                        } else if ("MERGE".equalsIgnoreCase(decision.getAction())
+                                && decision.getMergedContent() != null
+                                && !decision.getMergedContent().isBlank()) {
+                            content = decision.getMergedContent();
+                            log.info("冲突判定：新旧记忆合并为综合陈述句: merged='{}'", content);
+                            vectorStore.delete(List.of(existing.getId()));
+                        } else if ("NO_CONFLICT".equalsIgnoreCase(decision.getAction())) {
+                            log.debug("冲突判定：平行事实不冲突，保留新旧两条记录");
+                        } else {
+                            // RETAIN_NEW or other
+                            log.info("冲突判定：新记忆覆盖旧记忆: id={}, content='{}'", existing.getId(), content);
+                            vectorStore.delete(List.of(existing.getId()));
+                        }
+                    } else {
+                        log.info(
+                                "向量去重命中（相似度 >= {}）-> 删除老记录以执行 Upsert 时间戳刷新: id={}, content='{}'",
+                                threshold,
+                                existing.getId(),
+                                content);
+                        vectorStore.delete(List.of(existing.getId()));
+                    }
                 }
             }
 
