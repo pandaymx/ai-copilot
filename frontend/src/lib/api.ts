@@ -992,3 +992,218 @@ export async function ragGraphDeleteDocumentApi(
     return false;
   }
 }
+
+// ---------------------------------------------------------------------------
+// 向量生命周期管理（Embedding Lifecycle Management）接口
+// ---------------------------------------------------------------------------
+
+export interface HealthIssue {
+  documentId: string;
+  fileName: string;
+  issueType: string;
+  description: string;
+  severity: "INFO" | "WARNING" | "CRITICAL" | string;
+}
+
+export interface EmbeddingHealthDto {
+  totalVectors: number;
+  healthyVectors: number;
+  emptyOrZeroVectors: number;
+  dimensionMismatchCount: number;
+  modelMismatchCount: number;
+  staleVectorsCount: number;
+  activeModelName: string;
+  activeModelDimensions: number;
+  healthScore: number;
+  status: "HEALTHY" | "WARNING" | "CRITICAL" | string;
+  dimensionDistribution: Record<string, number>;
+  issues: HealthIssue[];
+}
+
+export interface EmbeddingReindexTaskDto {
+  taskId: string;
+  total: number;
+  processed: number;
+  successCount: number;
+  failedCount: number;
+  lastProcessedId?: string;
+  targetModel: string;
+  targetDimension: number;
+  isRunning: boolean;
+  isPaused: boolean;
+  startedAt: number;
+  finishedAt?: number;
+  errorSummary: string[];
+}
+
+export interface DocumentSimilarityClusterDto {
+  clusterId: string;
+  similarityScore: number;
+  docAId: string;
+  docAName: string;
+  docAExcerpt: string;
+  docBId: string;
+  docBName: string;
+  docBExcerpt: string;
+  conflictType:
+    | "INTRA_DOC_OVERLAP"
+    | "CROSS_DOC_DUPLICATE"
+    | "SEMANTIC_CONFLICT"
+    | string;
+  suggestedAction:
+    | "KEEP_BOTH"
+    | "MERGE"
+    | "DELETE_OLDER"
+    | "DELETE_DOC_B"
+    | string;
+}
+
+export interface StaleVectorDto {
+  id: string;
+  fileName: string;
+  sourceType: string;
+  content: string;
+  createdAt: number;
+  hitCount: number;
+  lastHitTime?: number;
+  isArchived: boolean;
+}
+
+export async function embeddingHealthApi(
+  userId?: string,
+): Promise<EmbeddingHealthDto | null> {
+  try {
+    const params = new URLSearchParams();
+    if (userId) params.append("userId", userId);
+    const res = await fetch(`/api/rag/embeddings/health?${params.toString()}`);
+    if (!res.ok) return null;
+    return (await res.json()) as EmbeddingHealthDto;
+  } catch {
+    return null;
+  }
+}
+
+export async function embeddingReembedStartApi(
+  force?: boolean,
+  userId?: string,
+): Promise<EmbeddingReindexTaskDto | null> {
+  try {
+    const params = new URLSearchParams();
+    if (force) params.append("force", "true");
+    if (userId) params.append("userId", userId);
+    const res = await fetch(
+      `/api/rag/embeddings/reembed/start?${params.toString()}`,
+      {
+        method: "POST",
+      },
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as EmbeddingReindexTaskDto;
+  } catch {
+    return null;
+  }
+}
+
+export async function embeddingReembedStatusApi(): Promise<EmbeddingReindexTaskDto | null> {
+  try {
+    const res = await fetch("/api/rag/embeddings/reembed/status");
+    if (!res.ok) return null;
+    return (await res.json()) as EmbeddingReindexTaskDto;
+  } catch {
+    return null;
+  }
+}
+
+export async function embeddingReembedPauseApi(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/rag/embeddings/reembed/pause", {
+      method: "POST",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function embeddingReembedResumeApi(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/rag/embeddings/reembed/resume", {
+      method: "POST",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function embeddingSimilarityClustersApi(
+  minSimilarity?: number,
+  limit?: number,
+  userId?: string,
+): Promise<DocumentSimilarityClusterDto[] | null> {
+  try {
+    const params = new URLSearchParams();
+    if (minSimilarity) params.append("minSimilarity", String(minSimilarity));
+    if (limit) params.append("limit", String(limit));
+    if (userId) params.append("userId", userId);
+    const res = await fetch(
+      `/api/rag/embeddings/similarity-clusters?${params.toString()}`,
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as DocumentSimilarityClusterDto[];
+  } catch {
+    return null;
+  }
+}
+
+export async function embeddingStaleVectorsApi(
+  retentionDays?: number,
+  limit?: number,
+  userId?: string,
+): Promise<StaleVectorDto[] | null> {
+  try {
+    const params = new URLSearchParams();
+    if (retentionDays) params.append("retentionDays", String(retentionDays));
+    if (limit) params.append("limit", String(limit));
+    if (userId) params.append("userId", userId);
+    const res = await fetch(`/api/rag/embeddings/stale?${params.toString()}`);
+    if (!res.ok) return null;
+    return (await res.json()) as StaleVectorDto[];
+  } catch {
+    return null;
+  }
+}
+
+export async function embeddingArchiveStaleApi(
+  docIds: string[],
+  userId?: string,
+): Promise<{ success: boolean; archivedCount: number } | null> {
+  try {
+    const res = await fetch("/api/rag/embeddings/stale/archive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ docIds, userId }),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as { success: boolean; archivedCount: number };
+  } catch {
+    return null;
+  }
+}
+
+export async function embeddingPurgeStaleApi(
+  docIds: string[],
+  userId?: string,
+): Promise<{ success: boolean; purgedCount: number } | null> {
+  try {
+    const res = await fetch("/api/rag/embeddings/stale/purge", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ docIds, userId }),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as { success: boolean; purgedCount: number };
+  } catch {
+    return null;
+  }
+}

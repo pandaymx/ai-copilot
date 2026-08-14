@@ -3,6 +3,7 @@
 import { ArrowLeft, CheckCircle2, Loader2, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { EmbeddingManagementView } from "@/components/knowledge/embedding-management-view";
 import { KnowledgeGraphViewer } from "@/components/knowledge/knowledge-graph-viewer";
 import {
   DeleteDialog,
@@ -68,7 +69,6 @@ export default function KnowledgePage() {
     setLoadingStatus(false);
   }, []);
 
-  // 初始加载 + 过滤条件变化时刷新列表（fetchDocuments 通过依赖数组驱动，避免把 setter 关进循环）
   useEffect(() => {
     void fetchDocuments();
   }, [fetchDocuments]);
@@ -83,40 +83,34 @@ export default function KnowledgePage() {
     };
   }, []);
 
-  const handleUploadSuccess = useCallback(
-    (result: import("@/lib/api").RagIngestResult) => {
-      if (result.success) {
-        showToast(
-          "success",
-          `入库完成：新增 ${result.ingested} 条，跳过重复 ${result.skipped} 条`,
-        );
-      } else {
-        showToast("error", `入库失败：${result.error ?? "未知错误"}`);
-      }
-      void fetchDocuments();
-    },
-    [fetchDocuments, showToast],
-  );
+  const handleUploadSuccess = () => {
+    showToast("success", "文档入库成功");
+    void fetchDocuments();
+    void fetchStatus();
+  };
 
-  const handleDelete = useCallback(
-    async (source: string, name: string) => {
-      setBusy(true);
-      const res = await ragDeleteApi(source);
-      setBusy(false);
-      setDeleteTarget(null);
-      if (res?.success) {
-        showToast("success", `已删除：${name}`);
-      } else {
-        showToast("error", `删除失败：${res?.error ?? "未知错误"}`);
-      }
-      void fetchDocuments();
-    },
-    [fetchDocuments, showToast],
-  );
+  const handleDelete = async (source: string, fileName: string) => {
+    setBusy(true);
+    const res = await ragDeleteApi(source);
+    setBusy(false);
+    setDeleteTarget(null);
+    if (res?.success) {
+      showToast("success", `已删除：${fileName}`);
+    } else {
+      showToast("error", `删除失败：${res?.error ?? "未知错误"}`);
+    }
+    void fetchDocuments();
+    void fetchStatus();
+  };
 
   const handleReingest = useCallback(
     async (doc: RagDocumentMeta) => {
-      let payload: Parameters<typeof ragReingestApi>[0] | null = null;
+      let payload: {
+        sourceType: "URL" | "TEXT";
+        targetUrl?: string;
+        rawText?: string;
+        fileName: string;
+      } | null = null;
       if (doc.sourceType === "URL") {
         payload = {
           sourceType: "URL",
@@ -152,11 +146,12 @@ export default function KnowledgePage() {
     [fetchDocuments, showToast],
   );
 
-  const [activeTab, setActiveTab] = useState<"docs" | "graph">("docs");
+  const [activeTab, setActiveTab] = useState<"docs" | "graph" | "embedding">(
+    "docs",
+  );
 
   return (
     <div className="relative min-h-dvh bg-ambient-mesh bg-zinc-50 dark:bg-zinc-950">
-      {/* 顶部 Header */}
       <header className="sticky top-0 z-30 border-b border-zinc-200/60 bg-white/70 backdrop-blur-xl dark:border-zinc-800/60 dark:bg-zinc-950/70">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
@@ -168,7 +163,6 @@ export default function KnowledgePage() {
               知识库与图谱管理
             </h1>
 
-            {/* Tab 切换 */}
             <div className="flex items-center rounded-xl border border-zinc-200/80 bg-zinc-100/80 p-0.5 text-xs dark:border-zinc-800 dark:bg-zinc-900/80 ml-4">
               <button
                 type="button"
@@ -194,6 +188,18 @@ export default function KnowledgePage() {
               >
                 <span>🕸️ 知识图谱 (GraphRAG)</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("embedding")}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition-all",
+                  activeTab === "embedding"
+                    ? "bg-purple-600 text-white shadow-xs"
+                    : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100",
+                )}
+              >
+                <span>🧬 向量生命周期</span>
+              </button>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -216,7 +222,6 @@ export default function KnowledgePage() {
         {activeTab === "docs" ? (
           <>
             <KnowledgeStatus status={status} loading={loadingStatus} />
-
             <div className="grid gap-5 lg:grid-cols-5">
               <div className="lg:col-span-2">
                 <KnowledgeUpload onSuccess={handleUploadSuccess} />
@@ -236,9 +241,13 @@ export default function KnowledgePage() {
               </div>
             </div>
           </>
-        ) : (
+        ) : activeTab === "graph" ? (
           <div className="space-y-4">
             <KnowledgeGraphViewer />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <EmbeddingManagementView />
           </div>
         )}
       </main>
