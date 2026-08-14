@@ -1218,5 +1218,180 @@ export function ToolResultRenderer({
     return <WebSearchRenderer argsJson={argsJson} resultJson={resultJson} />;
   }
 
+  if (name.startsWith("git_") || name.includes("git")) {
+    return (
+      <GitToolRenderer
+        toolName={toolName}
+        argsJson={argsJson}
+        resultJson={resultJson}
+      />
+    );
+  }
+
+  if (
+    name.startsWith("code_") ||
+    name.includes("code_search") ||
+    name.includes("code_file_tree") ||
+    name.includes("code_find")
+  ) {
+    return (
+      <CodeSearchToolRenderer
+        toolName={toolName}
+        argsJson={argsJson}
+        resultJson={resultJson}
+      />
+    );
+  }
+
   return <DefaultToolRenderer resultJson={resultJson} />;
+}
+
+function extractOutput(resultJson?: string): string {
+  if (!resultJson) return "";
+  try {
+    const obj = JSON.parse(resultJson);
+    if (typeof obj?.output === "string") return obj.output;
+    return JSON.stringify(obj, null, 2);
+  } catch {
+    return resultJson;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GitTool 专属渲染器
+// ---------------------------------------------------------------------------
+
+function GitToolRenderer({
+  toolName,
+  argsJson,
+  resultJson,
+}: {
+  toolName: string;
+  argsJson: string;
+  resultJson?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const output = extractOutput(resultJson);
+  let repoDetail = "";
+  try {
+    const parsed = JSON.parse(argsJson);
+    repoDetail = parsed.repoName || parsed.repoUrl || "";
+  } catch {
+    repoDetail = "";
+  }
+
+  const handleCopy = () => {
+    if (!output) return;
+    navigator.clipboard.writeText(output);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className="space-y-2 rounded-xl border border-zinc-200/80 bg-zinc-900/95 p-3.5 text-xs text-zinc-100 dark:border-zinc-800 shadow-sm">
+      <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+        <div className="flex items-center gap-2">
+          <span className="flex size-5 items-center justify-center rounded-md bg-orange-500/20 text-orange-400 font-mono text-[10px] font-bold">
+            GIT
+          </span>
+          <span className="font-mono text-zinc-300 text-[11px]">
+            {toolName}
+          </span>
+          {repoDetail && (
+            <span className="text-[10px] text-zinc-400 bg-zinc-800/80 px-1.5 py-0.5 rounded font-mono truncate max-w-[150px]">
+              {repoDetail}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="flex items-center gap-1 text-[10px] text-zinc-400 hover:text-zinc-200 transition-colors"
+        >
+          {copied ? (
+            <Check className="size-3 text-emerald-400" />
+          ) : (
+            <Copy className="size-3" />
+          )}
+          <span>{copied ? "已复制" : "复制"}</span>
+        </button>
+      </div>
+
+      <pre className="max-h-72 overflow-x-auto overflow-y-auto font-mono text-[11px] leading-relaxed text-zinc-200 whitespace-pre-wrap">
+        {output || "（无输出内容）"}
+      </pre>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CodeSearchTool 专属渲染器
+// ---------------------------------------------------------------------------
+
+function CodeSearchToolRenderer({
+  toolName,
+  argsJson,
+  resultJson,
+}: {
+  toolName: string;
+  argsJson: string;
+  resultJson?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const output = extractOutput(resultJson);
+  let searchDetail = "";
+  try {
+    const parsed = JSON.parse(argsJson);
+    searchDetail =
+      parsed.query ||
+      parsed.pattern ||
+      parsed.symbolName ||
+      parsed.repoName ||
+      "";
+  } catch {
+    searchDetail = "";
+  }
+
+  const handleCopy = () => {
+    if (!output) return;
+    navigator.clipboard.writeText(output);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className="space-y-2 rounded-xl border border-zinc-200/80 bg-zinc-900/95 p-3.5 text-xs text-zinc-100 dark:border-zinc-800 shadow-sm">
+      <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+        <div className="flex items-center gap-2">
+          <span className="flex size-5 items-center justify-center rounded-md bg-blue-500/20 text-blue-400 font-mono text-[10px] font-bold">
+            CODE
+          </span>
+          <span className="font-mono text-zinc-300 text-[11px]">
+            {toolName}
+          </span>
+          {searchDetail && (
+            <span className="text-[10px] text-zinc-400 bg-zinc-800/80 px-1.5 py-0.5 rounded font-mono truncate max-w-[150px]">
+              {searchDetail}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="flex items-center gap-1 text-[10px] text-zinc-400 hover:text-zinc-200 transition-colors"
+        >
+          {copied ? (
+            <Check className="size-3 text-emerald-400" />
+          ) : (
+            <Copy className="size-3" />
+          )}
+          <span>{copied ? "已复制" : "复制"}</span>
+        </button>
+      </div>
+
+      <pre className="max-h-80 overflow-x-auto overflow-y-auto font-mono text-[11px] leading-relaxed text-zinc-200 whitespace-pre-wrap">
+        {output || "（无搜索结果）"}
+      </pre>
+    </div>
+  );
 }

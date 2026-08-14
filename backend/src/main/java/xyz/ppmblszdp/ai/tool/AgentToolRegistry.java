@@ -29,10 +29,12 @@ public class AgentToolRegistry {
             HttpRequestTool httpRequestTool,
             FileTool fileTool,
             KnowledgeQueryTool knowledgeQueryTool,
+            GitTool gitTool,
+            CodeSearchTool codeSearchTool,
             ObjectProvider<SubAgentTool> subAgentToolProvider,
             AiProviderProperties properties) {
 
-        // ToolCallbacks.from 自动扫描对象上所有 @Tool 注解方法，FileTool 含 fileRead/fileWrite 两个
+        // ToolCallbacks.from 自动扫描对象上所有 @Tool 注解方法
         List<ToolCallback> all = new ArrayList<>();
         all.addAll(Arrays.asList(ToolCallbacks.from(calculatorTool)));
         if (properties.resolveAgent().resolveCodeSandbox().isEnabled()) {
@@ -41,6 +43,8 @@ public class AgentToolRegistry {
         all.addAll(Arrays.asList(ToolCallbacks.from(httpRequestTool)));
         all.addAll(Arrays.asList(ToolCallbacks.from(fileTool)));
         all.addAll(Arrays.asList(ToolCallbacks.from(knowledgeQueryTool)));
+        all.addAll(Arrays.asList(ToolCallbacks.from(gitTool)));
+        all.addAll(Arrays.asList(ToolCallbacks.from(codeSearchTool)));
 
         // 按 orchestratorEnabled 开关条件性注入子代理工具（分析/代码/摘要三个 @Tool）
         if (properties.resolveAgent().isOrchestratorEnabled()) {
