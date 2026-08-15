@@ -32,6 +32,7 @@ public class AgentToolRegistry {
             GitTool gitTool,
             CodeSearchTool codeSearchTool,
             CodeReviewTool codeReviewTool,
+            TranslationTool translationTool,
             ObjectProvider<SubAgentTool> subAgentToolProvider,
             AiProviderProperties properties) {
 
@@ -46,6 +47,7 @@ public class AgentToolRegistry {
         all.addAll(Arrays.asList(ToolCallbacks.from(knowledgeQueryTool)));
         all.addAll(Arrays.asList(ToolCallbacks.from(gitTool)));
         all.addAll(Arrays.asList(ToolCallbacks.from(codeSearchTool)));
+        all.addAll(Arrays.asList(ToolCallbacks.from(translationTool)));
         if (properties.resolveAgent().isCodeReviewEnabled()) {
             all.addAll(Arrays.asList(ToolCallbacks.from(codeReviewTool)));
         }

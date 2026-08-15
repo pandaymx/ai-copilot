@@ -1350,3 +1350,64 @@ export async function embeddingPurgeStaleApi(
     return null;
   }
 }
+
+// ====================== 多语言翻译引擎 API ======================
+
+export interface TranslateRequest {
+  text: string;
+  targetLang: string;
+  sourceLang?: string;
+  glossary?: Record<string, string>;
+  provider?: string;
+  model?: string;
+  preserveFormatting?: boolean;
+}
+
+export interface TranslateResponse {
+  originalText: string;
+  sourceLang: string;
+  targetLang: string;
+  detectedLang: string;
+  translatedText: string;
+  glossaryAppliedCount: number;
+  latencyMs: number;
+}
+
+export interface SupportedLanguage {
+  code: string;
+  name: string;
+  nativeName: string;
+}
+
+/** 执行多语言即时翻译。 */
+export async function translateApi(
+  request: TranslateRequest,
+  signal?: AbortSignal,
+): Promise<TranslateResponse | null> {
+  try {
+    const res = await fetch("/api/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as TranslateResponse;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}
+
+/** 获取支持的标准语种列表。 */
+export async function fetchSupportedLanguagesApi(
+  signal?: AbortSignal,
+): Promise<SupportedLanguage[]> {
+  try {
+    const res = await fetch("/api/translate/languages", { signal });
+    if (!res.ok) return [];
+    return (await res.json()) as SupportedLanguage[];
+  } catch {
+    return [];
+  }
+}

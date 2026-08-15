@@ -4,8 +4,10 @@ import {
   BookOpen,
   Bot,
   Check,
+  ChevronDown,
   Copy,
   FileText,
+  Languages,
   Loader2,
   Maximize2,
   RotateCcw,
@@ -16,6 +18,7 @@ import {
   ThumbsUp,
   User,
   Volume2,
+  X,
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { ImageArtifactViewer } from "@/components/artifacts/image-artifact-viewer";
@@ -29,7 +32,12 @@ import {
   type UsageInfo,
   useStreamData,
 } from "@/hooks/useSpringAiStream";
-import type { CompressionMetadata, DocumentCitationItem } from "@/lib/api";
+import {
+  type CompressionMetadata,
+  type DocumentCitationItem,
+  type TranslateResponse,
+  translateApi,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { tts } from "@/lib/voice";
 import { CompressionMarker } from "./compression-marker";
@@ -81,6 +89,22 @@ interface MessageBubbleProps {
   onCitationClick?: (citation: DocumentCitationItem) => void;
 }
 
+const SUPPORTED_LANGUAGES = [
+  { code: "zh-CN", name: "简体中文" },
+  { code: "en", name: "English" },
+  { code: "ja", name: "日本語" },
+  { code: "ko", name: "한국어" },
+  { code: "fr", name: "Français" },
+  { code: "de", name: "Deutsch" },
+  { code: "es", name: "Español" },
+  { code: "ru", name: "Русский" },
+];
+
+function getLanguageLabel(code: string): string {
+  const target = SUPPORTED_LANGUAGES.find((l) => l.code === code);
+  return target ? target.name : code;
+}
+
 function MessageBubbleBase({
   message,
   streaming,
@@ -96,6 +120,91 @@ function MessageBubbleBase({
   const [speaking, setSpeaking] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const audioUrlRef = useRef<string | null>(null);
+
+  // 翻译功能状态
+  const [translation, setTranslation] = useState<TranslateResponse | null>(
+    null,
+  );
+  const [translating, setTranslating] = useState(false);
+  const [targetLang, setTargetLang] = useState("zh-CN");
+  const [showTranslation, setShowTranslation] = useState(false);
+  const [showLangMenu, setShowLangMenu] = useState(false);
+  const [copiedTranslation, setCopiedTranslation] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const langMenuRef = useRef<HTMLDivElement>(null);
+
+  // 点击外部关闭语言菜单
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        langMenuRef.current &&
+        !langMenuRef.current.contains(e.target as Node)
+      ) {
+        setShowLangMenu(false);
+      }
+    }
+    if (showLangMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showLangMenu]);
+
+  // 组件卸载时终止未完成的翻译请求
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  const handleTranslate = async (langToUse?: string) => {
+    const lang = langToUse || targetLang;
+    if (!message.content.trim()) return;
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setTranslating(true);
+    setShowTranslation(true);
+    setShowLangMenu(false);
+    setTargetLang(lang);
+
+    try {
+      const res = await translateApi(
+        {
+          text: message.content,
+          targetLang: lang,
+          sourceLang: "auto",
+          preserveFormatting: true,
+        },
+        controller.signal,
+      );
+      if (res) {
+        setTranslation(res);
+      }
+    } catch (err) {
+      console.warn("翻译请求异常:", err);
+    } finally {
+      setTranslating(false);
+    }
+  };
+
+  const handleCopyTranslation = async () => {
+    if (!translation?.translatedText) return;
+    try {
+      await navigator.clipboard.writeText(translation.translatedText);
+      setCopiedTranslation(true);
+      setTimeout(() => setCopiedTranslation(false), 1800);
+    } catch {
+      // 忽略复制失败
+    }
+  };
 
   const handleSpeak = async () => {
     if (!message.content.trim() || speaking) return;
@@ -360,6 +469,134 @@ function MessageBubbleBase({
                       }}
                     />
                   </ChatMessageErrorBoundary>
+
+                  {/* 多语言翻译结果卡片 */}
+                  {showTranslation && (
+                    <div className="mt-2.5 w-full overflow-hidden rounded-2xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50/70 via-white/80 to-purple-50/50 p-3 shadow-sm backdrop-blur-md dark:border-indigo-900/60 dark:from-indigo-950/40 dark:via-zinc-900/80 dark:to-purple-950/30 animate-in fade-in zoom-in-95 duration-200">
+                      {/* 顶部控制与语种状态条 */}
+                      <div className="flex items-center justify-between border-b border-indigo-100/80 pb-2 dark:border-indigo-900/50">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <div className="flex size-5 items-center justify-center rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                            <Languages className="size-3.5" />
+                          </div>
+                          <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200">
+                            多语言译文
+                          </span>
+
+                          {translation && (
+                            <span className="rounded-md bg-indigo-100/80 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300">
+                              {translation.detectedLang ||
+                                translation.sourceLang}{" "}
+                              → {translation.targetLang}
+                            </span>
+                          )}
+
+                          {translation &&
+                            translation.glossaryAppliedCount > 0 && (
+                              <span className="rounded-md bg-emerald-100/80 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                术语命中 {translation.glossaryAppliedCount}
+                              </span>
+                            )}
+                        </div>
+
+                        {/* 右侧操作按钮 */}
+                        <div className="flex items-center gap-1">
+                          {/* 目标语种切换器 */}
+                          <div className="relative" ref={langMenuRef}>
+                            <button
+                              type="button"
+                              onClick={() => setShowLangMenu((prev) => !prev)}
+                              className="flex items-center gap-1 rounded-lg border border-zinc-200/80 bg-white/90 px-2 py-0.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 transition-colors shadow-2xs cursor-pointer"
+                            >
+                              <span>{getLanguageLabel(targetLang)}</span>
+                              <ChevronDown className="size-3 text-zinc-400" />
+                            </button>
+
+                            {showLangMenu && (
+                              <div className="absolute right-0 top-full mt-1.5 z-30 w-36 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900 animate-in fade-in-50 zoom-in-95 duration-100">
+                                {SUPPORTED_LANGUAGES.map((l) => (
+                                  <button
+                                    key={l.code}
+                                    type="button"
+                                    onClick={() => handleTranslate(l.code)}
+                                    className={cn(
+                                      "flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs text-left transition-colors cursor-pointer",
+                                      targetLang === l.code
+                                        ? "bg-indigo-50 font-semibold text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400"
+                                        : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800",
+                                    )}
+                                  >
+                                    <span>{l.name}</span>
+                                    <span className="text-[10px] text-zinc-400 font-mono">
+                                      {l.code}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* 复制译文 */}
+                          {translation && (
+                            <button
+                              type="button"
+                              onClick={handleCopyTranslation}
+                              className="rounded-lg p-1 text-zinc-400 hover:bg-white/80 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200 transition-colors cursor-pointer"
+                              title="复制译文"
+                            >
+                              {copiedTranslation ? (
+                                <Check className="size-3.5 text-emerald-500" />
+                              ) : (
+                                <Copy className="size-3.5" />
+                              )}
+                            </button>
+                          )}
+
+                          {/* 重新翻译 */}
+                          <button
+                            type="button"
+                            onClick={() => handleTranslate()}
+                            disabled={translating}
+                            className="rounded-lg p-1 text-zinc-400 hover:bg-white/80 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200 transition-colors cursor-pointer"
+                            title="重新翻译"
+                          >
+                            <RotateCcw
+                              className={cn(
+                                "size-3.5",
+                                translating && "animate-spin text-indigo-500",
+                              )}
+                            />
+                          </button>
+
+                          {/* 关闭/折叠译文 */}
+                          <button
+                            type="button"
+                            onClick={() => setShowTranslation(false)}
+                            className="rounded-lg p-1 text-zinc-400 hover:bg-white/80 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200 transition-colors cursor-pointer"
+                            title="收起译文"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 译文正文内容区 */}
+                      <div className="mt-2.5 text-sm leading-relaxed text-zinc-800 dark:text-zinc-200">
+                        {translating ? (
+                          <div className="flex items-center gap-2 py-3 text-xs text-indigo-600 dark:text-indigo-400 font-medium">
+                            <Loader2 className="size-4 animate-spin text-indigo-500" />
+                            <span>正在精准翻译并保留代码/公式结构...</span>
+                          </div>
+                        ) : translation ? (
+                          <ChatMessageErrorBoundary>
+                            <Markdown content={translation.translatedText} />
+                          </ChatMessageErrorBoundary>
+                        ) : (
+                          <p className="text-xs text-zinc-400">暂无译文</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : streaming ? (
                 <BreathingCursor />
@@ -428,6 +665,32 @@ function MessageBubbleBase({
                 <Loader2 className="size-3.5 animate-spin" />
               ) : (
                 <Volume2 className="size-3.5" />
+              )}
+            </button>
+
+            {/* 多语言翻译按钮 */}
+            <button
+              type="button"
+              onClick={() => {
+                if (showTranslation && translation) {
+                  setShowTranslation(false);
+                } else {
+                  handleTranslate();
+                }
+              }}
+              disabled={translating || !message.content.trim()}
+              className={cn(
+                "flex size-7 items-center justify-center rounded-lg text-zinc-400 transition-colors cursor-pointer",
+                showTranslation
+                  ? "text-indigo-600 bg-indigo-50 dark:bg-indigo-950/50 dark:text-indigo-400"
+                  : "hover:bg-zinc-100 hover:text-indigo-600 dark:hover:bg-zinc-800 dark:hover:text-indigo-400",
+              )}
+              title={showTranslation ? "收起译文" : "多语言即时翻译"}
+            >
+              {translating ? (
+                <Loader2 className="size-3.5 animate-spin text-indigo-500" />
+              ) : (
+                <Languages className="size-3.5" />
               )}
             </button>
 
