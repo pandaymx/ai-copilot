@@ -14,6 +14,7 @@ import {
   Sparkles,
   Square,
   UploadCloud,
+  Users,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -38,6 +39,7 @@ import {
   ModelSelector,
   type SelectedModel,
 } from "@/components/chat/model-selector";
+import { MultiAgentModal } from "@/components/chat/multi-agent-modal";
 import { SearchDialog } from "@/components/chat/search-dialog";
 import { Sidebar } from "@/components/chat/sidebar";
 import { TokenBudgetBar } from "@/components/chat/token-budget-bar";
@@ -213,6 +215,10 @@ export default function Home() {
   // 多模型并排对比竞技场弹窗状态
   const [compareModalOpen, setCompareModalOpen] = useState(false);
   const [comparePrompt, setComparePrompt] = useState("");
+
+  // 多 Agent 协同研讨工作台弹窗状态
+  const [multiAgentModalOpen, setMultiAgentModalOpen] = useState(false);
+  const [multiAgentGoal, setMultiAgentGoal] = useState("");
 
   // 将流式状态桥接进会话持久化 Hook：流式传输期间跳过 localStorage 全量写入，
   // 配合 useChatSession 内部的 500ms 防抖，避免每帧 SSE 更新阻塞主线程。
@@ -403,6 +409,24 @@ export default function Home() {
             >
               <GitFork className="size-3.5 text-indigo-500" />
               <span className="hidden sm:inline">继承上下文</span>
+            </Button>
+
+            {/* 多 Agent 协同研讨与 DAG 任务调度入口 */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const lastUserMsg = [...messages]
+                  .reverse()
+                  .find((m) => m.role === "user");
+                setMultiAgentGoal(lastUserMsg?.content || input || "");
+                setMultiAgentModalOpen(true);
+              }}
+              className="h-8 gap-1.5 rounded-lg px-2 text-xs text-zinc-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 cursor-pointer"
+              title="开启多 Agent 协同研讨与 DAG 任务调度工作台"
+            >
+              <Users className="size-3.5 text-indigo-500" />
+              <span className="hidden sm:inline">多 Agent 协同</span>
             </Button>
 
             {/* 历史导出按钮 */}
@@ -892,6 +916,23 @@ export default function Home() {
           };
           setMessages((prev) => [...prev, newAssistantMsg]);
           toast.success(`已采纳来自 ${provider}/${adoptedModel} 的回答！`);
+        }}
+      />
+
+      {/* 多 Agent 协同研讨与 DAG 任务调度工作台 */}
+      <MultiAgentModal
+        open={multiAgentModalOpen}
+        onClose={() => setMultiAgentModalOpen(false)}
+        initialGoal={multiAgentGoal}
+        conversationId={activeId || undefined}
+        onAdopt={(synthesisResult) => {
+          const newAssistantMsg: ChatMessage = {
+            id: `msg-${crypto.randomUUID()}`,
+            role: "assistant",
+            content: synthesisResult,
+          };
+          setMessages((prev) => [...prev, newAssistantMsg]);
+          toast.success("已采纳多 Agent 综合汇总交付报告！");
         }}
       />
     </div>

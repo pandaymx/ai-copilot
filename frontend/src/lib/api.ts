@@ -1630,3 +1630,131 @@ export async function compareModelsApi(
     return null;
   }
 }
+
+// ==========================================
+// 8. 多 Agent 协作与编排相关类型与 API
+// ==========================================
+
+export interface SubTaskNode {
+  id: string;
+  role: "research" | "code" | "analysis" | "review" | "synthesis" | string;
+  title: string;
+  description: string;
+  dependencies: string[];
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "SKIPPED";
+  output?: string;
+  errorMessage?: string;
+  startedAtMs?: number;
+  completedAtMs?: number;
+  durationMs?: number;
+}
+
+export interface ConflictItem {
+  conflictId: string;
+  topic: string;
+  agentA: string;
+  agentB: string;
+  description: string;
+  resolutionStatus: "UNRESOLVED" | "RESOLVED_BY_USER" | "RESOLVED_BY_SYNTHESIS";
+  userDecision?: string;
+}
+
+export interface MultiAgentPlan {
+  planId: string;
+  goal: string;
+  title: string;
+  status: "PLANNING" | "EXECUTING" | "WAITING_USER" | "COMPLETED" | "FAILED";
+  nodes: SubTaskNode[];
+  conflicts: ConflictItem[];
+  synthesisResult?: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+}
+
+export interface MultiAgentEvent {
+  eventType:
+    | "plan_created"
+    | "agent_started"
+    | "agent_progress"
+    | "agent_completed"
+    | "agent_failed"
+    | "conflict_detected"
+    | "conflict_waiting_user"
+    | "synthesis_started"
+    | "synthesis_chunk"
+    | "workflow_completed";
+  planId: string;
+  nodeId?: string;
+  role?: string;
+  title?: string;
+  content?: string;
+  plan?: MultiAgentPlan;
+  conflict?: ConflictItem;
+  durationMs?: number;
+}
+
+export interface MultiAgentRequest {
+  goal: string;
+  provider?: string;
+  model?: string;
+  roles?: string[];
+  maxParallelAgents?: number;
+  interactiveConflictResolution?: boolean;
+  conversationId?: string;
+}
+
+export interface MultiAgentResponse {
+  planId: string;
+  status: string;
+  plan: MultiAgentPlan;
+  synthesisResult: string;
+  conflicts: ConflictItem[];
+  totalDurationMs: number;
+}
+
+export interface ConflictResolveRequest {
+  planId: string;
+  conflictId: string;
+  decision: string;
+  notes?: string;
+}
+
+/** 非流式多 Agent 协作调度 */
+export async function orchestrateMultiAgentApi(
+  request: MultiAgentRequest,
+  signal?: AbortSignal,
+): Promise<MultiAgentResponse | null> {
+  try {
+    const res = await fetch("/api/agents/orchestrate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as MultiAgentResponse;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}
+
+/** 用户提交冲突裁决并恢复 Synthesis 汇总 */
+export async function resolveConflictApi(
+  request: ConflictResolveRequest,
+  signal?: AbortSignal,
+): Promise<MultiAgentPlan | null> {
+  try {
+    const res = await fetch("/api/agents/resolve-conflict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as MultiAgentPlan;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}
