@@ -94,9 +94,9 @@ describe("ReasoningView Component & parseThinkingToSteps Tests", () => {
 
     expect(container.textContent).toContain("分析逻辑");
 
-    const headerBtn = container.querySelector("button")!;
+    const headerBtn = container.querySelector<HTMLButtonElement>("button");
     act(() => {
-      headerBtn.click();
+      headerBtn?.click();
     });
 
     expect(container.textContent).not.toContain("分析逻辑");

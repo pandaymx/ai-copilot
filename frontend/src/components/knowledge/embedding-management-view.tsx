@@ -347,28 +347,26 @@ export function EmbeddingManagementView() {
 
           <div className="flex items-center gap-2">
             {task?.isRunning ? (
-              <>
-                {task.isPaused ? (
-                  <Button
-                    size="sm"
-                    onClick={handleResume}
-                    className="h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
-                  >
-                    <Play className="size-3.5" />
-                    <span>恢复任务</span>
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handlePause}
-                    className="h-8 text-xs gap-1.5 text-amber-600 border-amber-300 dark:border-amber-700 hover:bg-amber-50"
-                  >
-                    <Pause className="size-3.5" />
-                    <span>暂停任务</span>
-                  </Button>
-                )}
-              </>
+              task.isPaused ? (
+                <Button
+                  size="sm"
+                  onClick={handleResume}
+                  className="h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  <Play className="size-3.5" />
+                  <span>恢复任务</span>
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handlePause}
+                  className="h-8 text-xs gap-1.5 text-amber-600 border-amber-300 dark:border-amber-700 hover:bg-amber-50"
+                >
+                  <Pause className="size-3.5" />
+                  <span>暂停任务</span>
+                </Button>
+              )
             ) : (
               <Button
                 size="sm"

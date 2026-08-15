@@ -123,7 +123,7 @@ describe("Sidebar Component Tests - components/chat/sidebar.tsx", () => {
     expect(newBtn).toBeDefined();
 
     act(() => {
-      newBtn!.click();
+      newBtn?.click();
     });
 
     expect(newClicked).toBeTrue();
@@ -153,7 +153,7 @@ describe("Sidebar Component Tests - components/chat/sidebar.tsx", () => {
     expect(yesterdaySessionBtn).toBeDefined();
 
     act(() => {
-      yesterdaySessionBtn!.click();
+      yesterdaySessionBtn?.click();
     });
 
     expect(selectedId).toBe("s-yesterday");

@@ -10,6 +10,7 @@ if (typeof document === "undefined") {
 import { afterAll, beforeEach, describe, expect, it, mock } from "bun:test";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
+import type { CompressionMetadata } from "@/lib/api";
 import {
   type ArtifactItem,
   StreamStore,
@@ -435,7 +436,7 @@ describe("useSpringAiStream SSE Frame Parsing & Behavior", () => {
     });
     await new Promise((r) => setTimeout(r, 20));
 
-    expect(capturedUsage!).toEqual({
+    expect(capturedUsage).toEqual({
       promptTokens: 100,
       completionTokens: 50,
       totalTokens: 150,
@@ -533,7 +534,7 @@ describe("useSpringAiStream SSE Frame Parsing & Behavior", () => {
   });
 
   it("should parse context_compression frame and notify onContextCompression and streamStore", async () => {
-    let receivedMetadata: any = null;
+    let receivedMetadata: CompressionMetadata | null = null;
 
     mockFetchEventSourceImpl = async (_url, options) => {
       options.onmessage({

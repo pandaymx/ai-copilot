@@ -196,7 +196,7 @@ describe("ModelSelector Component Tests - components/chat/model-selector.tsx", (
         targetModelBtn.click();
       });
 
-      expect(newSelected!).toEqual({
+      expect(newSelected).toEqual({
         provider: "google",
         model: "gemini-3.5-flash",
       });
@@ -253,7 +253,7 @@ describe("ModelSelector Component Tests - components/chat/model-selector.tsx", (
         applyBtn.click();
       });
 
-      expect(newSelected!).toEqual({
+      expect(newSelected).toEqual({
         provider: "openai",
         model: "gpt-4o-mini",
       });

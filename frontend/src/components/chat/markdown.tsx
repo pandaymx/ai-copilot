@@ -10,7 +10,6 @@ import {
   Network,
   Terminal,
 } from "lucide-react";
-import { useTheme } from "next-themes";
 import { memo, useEffect, useId, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { PrismLight as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -36,6 +35,7 @@ import oneDark from "react-syntax-highlighter/dist/esm/styles/prism/one-dark";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 
 // 注册常用编程语言语法

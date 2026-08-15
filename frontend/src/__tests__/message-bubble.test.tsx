@@ -148,9 +148,9 @@ describe("MessageBubble Component Tests - components/chat/message-bubble.tsx", (
 
     expect(container.textContent).toContain("Deep thought details");
 
-    const toggleBtn = container.querySelector("button")!;
+    const toggleBtn = container.querySelector<HTMLButtonElement>("button");
     act(() => {
-      toggleBtn.click();
+      toggleBtn?.click();
     });
 
     expect(container.textContent).not.toContain("Deep thought details");

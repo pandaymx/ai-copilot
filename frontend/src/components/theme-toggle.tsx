@@ -1,8 +1,8 @@
 "use client";
 
 import { Moon, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
+import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 
 /** 明暗主题切换按钮：避免首屏 hydration 闪烁，挂载后再读取 theme。 */
