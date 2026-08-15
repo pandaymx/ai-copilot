@@ -11,8 +11,7 @@ import org.springframework.ai.chat.messages.Message;
  * @param compressionMetadata 上下文压缩元数据（若触发了压缩或降级，否则为 null）
  */
 public record AssembleResult(
-        List<Message> messages,
-        @Nullable CompressionMetadata compressionMetadata) {
+        List<Message> messages, @Nullable CompressionMetadata compressionMetadata) {
 
     public AssembleResult(List<Message> messages) {
         this(messages, null);

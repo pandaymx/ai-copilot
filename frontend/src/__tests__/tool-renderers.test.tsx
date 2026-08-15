@@ -13,6 +13,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import {
   CalculatorRenderer,
+  CodeReviewRenderer,
   DefaultToolRenderer,
   FileReadRenderer,
   HttpRequestRenderer,
@@ -184,6 +185,88 @@ describe("Tool Renderers Component Tests - components/chat/tool-renderers.tsx", 
       <DefaultToolRenderer resultJson={JSON.stringify({ custom: "data" })} />,
     );
     expect(container.textContent).toContain('"custom": "data"');
+    unmount();
+  });
+
+  it("should render CodeReviewRenderer with level badges and findings", () => {
+    const argsJson = JSON.stringify({ language: "java" });
+    const resultJson = JSON.stringify({
+      summary: "审查完成，发现 2 项问题。",
+      criticalCount: 1,
+      warningCount: 1,
+      suggestionCount: 0,
+      findings: [
+        {
+          level: "CRITICAL",
+          category: "安全漏洞",
+          file: "AuthService.java",
+          line: 42,
+          message: "检测到疑似硬编码密钥。",
+          suggestion: "迁移至环境变量。",
+          ruleId: "SECRET_HARDCODED",
+        },
+        {
+          level: "WARNING",
+          category: "最佳实践",
+          file: "AuthService.java",
+          line: 10,
+          message: "方法过长。",
+          suggestion: "拆分职责。",
+          ruleId: "LLM_REVIEW",
+        },
+      ],
+      suggestedTests: ["验证空密钥时的拒绝逻辑"],
+    });
+
+    const { container, unmount } = renderComponent(
+      <CodeReviewRenderer argsJson={argsJson} resultJson={resultJson} />,
+    );
+
+    expect(container.textContent).toContain("代码审查报告");
+    expect(container.textContent).toContain("Critical 1");
+    expect(container.textContent).toContain("Warning 1");
+    expect(container.textContent).toContain("安全漏洞");
+    expect(container.textContent).toContain("AuthService.java");
+    expect(container.textContent).toContain("L42");
+    expect(container.textContent).toContain("建议测试点");
+
+    // ruleId 仅在展开后展示：点击 Critical 发现项展开
+    const criticalButton = Array.from(
+      container.querySelectorAll("button"),
+    ).find((b) => b.textContent?.includes("安全漏洞"));
+    expect(criticalButton).toBeTruthy();
+    act(() => {
+      (criticalButton as HTMLElement).click();
+    });
+    expect(container.textContent).toContain("SECRET_HARDCODED");
+
+    unmount();
+  });
+
+  it("should dispatch code_review to CodeReviewRenderer via ToolResultRenderer", () => {
+    const { container, unmount } = renderComponent(
+      <ToolResultRenderer
+        toolName="code_review"
+        argsJson={JSON.stringify({})}
+        resultJson={JSON.stringify({
+          summary: "ok",
+          findings: [],
+          suggestedTests: [],
+        })}
+      />,
+    );
+    expect(container.textContent).toContain("代码审查报告");
+    unmount();
+  });
+
+  it("should render friendly fallback when review report cannot be parsed", () => {
+    const { container, unmount } = renderComponent(
+      <CodeReviewRenderer
+        argsJson={JSON.stringify({})}
+        resultJson={undefined}
+      />,
+    );
+    expect(container.textContent).toContain("未解析到结构化报告");
     unmount();
   });
 });

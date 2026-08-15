@@ -31,6 +31,7 @@ public class AgentToolRegistry {
             KnowledgeQueryTool knowledgeQueryTool,
             GitTool gitTool,
             CodeSearchTool codeSearchTool,
+            CodeReviewTool codeReviewTool,
             ObjectProvider<SubAgentTool> subAgentToolProvider,
             AiProviderProperties properties) {
 
@@ -45,6 +46,9 @@ public class AgentToolRegistry {
         all.addAll(Arrays.asList(ToolCallbacks.from(knowledgeQueryTool)));
         all.addAll(Arrays.asList(ToolCallbacks.from(gitTool)));
         all.addAll(Arrays.asList(ToolCallbacks.from(codeSearchTool)));
+        if (properties.resolveAgent().isCodeReviewEnabled()) {
+            all.addAll(Arrays.asList(ToolCallbacks.from(codeReviewTool)));
+        }
 
         // 按 orchestratorEnabled 开关条件性注入子代理工具（分析/代码/摘要三个 @Tool）
         if (properties.resolveAgent().isOrchestratorEnabled()) {

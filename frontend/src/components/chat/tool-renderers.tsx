@@ -3,6 +3,7 @@
 import katex from "katex";
 import {
   AlertCircle,
+  AlertTriangle,
   BookOpen,
   Calculator,
   Check,
@@ -15,10 +16,12 @@ import {
   FileText,
   Globe,
   ImageIcon,
+  Lightbulb,
   Loader2,
   Maximize2,
   Search,
   Server,
+  ShieldCheck,
   Terminal,
 } from "lucide-react";
 import { useState } from "react";
@@ -1218,6 +1221,11 @@ export function ToolResultRenderer({
     return <WebSearchRenderer argsJson={argsJson} resultJson={resultJson} />;
   }
 
+  // 代码审查：必须在 code_ 通用分支之前匹配，避免被 CodeSearchToolRenderer 提前拦截
+  if (name === "code_review" || name.includes("code_review")) {
+    return <CodeReviewRenderer argsJson={argsJson} resultJson={resultJson} />;
+  }
+
   if (name.startsWith("git_") || name.includes("git")) {
     return (
       <GitToolRenderer
@@ -1320,6 +1328,338 @@ function GitToolRenderer({
       <pre className="max-h-72 overflow-x-auto overflow-y-auto font-mono text-[11px] leading-relaxed text-zinc-200 whitespace-pre-wrap">
         {output || "（无输出内容）"}
       </pre>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CodeReview 专属渲染器（类 GitHub PR Review 概览卡片）
+// ---------------------------------------------------------------------------
+
+type ReviewLevel = "CRITICAL" | "WARNING" | "SUGGESTION";
+
+interface ReviewFinding {
+  level?: ReviewLevel;
+  category?: string;
+  file?: string;
+  line?: number;
+  message?: string;
+  suggestion?: string;
+  ruleId?: string;
+}
+
+interface ReviewReport {
+  summary?: string;
+  criticalCount?: number;
+  warningCount?: number;
+  suggestionCount?: number;
+  truncated?: boolean;
+  findings?: ReviewFinding[];
+  suggestedTests?: string[];
+}
+
+// 防御性解析：支持 {"output":"<json>"} 与裸 JSON 两层
+function parseReviewReport(resultJson?: string): ReviewReport | null {
+  if (!resultJson) return null;
+  const tryParse = (s: string): ReviewReport | null => {
+    try {
+      const obj = JSON.parse(s);
+      if (obj && typeof obj === "object") {
+        const data =
+          typeof obj.output === "string" ? safeParse(obj.output) : obj;
+        if (data && Array.isArray(data.findings)) return data as ReviewReport;
+      }
+    } catch {
+      /* ignore */
+    }
+    return null;
+  };
+  const safeParse = (s: string): ReviewReport | null => {
+    try {
+      const obj = JSON.parse(s);
+      return obj && Array.isArray(obj.findings) ? (obj as ReviewReport) : null;
+    } catch {
+      return null;
+    }
+  };
+  return tryParse(resultJson) ?? safeParse(resultJson);
+}
+
+const LEVEL_META: Record<
+  ReviewLevel,
+  {
+    label: string;
+    dot: string;
+    badge: string;
+    bar: string;
+    icon: typeof AlertTriangle;
+  }
+> = {
+  CRITICAL: {
+    label: "Critical",
+    dot: "bg-rose-500",
+    badge: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+    bar: "bg-rose-500/70",
+    icon: AlertTriangle,
+  },
+  WARNING: {
+    label: "Warning",
+    dot: "bg-amber-500",
+    badge: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+    bar: "bg-amber-500/70",
+    icon: AlertTriangle,
+  },
+  SUGGESTION: {
+    label: "Suggestion",
+    dot: "bg-sky-500",
+    badge: "bg-sky-500/15 text-sky-300 border-sky-500/30",
+    bar: "bg-sky-500/70",
+    icon: Lightbulb,
+  },
+};
+
+const LEVEL_RANK: Record<ReviewLevel, number> = {
+  CRITICAL: 0,
+  WARNING: 1,
+  SUGGESTION: 2,
+};
+
+function normalizeLevel(l?: string): ReviewLevel {
+  const v = (l || "").toUpperCase();
+  if (v === "CRITICAL") return "CRITICAL";
+  if (v === "WARNING") return "WARNING";
+  return "SUGGESTION";
+}
+
+export function CodeReviewRenderer({
+  resultJson,
+}: {
+  argsJson: string;
+  resultJson?: string;
+}) {
+  const report = parseReviewReport(resultJson);
+  const [expandAll, setExpandAll] = useState(false);
+  const [openSet, setOpenSet] = useState<Set<number>>(new Set());
+
+  if (!report) {
+    return (
+      <div className="flex items-center gap-1.5 rounded-lg border border-zinc-200/80 bg-white/70 p-2 text-xs text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950/70 dark:text-zinc-400">
+        <ShieldCheck className="size-4 shrink-0 text-violet-400" />
+        <span>代码审查完成，但未解析到结构化报告。</span>
+      </div>
+    );
+  }
+
+  const findings = (report.findings ?? [])
+    .slice()
+    .sort(
+      (a, b) =>
+        LEVEL_RANK[normalizeLevel(a.level)] -
+        LEVEL_RANK[normalizeLevel(b.level)],
+    );
+  const criticalCount =
+    report.criticalCount ??
+    findings.filter((f) => normalizeLevel(f.level) === "CRITICAL").length;
+  const warningCount =
+    report.warningCount ??
+    findings.filter((f) => normalizeLevel(f.level) === "WARNING").length;
+  const suggestionCount =
+    report.suggestionCount ??
+    findings.filter((f) => normalizeLevel(f.level) === "SUGGESTION").length;
+  const suggestedTests = report.suggestedTests ?? [];
+
+  // 性能策略：超过 20 条时默认仅展开 critical，warning/suggestion 折叠
+  const isLarge = findings.length > 20;
+  const isOpen = (idx: number, level: ReviewLevel) => {
+    if (expandAll) return true;
+    if (openSet.has(idx)) return true;
+    if (isLarge && level === "CRITICAL") return true;
+    return false;
+  };
+  const toggle = (idx: number) =>
+    setOpenSet((prev) => {
+      const next = new Set(prev);
+      next.has(idx) ? next.delete(idx) : next.add(idx);
+      return next;
+    });
+
+  const counts: { level: ReviewLevel; n: number }[] = [
+    { level: "CRITICAL", n: criticalCount },
+    { level: "WARNING", n: warningCount },
+    { level: "SUGGESTION", n: suggestionCount },
+  ];
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-zinc-200/80 bg-gradient-to-br from-violet-500/[0.04] to-indigo-500/[0.04] shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
+      {/* 顶部总览 */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200/70 bg-white/60 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900/40">
+        <div className="flex size-7 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-500 text-white shadow">
+          <ShieldCheck className="size-4" />
+        </div>
+        <span className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100">
+          代码审查报告
+        </span>
+        <div className="ml-auto flex items-center gap-1.5">
+          {counts.map(({ level, n }) => {
+            const meta = LEVEL_META[level];
+            return (
+              <span
+                key={level}
+                className={cn(
+                  "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                  meta.badge,
+                )}
+              >
+                <span className={cn("size-1.5 rounded-full", meta.dot)} />
+                {meta.label} {n}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 摘要 */}
+      {report.summary && (
+        <div className="px-3 py-2 text-[12px] leading-relaxed text-zinc-600 dark:text-zinc-300">
+          {report.summary}
+        </div>
+      )}
+
+      {/* 发现列表 */}
+      <div className="space-y-1.5 px-3 pb-2">
+        {findings.length === 0 && (
+          <div className="flex items-center gap-1.5 py-1 text-[12px] text-emerald-400">
+            <ShieldCheck className="size-4" />
+            未发现明显问题，代码质量良好。
+          </div>
+        )}
+        {findings.map((f, idx) => {
+          const level = normalizeLevel(f.level);
+          const meta = LEVEL_META[level];
+          const Icon = meta.icon;
+          const open = isOpen(idx, level);
+          const findingKey = `${f.ruleId ?? "LLM"}-${f.file ?? "?"}-${f.line ?? 0}-${idx}`;
+          return (
+            <div
+              key={findingKey}
+              className="overflow-hidden rounded-lg border border-zinc-200/70 bg-white/70 dark:border-zinc-800 dark:bg-zinc-900/40"
+            >
+              <button
+                type="button"
+                onClick={() => toggle(idx)}
+                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-zinc-100/60 dark:hover:bg-zinc-800/40"
+              >
+                <span
+                  className={cn("h-7 w-1 shrink-0 rounded-full", meta.bar)}
+                />
+                <Icon
+                  className={cn(
+                    "size-3.5 shrink-0",
+                    meta.dot.replace("bg-", "text-"),
+                  )}
+                />
+                <span className="truncate text-[12px] font-medium text-zinc-700 dark:text-zinc-200">
+                  {f.category || "未分类"}
+                </span>
+                {f.file && (
+                  <span className="truncate font-mono text-[10px] text-zinc-500 dark:text-zinc-400">
+                    {f.file}
+                    {f.line != null && (
+                      <span className="ml-1 rounded bg-zinc-200/70 px-1 py-0.5 text-[9px] font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                        L{f.line}
+                      </span>
+                    )}
+                  </span>
+                )}
+                <span className="ml-auto flex items-center gap-1 text-zinc-400">
+                  <span
+                    className={cn(
+                      "rounded px-1.5 py-0.5 text-[9px] font-semibold",
+                      meta.badge,
+                    )}
+                  >
+                    {meta.label}
+                  </span>
+                  {open ? (
+                    <ChevronDown className="size-3.5" />
+                  ) : (
+                    <ChevronRight className="size-3.5" />
+                  )}
+                </span>
+              </button>
+              {open && (
+                <div className="space-y-2 border-t border-zinc-200/60 px-3 py-2 dark:border-zinc-800">
+                  {f.message && (
+                    <p className="text-[11px] leading-relaxed text-zinc-600 dark:text-zinc-300">
+                      {f.message}
+                    </p>
+                  )}
+                  {f.suggestion && (
+                    <div>
+                      <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-violet-400">
+                        <Lightbulb className="size-3" />
+                        修复建议
+                      </div>
+                      <SyntaxHighlighter
+                        language="text"
+                        style={oneDark}
+                        customStyle={{
+                          margin: 0,
+                          borderRadius: "0.5rem",
+                          fontSize: "11px",
+                          background: "rgba(13,13,18,0.6)",
+                        }}
+                      >
+                        {f.suggestion}
+                      </SyntaxHighlighter>
+                    </div>
+                  )}
+                  {f.ruleId && (
+                    <span className="inline-block rounded bg-zinc-200/60 px-1.5 py-0.5 font-mono text-[9px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                      {f.ruleId}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 建议测试点 */}
+      {suggestedTests.length > 0 && (
+        <div className="border-t border-zinc-200/70 bg-white/40 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900/30">
+          <div className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-zinc-700 dark:text-zinc-200">
+            <Code2 className="size-3.5 text-violet-400" />
+            建议测试点（可由 code_execution 自动验证）
+          </div>
+          <ul className="space-y-1">
+            {suggestedTests.map((t, i) => (
+              <li
+                key={`test-${i}-${t.slice(0, 16)}`}
+                className="rounded-md border border-zinc-200/70 bg-zinc-50/70 px-2 py-1 text-[11px] text-zinc-600 dark:border-zinc-800 dark:bg-zinc-800/30 dark:text-zinc-300"
+              >
+                {t}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* 底部：一键展开/折叠 + 截断提示 */}
+      <div className="flex items-center justify-between border-t border-zinc-200/70 px-3 py-1.5 text-[10px] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+        <span>
+          {findings.length} 项发现
+          {report.truncated && " · 已截断"}
+        </span>
+        <button
+          type="button"
+          onClick={() => setExpandAll((v) => !v)}
+          className="rounded-md px-2 py-0.5 text-violet-400 transition-colors hover:bg-violet-500/10"
+        >
+          {expandAll ? "全部折叠" : "全部展开"}
+        </button>
+      </div>
     </div>
   );
 }

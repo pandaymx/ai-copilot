@@ -264,6 +264,7 @@ public record AiProviderProperties(
      * @param workerModel         Worker ChatClient 使用的模型 id；空则复用主模型
      * @param workerMaxTokens     Worker 单次推理最大输出 token 数（防止失控输出）
      * @param maxWorkerDepth      Worker 最大嵌套深度上限（默认 1：仅允许 Orchestrator→Worker 单层派发）
+     * @param codeReview          代码审查工具（code_review）配置；默认开启，与代码执行沙箱同属开发类工具
      */
     public record AgentConfig(
             @Nullable Boolean enabled,
@@ -276,7 +277,8 @@ public record AiProviderProperties(
             @Name("worker-model") @Nullable String workerModel,
             @Name("worker-max-tokens") @Nullable Integer workerMaxTokens,
             @Name("max-worker-depth") @Nullable Integer maxWorkerDepth,
-            @Name("code-sandbox") @Nullable CodeSandboxConfig codeSandbox) {
+            @Name("code-sandbox") @Nullable CodeSandboxConfig codeSandbox,
+            @Name("code-review") @Nullable CodeReviewConfig codeReview) {
 
         public static AgentConfig defaults() {
             return new AgentConfig(
@@ -290,7 +292,13 @@ public record AiProviderProperties(
                     null,
                     2048,
                     1,
-                    CodeSandboxConfig.defaults());
+                    CodeSandboxConfig.defaults(),
+                    CodeReviewConfig.defaults());
+        }
+
+        /** 代码审查工具是否开启（默认 true）。 */
+        public boolean isCodeReviewEnabled() {
+            return codeReview == null || codeReview.isEnabled();
         }
 
         public boolean isEnabled() {
@@ -342,6 +350,18 @@ public record AiProviderProperties(
         /** 允许的最大 Worker 嵌套深度（默认 1，只允许 Orchestrator→Worker 单层）。 */
         public int resolveMaxWorkerDepth() {
             return (maxWorkerDepth != null && maxWorkerDepth >= 0) ? maxWorkerDepth : 1;
+        }
+    }
+
+    /** 代码审查工具配置（绑定 {@code app.ai.agent.code-review.*}）。 */
+    public record CodeReviewConfig(
+            @Name("enabled") @Nullable Boolean enabled) {
+        public static CodeReviewConfig defaults() {
+            return new CodeReviewConfig(true);
+        }
+
+        public boolean isEnabled() {
+            return enabled == null || enabled;
         }
     }
 

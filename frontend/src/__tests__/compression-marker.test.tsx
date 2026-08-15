@@ -77,7 +77,9 @@ describe("CompressionMarker Component Tests", () => {
     });
 
     expect(container.textContent).toContain("历史上下文核心摘要");
-    expect(container.textContent).toContain("讨论了微服务架构拆分与Redis缓存策略");
+    expect(container.textContent).toContain(
+      "讨论了微服务架构拆分与Redis缓存策略",
+    );
     expect(container.textContent).toContain("最近 2~4 轮原始问答已完整保留");
 
     unmount();
@@ -102,7 +104,9 @@ describe("CompressionMarker Component Tests", () => {
       expandBtn?.click();
     });
 
-    expect(container.textContent).toContain("这里是之前多轮关于数据库索引优化的摘要");
+    expect(container.textContent).toContain(
+      "这里是之前多轮关于数据库索引优化的摘要",
+    );
     unmount();
   });
 

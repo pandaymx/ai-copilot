@@ -28,9 +28,19 @@ class ContextCompressorTest {
     @Test
     void testCompressHistoryUnderProtectedTurnsNotCompressed() {
         AiProviderProperties props = new AiProviderProperties(
-                null, null, null, null, null,
-                new ContextConfig(null, null, null, null, new ContextCompressionConfig(true, null, null, "LIGHT", 3, 5000L)),
-                null, null, null, null, null, null);
+                null,
+                null,
+                null,
+                null,
+                null,
+                new ContextConfig(
+                        null, null, null, null, new ContextCompressionConfig(true, null, null, "LIGHT", 3, 5000L)),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
 
         @SuppressWarnings("unchecked")
         ObjectProvider<ProviderRegistry> registryProvider = mock(ObjectProvider.class);
@@ -55,9 +65,19 @@ class ContextCompressorTest {
     @Test
     void testCompressWithMockChatClientReturnsCompressedSummaryAndProtectsWorkingMemory() {
         AiProviderProperties props = new AiProviderProperties(
-                null, null, null, null, null,
-                new ContextConfig(null, null, null, null, new ContextCompressionConfig(true, null, null, "LIGHT", 2, 5000L)),
-                null, null, null, null, null, null);
+                null,
+                null,
+                null,
+                null,
+                null,
+                new ContextConfig(
+                        null, null, null, null, new ContextCompressionConfig(true, null, null, "LIGHT", 2, 5000L)),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
 
         ChatClient mockClient = mock(ChatClient.class);
         ChatClient.ChatClientRequestSpec mockSpec = mock(ChatClient.ChatClientRequestSpec.class);
@@ -67,7 +87,8 @@ class ContextCompressorTest {
         when(mockSpec.user(anyString())).thenReturn(mockSpec);
         when(mockSpec.call()).thenReturn(mockCallSpec);
 
-        ChatResponse mockResponse = new ChatResponse(List.of(new Generation(new org.springframework.ai.chat.messages.AssistantMessage("用户与助手讨论了架构设计和数据库选型。"))));
+        ChatResponse mockResponse = new ChatResponse(List.of(
+                new Generation(new org.springframework.ai.chat.messages.AssistantMessage("用户与助手讨论了架构设计和数据库选型。"))));
         when(mockCallSpec.chatResponse()).thenReturn(mockResponse);
 
         @SuppressWarnings("unchecked")
@@ -82,7 +103,8 @@ class ContextCompressorTest {
         List<ChatMessageDto> longHistory = new ArrayList<>();
         for (int i = 1; i <= 5; i++) {
             longHistory.add(ChatMessageDto.user("User question round " + i + " with some detailed description"));
-            longHistory.add(ChatMessageDto.assistant("Assistant detailed answer round " + i + " with code and explanation"));
+            longHistory.add(
+                    ChatMessageDto.assistant("Assistant detailed answer round " + i + " with code and explanation"));
         }
 
         // protectedTurns = 2 (最后 4 条消息保留)，前面 3 轮（6 条消息）被压缩
@@ -100,16 +122,30 @@ class ContextCompressorTest {
         assertEquals("assistant", result.messages().get(0).role());
 
         // 验证保护区最后一条依然是 round 5 的消息
-        assertEquals("User question round 4 with some detailed description", result.messages().get(1).content());
-        assertEquals("Assistant detailed answer round 5 with code and explanation", result.messages().get(4).content());
+        assertEquals(
+                "User question round 4 with some detailed description",
+                result.messages().get(1).content());
+        assertEquals(
+                "Assistant detailed answer round 5 with code and explanation",
+                result.messages().get(4).content());
     }
 
     @Test
     void testCompressFallbackToHardDeleteWhenClientFails() {
         AiProviderProperties props = new AiProviderProperties(
-                null, null, null, null, null,
-                new ContextConfig(null, null, null, null, new ContextCompressionConfig(true, null, null, "LIGHT", 2, 5000L)),
-                null, null, null, null, null, null);
+                null,
+                null,
+                null,
+                null,
+                null,
+                new ContextConfig(
+                        null, null, null, null, new ContextCompressionConfig(true, null, null, "LIGHT", 2, 5000L)),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
 
         @SuppressWarnings("unchecked")
         ObjectProvider<ProviderRegistry> registryProvider = mock(ObjectProvider.class);
@@ -139,9 +175,19 @@ class ContextCompressorTest {
     @Test
     void testContextAssemblerIntegratesWithCompressor() {
         AiProviderProperties props = new AiProviderProperties(
-                null, null, null, null, "System prompt",
-                new ContextConfig(100, 0.5, 500, null, new ContextCompressionConfig(true, null, null, "LIGHT", 2, 5000L)),
-                null, null, null, null, null, null);
+                null,
+                null,
+                null,
+                null,
+                "System prompt",
+                new ContextConfig(
+                        100, 0.5, 500, null, new ContextCompressionConfig(true, null, null, "LIGHT", 2, 5000L)),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
 
         ContextAssembler assembler = new ContextAssembler(props, estimator);
 
@@ -152,7 +198,9 @@ class ContextCompressorTest {
         when(mockClient.prompt()).thenReturn(mockSpec);
         when(mockSpec.user(anyString())).thenReturn(mockSpec);
         when(mockSpec.call()).thenReturn(mockCallSpec);
-        when(mockCallSpec.chatResponse()).thenReturn(new ChatResponse(List.of(new Generation(new org.springframework.ai.chat.messages.AssistantMessage("已压缩前面讨论")))));
+        when(mockCallSpec.chatResponse())
+                .thenReturn(new ChatResponse(
+                        List.of(new Generation(new org.springframework.ai.chat.messages.AssistantMessage("已压缩前面讨论")))));
 
         @SuppressWarnings("unchecked")
         ObjectProvider<ProviderRegistry> registryProvider = mock(ObjectProvider.class);
@@ -164,13 +212,15 @@ class ContextCompressorTest {
 
         List<ChatMessageDto> longHistory = new ArrayList<>();
         for (int i = 1; i <= 6; i++) {
-            longHistory.add(ChatMessageDto.user("Large user content for round " + i + " repeated text to consume tokens"));
-            longHistory.add(ChatMessageDto.assistant("Large assistant reply for round " + i + " repeated text to consume tokens"));
+            longHistory.add(
+                    ChatMessageDto.user("Large user content for round " + i + " repeated text to consume tokens"));
+            longHistory.add(ChatMessageDto.assistant(
+                    "Large assistant reply for round " + i + " repeated text to consume tokens"));
         }
 
         // maxContextTokens = 200, historyRatio = 0.5, budget 很小，必然触发压缩
-        AssembleResult result = assembler.assembleWithResult(
-                "Current question", longHistory, null, null, 200, List.of(), compressor);
+        AssembleResult result =
+                assembler.assembleWithResult("Current question", longHistory, null, null, 200, List.of(), compressor);
 
         assertNotNull(result);
         assertTrue(result.hasCompression());

@@ -66,7 +66,8 @@ public class ContextAssembler {
             String providerSystem,
             int maxContextTokens,
             List<Media> mediaList) {
-        return assembleWithResult(message, history, requestSystem, providerSystem, maxContextTokens, mediaList, null).messages();
+        return assembleWithResult(message, history, requestSystem, providerSystem, maxContextTokens, mediaList, null)
+                .messages();
     }
 
     /**

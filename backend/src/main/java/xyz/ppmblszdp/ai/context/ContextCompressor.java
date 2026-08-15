@@ -152,10 +152,8 @@ public class ContextCompressor {
         long timeoutMs = properties.resolveContext().resolveCompression().resolveTimeoutMs();
 
         try {
-            ChatResponse response = Mono.fromCallable(() -> client.prompt()
-                            .user(prompt)
-                            .call()
-                            .chatResponse())
+            ChatResponse response = Mono.fromCallable(
+                            () -> client.prompt().user(prompt).call().chatResponse())
                     .timeout(Duration.ofMillis(timeoutMs))
                     .block();
 
@@ -198,8 +196,7 @@ public class ContextCompressor {
                 // 摘要 + 保护区仍超预算（极端情况），降级：仅保留保护区
                 log.warn("[ContextCompressor] 压缩后仍超预算（{} > {}），仅保留保护区", totalTokens, budget);
                 return new CompressResult(
-                        new ArrayList<>(protectedChunk),
-                        CompressionMetadata.fallback(turns, originalTokens));
+                        new ArrayList<>(protectedChunk), CompressionMetadata.fallback(turns, originalTokens));
             }
 
             String snippet = summary.length() > 200 ? summary.substring(0, 200) + "…" : summary;
@@ -259,8 +256,7 @@ public class ContextCompressor {
     private String buildCompressionPrompt(List<ChatMessageDto> messages, Level level) {
         String systemInstruction =
                 switch (level) {
-                    case LIGHT ->
-                            """
+                    case LIGHT -> """
                             你是一个上下文压缩助手。请将以下对话历史压缩为一段简洁的摘要。
                             要求：
                             - 保留所有重要实体（人名、变量名、文件名、API名称）
@@ -271,8 +267,7 @@ public class ContextCompressor {
                             - 目标：原文的 50% 以内
                             直接输出摘要，不要加任何前缀或说明。
                             """;
-                    case DEEP ->
-                            """
+                    case DEEP -> """
                             你是一个深度上下文压缩助手。请将以下对话历史极度压缩。
                             要求：
                             - 仅保留核心决策、关键结论和必要代码片段（最多 3 行）
@@ -281,8 +276,7 @@ public class ContextCompressor {
                             - 目标：原文的 25% 以内
                             直接输出压缩结果，不要加前缀。
                             """;
-                    case KEYWORDS ->
-                            """
+                    case KEYWORDS -> """
                             你是一个关键词提取助手。请从以下对话历史中仅提取关键信息。
                             输出格式（JSON 格式）：
                             {"entities":["实体1","实体2"],"decisions":["决策1"],"code_refs":["文件或函数名"]}
@@ -306,9 +300,8 @@ public class ContextCompressor {
     }
 
     private static int countTurns(List<ChatMessageDto> messages) {
-        long userCount = messages.stream()
-                .filter(m -> "user".equalsIgnoreCase(m.role()))
-                .count();
+        long userCount =
+                messages.stream().filter(m -> "user".equalsIgnoreCase(m.role())).count();
         return (int) Math.max(1, userCount);
     }
 

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.config.AiProviderProperties.AgentConfig;
+import xyz.ppmblszdp.ai.config.AiProviderProperties.CodeReviewConfig;
 import xyz.ppmblszdp.ai.config.AiProviderProperties.CodeSandboxConfig;
 
 class CodeExecutionServiceTest {
@@ -27,7 +28,8 @@ class CodeExecutionServiceTest {
                 "node:20-alpine",
                 "256m",
                 "1.0");
-        AgentConfig agentConfig = new AgentConfig(true, 5, 30, false, null, false, null, null, 2048, 1, sandboxConfig);
+        AgentConfig agentConfig = new AgentConfig(
+                true, 5, 30, false, null, false, null, null, 2048, 1, sandboxConfig, CodeReviewConfig.defaults());
         properties = mock(AiProviderProperties.class);
         when(properties.resolveAgent()).thenReturn(agentConfig);
         service = new CodeExecutionService(properties);
@@ -62,7 +64,8 @@ class CodeExecutionServiceTest {
     void shouldBlockDangerousPythonCodeInLocalFallback() {
         CodeSandboxConfig noDockerConfig = new CodeSandboxConfig(
                 true, 10, 65536, false, true, "python:3.11-slim", "node:20-alpine", "256m", "1.0");
-        AgentConfig agentConfig = new AgentConfig(true, 5, 30, false, null, false, null, null, 2048, 1, noDockerConfig);
+        AgentConfig agentConfig = new AgentConfig(
+                true, 5, 30, false, null, false, null, null, 2048, 1, noDockerConfig, CodeReviewConfig.defaults());
         AiProviderProperties props = mock(AiProviderProperties.class);
         when(props.resolveAgent()).thenReturn(agentConfig);
         CodeExecutionService localService = new CodeExecutionService(props);
@@ -80,7 +83,8 @@ class CodeExecutionServiceTest {
     void shouldBlockDangerousJsCodeInLocalFallback() {
         CodeSandboxConfig noDockerConfig = new CodeSandboxConfig(
                 true, 10, 65536, false, true, "python:3.11-slim", "node:20-alpine", "256m", "1.0");
-        AgentConfig agentConfig = new AgentConfig(true, 5, 30, false, null, false, null, null, 2048, 1, noDockerConfig);
+        AgentConfig agentConfig = new AgentConfig(
+                true, 5, 30, false, null, false, null, null, 2048, 1, noDockerConfig, CodeReviewConfig.defaults());
         AiProviderProperties props = mock(AiProviderProperties.class);
         when(props.resolveAgent()).thenReturn(agentConfig);
         CodeExecutionService localService = new CodeExecutionService(props);
