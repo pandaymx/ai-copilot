@@ -2,6 +2,7 @@ package xyz.ppmblszdp.ai.registry;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.config.ApiKeyValidator;
 import xyz.ppmblszdp.ai.config.ModelConfig;
+import xyz.ppmblszdp.ai.config.ProviderProtocol;
 
 /**
  * 一等公民注册器。
@@ -161,17 +163,35 @@ public class FirstClassProviderRegistrar {
                 .map(m -> m.id())
                 .findFirst()
                 .orElse(null);
+        ProviderProtocol protocol = resolveProtocol(providerId);
         ProviderDescriptor descriptor = ProviderDescriptor.builder()
                 .providerId(providerId)
                 .displayName(displayName)
-                .protocol("openai")
+                .protocol(protocol.name().toLowerCase())
                 .tier(ProviderDescriptor.Tier.FIRST_CLASS)
                 .chatModel(model)
                 .models(models)
                 .defaultModelId(defaultModelId)
                 .build();
         result.put(providerId, descriptor);
-        log.info("已注册一等公民供应商 '{}' (协议 openai, 模型数 {})", providerId, models.size());
+        log.info("已注册一等公民供应商 '{}' (协议 {}, 模型数 {})", providerId, protocol.name().toLowerCase(), models.size());
+    }
+
+    /**
+     * 解析一等公民供应商的接入协议。
+     *
+     * <p>按供应商 ID 推断：Anthropic 走 {@link ProviderProtocol#ANTHROPIC}，其余
+     * （deepseek / openai / google / ollama 等）一律按 OpenAI 兼容协议处理。
+     * 之前此类被硬编码为 {@code openai}，会导致 Anthropic 被误标。
+     *
+     * @param providerId 供应商 ID（如 deepseek / openai / anthropic / google / ollama）
+     * @return 解析出的协议枚举
+     */
+    private static ProviderProtocol resolveProtocol(String providerId) {
+        return switch (providerId.toLowerCase(Locale.ROOT)) {
+            case "anthropic" -> ProviderProtocol.ANTHROPIC;
+            default -> ProviderProtocol.OPENAI;
+        };
     }
 
     private Map<String, ModelDescriptor> buildModelIndex(List<ModelConfig> cfgs, int fallbackMax) {
