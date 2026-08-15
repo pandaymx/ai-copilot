@@ -94,6 +94,7 @@ public class ChatOrchestrator implements DisposableBean {
     private final VisionService visionService;
     private final ObjectProvider<xyz.ppmblszdp.ai.agent.plan.ReActAgent> reActAgentProvider;
     private final ObjectProvider<xyz.ppmblszdp.ai.feedback.IntentFeedbackAccumulator> intentFeedbackAccumulatorProvider;
+    private final ObjectProvider<xyz.ppmblszdp.ai.context.ContextCompressor> contextCompressorProvider;
 
     private final ConcurrentLinkedQueue<Disposable> fireAndForgetSubscriptions = new ConcurrentLinkedQueue<>();
 
@@ -122,7 +123,8 @@ public class ChatOrchestrator implements DisposableBean {
             IntentClassifier intentClassifier,
             VisionService visionService,
             ObjectProvider<xyz.ppmblszdp.ai.agent.plan.ReActAgent> reActAgentProvider,
-            ObjectProvider<xyz.ppmblszdp.ai.feedback.IntentFeedbackAccumulator> intentFeedbackAccumulatorProvider) {
+            ObjectProvider<xyz.ppmblszdp.ai.feedback.IntentFeedbackAccumulator> intentFeedbackAccumulatorProvider,
+            ObjectProvider<xyz.ppmblszdp.ai.context.ContextCompressor> contextCompressorProvider) {
         this.registry = registry;
         this.contextAssembler = contextAssembler;
         this.sessionChatMemory = sessionChatMemory;
@@ -153,6 +155,7 @@ public class ChatOrchestrator implements DisposableBean {
         this.visionService = (visionService != null) ? visionService : new VisionService();
         this.reActAgentProvider = reActAgentProvider;
         this.intentFeedbackAccumulatorProvider = intentFeedbackAccumulatorProvider;
+        this.contextCompressorProvider = contextCompressorProvider;
     }
 
     @Override
@@ -482,14 +485,17 @@ public class ChatOrchestrator implements DisposableBean {
             String userId,
             IntentResult intentResult) {
         List<Media> mediaList = extractMedia(request);
-        List<Message> messages = contextAssembler.assemble(
+        xyz.ppmblszdp.ai.context.ContextCompressor compressor =
+                contextCompressorProvider != null ? contextCompressorProvider.getIfAvailable() : null;
+        xyz.ppmblszdp.ai.context.AssembleResult assembleResult = contextAssembler.assembleWithResult(
                 request.message(),
                 request.history(),
                 resolveSystemPrompt(request, intentResult),
                 null,
                 primaryResolved.model().maxContextTokens(),
-                mediaList);
-        Prompt prompt = new Prompt(messages, options);
+                mediaList,
+                compressor);
+        Prompt prompt = new Prompt(assembleResult.messages(), options);
 
         return Mono.fromCallable(() -> {
                     ChatResponse response = primaryResolved.chatModel().call(prompt);
@@ -534,14 +540,17 @@ public class ChatOrchestrator implements DisposableBean {
             String userId,
             IntentResult intentResult) {
         List<Media> mediaList = extractMedia(request);
-        List<Message> messages = contextAssembler.assemble(
+        xyz.ppmblszdp.ai.context.ContextCompressor compressor =
+                contextCompressorProvider != null ? contextCompressorProvider.getIfAvailable() : null;
+        xyz.ppmblszdp.ai.context.AssembleResult assembleResult = contextAssembler.assembleWithResult(
                 request.message(),
                 request.history(),
                 resolveSystemPrompt(request, intentResult),
                 null,
                 primaryResolved.model().maxContextTokens(),
-                mediaList);
-        Prompt prompt = new Prompt(messages, options);
+                mediaList,
+                compressor);
+        Prompt prompt = new Prompt(assembleResult.messages(), options);
 
         StringBuilder fullContent = new StringBuilder();
         AtomicReference<ChatChunkDto.UsageDto> usageAccum =
@@ -573,8 +582,26 @@ public class ChatOrchestrator implements DisposableBean {
                 intentResult != null ? intentResult.intent().name() : null,
                 intentResult != null ? intentResult.label() : null);
 
+        List<ChatChunkDto> headerChunks = new ArrayList<>();
+        headerChunks.add(initChunk);
+        if (assembleResult.hasCompression()) {
+            var meta = assembleResult.compressionMetadata();
+            String snippet = meta.summarySnippet() != null
+                    ? meta.summarySnippet().replace("\"", "\\\"").replace("\n", "\\n")
+                    : "";
+            String metaJson = String.format(
+                    "{\"compressedTurnCount\":%d,\"originalTokens\":%d,\"compressedTokens\":%d,\"level\":\"%s\",\"summarySnippet\":\"%s\",\"fallback\":%b}",
+                    meta.compressedTurnCount(),
+                    meta.originalTokens(),
+                    meta.compressedTokens(),
+                    meta.level() != null ? meta.level().name() : "LIGHT",
+                    snippet,
+                    meta.fallback());
+            headerChunks.add(ChatChunkDto.contextCompression(metaJson));
+        }
+
         Flux<ChatChunkDto> contentFlux = Flux.concat(
-                Flux.just(initChunk),
+                Flux.fromIterable(headerChunks),
                 requestSpec.stream()
                         .chatResponse()
                         .timeout(STREAM_TIMEOUT)

@@ -154,6 +154,7 @@ public class ChatService implements DisposableBean {
                 intentClassifier,
                 vVisionService,
                 null,
+                null,
                 null);
         this.orchestrator = cOrchestrator;
         this.imageRouter = iRouter;

@@ -7,10 +7,10 @@ if (typeof document === "undefined") {
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-import type { TaskPlanState } from "@/hooks/useSpringAiStream";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import type { TaskPlanState } from "@/hooks/useSpringAiStream";
 import { TaskPlanCard } from "./task-plan-card";
 
 describe("TaskPlanCard Component", () => {

@@ -123,6 +123,17 @@ export async function searchChatHistoryApi(
   }
 }
 
+// ====================== 上下文压缩（Smart Context Compression） ======================
+
+export interface CompressionMetadata {
+  compressedTurnCount: number;
+  originalTokens: number;
+  compressedTokens: number;
+  level: "LIGHT" | "DEEP" | "KEYWORDS";
+  summarySnippet: string;
+  fallback: boolean;
+}
+
 // ====================== 知识库（RAG）管理 API ======================
 
 export interface RagDocumentMeta {

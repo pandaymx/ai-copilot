@@ -466,4 +466,35 @@ public record ChatChunkDto(
                 null,
                 null);
     }
+
+    /**
+     * 上下文压缩元数据帧：推送 ContextCompression 结构 JSON。
+     */
+    public static ChatChunkDto contextCompression(String compressionJson) {
+        return new ChatChunkDto(
+                "context_compression",
+                null,
+                compressionJson,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
 }

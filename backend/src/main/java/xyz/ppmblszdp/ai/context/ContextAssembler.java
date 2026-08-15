@@ -66,6 +66,29 @@ public class ContextAssembler {
             String providerSystem,
             int maxContextTokens,
             List<Media> mediaList) {
+        return assembleWithResult(message, history, requestSystem, providerSystem, maxContextTokens, mediaList, null).messages();
+    }
+
+    /**
+     * 组装消息列表并返回包含压缩元数据的 AssembleResult。
+     *
+     * @param message          当前用户消息（必填）
+     * @param history          历史消息（可能已含当前消息，需去重）
+     * @param requestSystem    请求级 system prompt 覆盖（可空）
+     * @param providerSystem   供应商级 system prompt（可空）
+     * @param maxContextTokens 模型上下文窗口大小
+     * @param mediaList        当前用户消息的多模态附件列表
+     * @param compressor       上下文压缩器（可空，为 null 或未启用时退化为滑动窗口硬裁剪）
+     * @return 包含 Message 列表与压缩元数据的 AssembleResult
+     */
+    public AssembleResult assembleWithResult(
+            String message,
+            List<ChatMessageDto> history,
+            String requestSystem,
+            String providerSystem,
+            int maxContextTokens,
+            List<Media> mediaList,
+            ContextCompressor compressor) {
         String system = resolveSystem(requestSystem, providerSystem);
         int systemTokens = (system != null) ? estimator.estimate(system) : 0;
 
@@ -79,8 +102,35 @@ public class ContextAssembler {
         // 1) 取出历史中的非系统消息，并去重当前消息
         List<ChatMessageDto> deduped = dedupeCurrentMessage(history, message);
 
-        // 2) 反向滑窗裁剪（按轮次成对对齐）
-        List<ChatMessageDto> kept = slidingWindow(deduped, budget);
+        // 2) 检查历史 Token 是否超出预算
+        int totalHistoryTokens = deduped.stream()
+                .filter(m -> m != null && m.content() != null && !"system".equalsIgnoreCase(m.role()))
+                .mapToInt(m -> estimator.estimate(m.content()))
+                .sum();
+
+        List<ChatMessageDto> kept;
+        CompressionMetadata metadata = null;
+
+        if (totalHistoryTokens > budget
+                && compressor != null
+                && properties.resolveContext().resolveCompression().resolveEnabled()) {
+            ContextCompressor.Level defaultLevel = ContextCompressor.Level.LIGHT;
+            try {
+                String lvl = properties.resolveContext().resolveCompression().resolveDefaultLevel();
+                defaultLevel = ContextCompressor.Level.valueOf(lvl.toUpperCase().trim());
+            } catch (Exception ignored) {
+            }
+            ContextCompressor.CompressResult compressResult = compressor.compress(deduped, budget, defaultLevel);
+            if (compressResult != null) {
+                kept = compressResult.messages();
+                metadata = compressResult.metadata();
+            } else {
+                kept = slidingWindow(deduped, budget);
+            }
+        } else {
+            // 在预算内，或者未配置压缩器：反向滑窗裁剪（按轮次成对对齐）
+            kept = slidingWindow(deduped, budget);
+        }
 
         // 3) 组装最终消息：system 保底在首
         List<Message> result = new ArrayList<>();
@@ -96,7 +146,7 @@ public class ContextAssembler {
         } else {
             result.add(new UserMessage(message));
         }
-        return result;
+        return new AssembleResult(result, metadata);
     }
 
     /**

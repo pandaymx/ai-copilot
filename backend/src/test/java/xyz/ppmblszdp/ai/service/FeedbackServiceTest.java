@@ -1,6 +1,5 @@
 package xyz.ppmblszdp.ai.service;
 
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -59,6 +58,6 @@ class FeedbackServiceTest {
         Thread.sleep(200);
 
         verify(evaluationService).ingestFeedbackCase(eq(request));
-        verify(intentAccumulator).record(eq("THUMBS_DOWN"), any(Integer.class));
+        verify(intentAccumulator).record(eq("THUMBS_DOWN"), org.mockito.ArgumentMatchers.anyInt());
     }
 }

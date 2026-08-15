@@ -164,6 +164,15 @@ export default function Home() {
         prev.map((m) => (m.id === liveId ? { ...m, intent, intentLabel } : m)),
       );
     },
+    onContextCompression: (metadata) => {
+      const liveId = liveIdRef.current;
+      if (!liveId) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === liveId ? { ...m, compressionMetadata: metadata } : m,
+        ),
+      );
+    },
     onFinish: (finalContent, finalThinking, finalUsage) => {
       const liveId = liveIdRef.current;
       if (!liveId || !activeId) return;
@@ -171,6 +180,7 @@ export default function Home() {
       const question = liveUserTextRef.current;
       liveUserTextRef.current = "";
 
+      const snap = streamStore.getSnapshot();
       setMessages((prev) =>
         prev.map((m) =>
           m.id === liveId
@@ -179,6 +189,8 @@ export default function Home() {
                 content: finalContent,
                 thinking: finalThinking || m.thinking,
                 usage: finalUsage ?? m.usage,
+                compressionMetadata:
+                  snap.contextCompression ?? m.compressionMetadata,
               }
             : m,
         ),
@@ -195,6 +207,8 @@ export default function Home() {
                     content: finalContent,
                     thinking: finalThinking || m.thinking,
                     usage: finalUsage ?? m.usage,
+                    compressionMetadata:
+                      snap.contextCompression ?? m.compressionMetadata,
                   }
                 : m,
             );

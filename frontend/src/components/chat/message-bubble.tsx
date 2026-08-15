@@ -25,8 +25,10 @@ import {
   type ToolCallItem,
   useStreamData,
 } from "@/hooks/useSpringAiStream";
+import type { CompressionMetadata } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { tts } from "@/lib/voice";
+import { CompressionMarker } from "./compression-marker";
 import { ChatMessageErrorBoundary } from "./error-boundary";
 import { Markdown } from "./markdown";
 import { ReasoningView } from "./reasoning-view";
@@ -66,6 +68,8 @@ export interface ChatMessage {
   artifacts?: ArtifactItem[];
   /** ReAct 多步任务规划状态与时间轴步骤 */
   taskPlan?: TaskPlanState | null;
+  /** 智能上下文压缩元数据（若触发了历史消息摘要压缩） */
+  compressionMetadata?: CompressionMetadata | null;
 }
 
 interface MessageBubbleProps {
@@ -295,28 +299,44 @@ function MessageBubbleBase({
           </div>
         )}
 
-        {/* 气泡本文 */}
-        {(isUser || message.content || streaming) && (
-          <div
-            className={cn(
-              "relative min-w-0 rounded-2xl px-4 py-3 text-sm shadow-xs transition-all duration-200",
-              isUser
-                ? "rounded-tr-xs bg-zinc-900 font-medium text-white shadow-md shadow-zinc-900/10 dark:bg-gradient-to-r dark:from-indigo-600 dark:to-purple-600 dark:text-white dark:shadow-indigo-500/20"
-                : "w-full rounded-tl-xs bg-white text-zinc-900 border border-zinc-200/80 shadow-sm dark:bg-zinc-900/80 dark:text-zinc-100 dark:border-zinc-800/80 backdrop-blur-md",
-            )}
-          >
-            {isUser ? (
-              <p className="whitespace-pre-wrap break-words">
-                {message.content}
-              </p>
-            ) : message.content ? (
-              <ChatMessageErrorBoundary>
-                <Markdown content={message.content} isStreaming={streaming} />
-              </ChatMessageErrorBoundary>
-            ) : streaming ? (
-              <BreathingCursor />
-            ) : null}
+        {/* 上下文智能压缩折叠卡片（若当前消息为压缩摘要或附加了压缩元数据） */}
+        {!isUser && message.compressionMetadata && (
+          <div className="w-full">
+            <CompressionMarker metadata={message.compressionMetadata} />
           </div>
+        )}
+
+        {/* 气泡本文 */}
+        {!isUser && message.content?.startsWith("[COMPRESSED:") ? (
+          <div className="w-full">
+            <CompressionMarker
+              rawText={message.content}
+              metadata={message.compressionMetadata}
+            />
+          </div>
+        ) : (
+          (isUser || message.content || streaming) && (
+            <div
+              className={cn(
+                "relative min-w-0 rounded-2xl px-4 py-3 text-sm shadow-xs transition-all duration-200",
+                isUser
+                  ? "rounded-tr-xs bg-zinc-900 font-medium text-white shadow-md shadow-zinc-900/10 dark:bg-gradient-to-r dark:from-indigo-600 dark:to-purple-600 dark:text-white dark:shadow-indigo-500/20"
+                  : "w-full rounded-tl-xs bg-white text-zinc-900 border border-zinc-200/80 shadow-sm dark:bg-zinc-900/80 dark:text-zinc-100 dark:border-zinc-800/80 backdrop-blur-md",
+              )}
+            >
+              {isUser ? (
+                <p className="whitespace-pre-wrap break-words">
+                  {message.content}
+                </p>
+              ) : message.content ? (
+                <ChatMessageErrorBoundary>
+                  <Markdown content={message.content} isStreaming={streaming} />
+                </ChatMessageErrorBoundary>
+              ) : streaming ? (
+                <BreathingCursor />
+              ) : null}
+            </div>
+          )
         )}
 
         {/* AI 消息底栏 Action Bar (Hover 显示) */}
@@ -446,13 +466,14 @@ export function LiveMessageBubble({
     toolCalls,
     artifacts,
     taskPlan,
+    contextCompression,
   } = useStreamData(streamStore);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll into view on streaming content update
   useEffect(() => {
     containerRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [content, thinking, toolCalls, artifacts, taskPlan]);
+  }, [content, thinking, toolCalls, artifacts, taskPlan, contextCompression]);
 
   const liveMessage: ChatMessage = {
     ...message,
@@ -464,6 +485,7 @@ export function LiveMessageBubble({
     toolCalls: Object.values(toolCalls),
     artifacts: Object.values(artifacts),
     taskPlan: taskPlan ?? message.taskPlan,
+    compressionMetadata: contextCompression ?? message.compressionMetadata,
   };
 
   return (

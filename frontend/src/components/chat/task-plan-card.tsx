@@ -1,21 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import type { TaskPlanState, TaskStepItem } from "@/hooks/useSpringAiStream";
 import {
-  CheckCircle2,
-  CircleDashed,
   AlertTriangle,
-  RefreshCw,
-  Clock,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Workflow,
-  Wrench,
+  CircleDashed,
+  Clock,
+  RefreshCw,
   Sparkles,
   Terminal,
+  Workflow,
+  Wrench,
   XCircle,
 } from "lucide-react";
+import { useState } from "react";
+import type { TaskPlanState, TaskStepItem } from "@/hooks/useSpringAiStream";
 
 interface TaskPlanCardProps {
   plan: TaskPlanState;
@@ -31,14 +31,18 @@ export function TaskPlanCard({ plan }: TaskPlanCardProps) {
 
   const totalSteps = plan.steps?.length || plan.totalSteps || 1;
   const completedCount =
-    plan.steps?.filter((s) => s.status === "COMPLETED" || s.status === "SKIPPED")
-      .length || 0;
+    plan.steps?.filter(
+      (s) => s.status === "COMPLETED" || s.status === "SKIPPED",
+    ).length || 0;
   const progressPercent = Math.min(
     100,
     Math.round((completedCount / totalSteps) * 100),
   );
 
-  const isExecuting = plan.status === "EXECUTING" || plan.status === "PLANNING" || plan.status === "REPLANNING";
+  const isExecuting =
+    plan.status === "EXECUTING" ||
+    plan.status === "PLANNING" ||
+    plan.status === "REPLANNING";
   const isCompleted = plan.status === "COMPLETED";
   const isCancelled = plan.status === "CANCELLED";
 
@@ -111,7 +115,9 @@ export function TaskPlanCard({ plan }: TaskPlanCardProps) {
       {isExpanded && (
         <div className="p-3.5 space-y-3">
           {plan.steps?.map((step) => {
-            const isStepOpen = openStepIds[step.stepId] ?? (step.status === "RUNNING" || step.status === "REPLANNING");
+            const isStepOpen =
+              openStepIds[step.stepId] ??
+              (step.status === "RUNNING" || step.status === "REPLANNING");
 
             return (
               <div
@@ -152,7 +158,8 @@ export function TaskPlanCard({ plan }: TaskPlanCardProps) {
                         )}
                         {(step.replanCount ?? 0) > 0 && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.2 text-[9px] font-medium text-amber-500 border border-amber-500/20">
-                            <RefreshCw className="h-2 w-2" /> 重试×{step.replanCount}
+                            <RefreshCw className="h-2 w-2" /> 重试×
+                            {step.replanCount}
                           </span>
                         )}
                       </div>
@@ -238,14 +245,20 @@ function StepStatusIcon({ status }: { status: TaskStepItem["status"] }) {
     case "COMPLETED":
       return <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />;
     case "RUNNING":
-      return <RefreshCw className="h-4 w-4 text-blue-500 animate-spin shrink-0" />;
+      return (
+        <RefreshCw className="h-4 w-4 text-blue-500 animate-spin shrink-0" />
+      );
     case "REPLANNING":
-      return <RefreshCw className="h-4 w-4 text-amber-500 animate-spin shrink-0" />;
+      return (
+        <RefreshCw className="h-4 w-4 text-amber-500 animate-spin shrink-0" />
+      );
     case "FAILED":
       return <AlertTriangle className="h-4 w-4 text-rose-500 shrink-0" />;
     case "SKIPPED":
       return <XCircle className="h-4 w-4 text-muted-foreground shrink-0" />;
     default:
-      return <CircleDashed className="h-4 w-4 text-muted-foreground/60 shrink-0" />;
+      return (
+        <CircleDashed className="h-4 w-4 text-muted-foreground/60 shrink-0" />
+      );
   }
 }

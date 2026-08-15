@@ -531,4 +531,49 @@ describe("useSpringAiStream SSE Frame Parsing & Behavior", () => {
     expect(result.current.loading).toBeFalse();
     unmount();
   });
+
+  it("should parse context_compression frame and notify onContextCompression and streamStore", async () => {
+    let receivedMetadata: any = null;
+
+    mockFetchEventSourceImpl = async (_url, options) => {
+      options.onmessage({
+        data: JSON.stringify({
+          type: "context_compression",
+          content: JSON.stringify({
+            compressedTurnCount: 4,
+            originalTokens: 2500,
+            compressedTokens: 450,
+            level: "LIGHT",
+            summarySnippet: "讨论了用户认证方案与Spring Security",
+            fallback: false,
+          }),
+        }),
+      });
+      options.onmessage({ data: "Hello after compression" });
+    };
+
+    const { result, unmount } = renderHook(() =>
+      useSpringAiStream({
+        onContextCompression: (meta) => {
+          receivedMetadata = meta;
+        },
+      }),
+    );
+
+    act(() => {
+      result.current.send("Prompt");
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(receivedMetadata).not.toBeNull();
+    expect(receivedMetadata.compressedTurnCount).toBe(4);
+    expect(receivedMetadata.originalTokens).toBe(2500);
+    expect(receivedMetadata.compressedTokens).toBe(450);
+    expect(receivedMetadata.summarySnippet).toContain("Spring Security");
+
+    const snap = result.current.streamStore.getSnapshot();
+    expect(snap.contextCompression).not.toBeNull();
+    expect(snap.contextCompression?.compressedTurnCount).toBe(4);
+    unmount();
+  });
 });

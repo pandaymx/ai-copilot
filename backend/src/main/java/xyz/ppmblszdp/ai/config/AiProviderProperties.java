@@ -88,10 +88,15 @@ public record AiProviderProperties(
             @Nullable Integer reserveOutputTokens,
             @Nullable Double historyRatio,
             @Nullable Integer defaultMaxContextTokens,
-            @Nullable Double safetyFactor) {
+            @Nullable Double safetyFactor,
+            @Nullable ContextCompressionConfig compression) {
 
         public static ContextConfig defaults() {
-            return new ContextConfig(null, null, null, null);
+            return new ContextConfig(null, null, null, null, null);
+        }
+
+        public ContextCompressionConfig resolveCompression() {
+            return compression != null ? compression : ContextCompressionConfig.defaults();
         }
 
         public int resolveReserveOutputTokens() {
@@ -113,6 +118,45 @@ public record AiProviderProperties(
 
         public double resolveSafetyFactor() {
             return (safetyFactor != null && safetyFactor >= 1.0d) ? safetyFactor : 1.1d;
+        }
+    }
+
+    /**
+     * 智能上下文压缩配置（绑定 {@code app.ai.context.compression.*}）。
+     *
+     * @param enabled        总开关（默认 true）
+     * @param provider       压缩专用低成本供应商 ID（如 google/deepseek，为空则使用系统默认）
+     * @param model          压缩专用低成本模型 ID（如 gemini-3.6-flash/deepseek-chat，为空则使用供应商默认）
+     * @param defaultLevel   默认压缩等级：LIGHT / DEEP / KEYWORDS
+     * @param protectedTurns 保留不参与压缩的最新轮次数（默认 3 轮，保证 Short-term Working Memory 完整）
+     * @param timeoutMs      LLM 压缩调用超时（毫秒，默认 10000ms，超时退化为硬删除）
+     */
+    public record ContextCompressionConfig(
+            @Nullable Boolean enabled,
+            @Nullable String provider,
+            @Nullable String model,
+            @Nullable String defaultLevel,
+            @Nullable Integer protectedTurns,
+            @Nullable Long timeoutMs) {
+
+        public static ContextCompressionConfig defaults() {
+            return new ContextCompressionConfig(true, null, null, "LIGHT", 3, 10000L);
+        }
+
+        public boolean resolveEnabled() {
+            return enabled == null || enabled;
+        }
+
+        public String resolveDefaultLevel() {
+            return (defaultLevel != null && !defaultLevel.isBlank()) ? defaultLevel : "LIGHT";
+        }
+
+        public int resolveProtectedTurns() {
+            return (protectedTurns != null && protectedTurns >= 0) ? protectedTurns : 3;
+        }
+
+        public long resolveTimeoutMs() {
+            return (timeoutMs != null && timeoutMs > 0) ? timeoutMs : 10000L;
         }
     }
 
