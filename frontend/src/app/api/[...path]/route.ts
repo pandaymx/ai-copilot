@@ -21,12 +21,15 @@ function getForwardHeaders(req: NextRequest): HeadersInit {
       headers.set(key, value);
     }
   });
-  // 受信任身份头 X-User-Id 由上游网关 Caddy basic_auth 注入为认证边界，
-  // 后端据此做多租户隔离，绝不信任请求体中的 userId；
-  // 即便客户端伪造 X-User-Id 也会被此处网关注入值覆盖（后写覆盖先写）。
-  const userId = req.headers.get("x-user-id");
-  if (userId) {
-    headers.set("X-User-Id", userId);
+  // 受信任身份头 X-User-Id 是认证边界：生产环境下仅由上游网关 Caddy
+  // (basic_auth) 注入，后端据此做多租户隔离，绝不信任客户端请求中的 X-User-Id。
+  // 若直连 frontend 而无 Caddy（如本地开发），可设 PROXY_TRUST_X_USER_ID=true
+  // 临时放行透传以便调试；生产部署必须保持 false（默认），否则存在身份伪造后门。
+  if (process.env.PROXY_TRUST_X_USER_ID === "true") {
+    const userId = req.headers.get("x-user-id");
+    if (userId) {
+      headers.set("X-User-Id", userId);
+    }
   }
   return headers;
 }
