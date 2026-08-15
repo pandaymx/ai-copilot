@@ -60,6 +60,18 @@ This repository enforces commit hygiene via husky + commitlint (root `package.js
   - **Allowed scopes**: `backend`, `frontend`, `ci`, `docs`, `deps`, `release`, `root`
   - Example: `feat(frontend): add session rename shortcut`
 - Subject must be non-empty and ≤ 100 characters. The `commit-msg` hook (commitlint) rejects anything else.
+- **Body lines must also be ≤ 100 characters** (`body-max-line-length` rule). Keep each bullet/paragraph on its own short line — a long bullet (e.g. a run-on `- Added functionality to ...`) is the most common failure.
+- **Never use `--allow-empty-message`** (or `-m ""`); an empty subject is rejected by commitlint.
+- **Two-stage validation**: `pre-commit` (Spotless/Biome formatting) runs first, then `commit-msg` (commitlint). A commit can pass pre-commit yet still be rejected for a malformed message — fix the message and re-run `git commit` (staged files are preserved, nothing is lost).
+- Full multi-line example (subject + body, all lines within 100 chars):
+  ```
+  feat(frontend): add SchemaBuilder component for visual JSON schema editing
+
+  - Implemented SchemaBuilder for visual JSON schema editing.
+  - Added property management: add, remove, and edit schema properties.
+  - Created API client for custom tools with CRUD operations.
+  ```
+- Source of truth: root `commitlint.config.js`, which `extends: ['@commitlint/config-conventional']`. The `body-max-line-length: 100` rule comes from that preset (not spelled out in the file itself).
 
 ### Pre-Commit Quality Gates
 - `pre-commit` hook runs checks **only for the parts you changed**:

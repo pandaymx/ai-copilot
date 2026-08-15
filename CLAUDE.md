@@ -119,6 +119,18 @@ Commits are enforced by husky + commitlint (root `package.json` + `.husky/`) and
   - Types: `feat`, `fix`, `refactor`, `style`, `docs`, `chore`, `ci`, `test`, `perf`, `build`, `revert`.
   - Scopes: `backend`, `frontend`, `ci`, `docs`, `deps`, `release`, `root`.
   - Example: `fix(backend): validate API key before provider registration`
+  - **Subject ≤ 100 chars and must be non-empty**; never use `--allow-empty-message` (empty subject is rejected).
+  - **Body lines must also be ≤ 100 chars** (`body-max-line-length`). Keep each bullet on its own short line — long run-on bullets are the usual failure.
+  - **Two-stage hooks**: `pre-commit` (Spotless/Biome) runs first, then `commit-msg` (commitlint). A commit can pass pre-commit but still be rejected for a bad message — staged files are preserved, just fix the message and re-commit.
+  - Compliant multi-line example:
+    ```
+    feat(frontend): add SchemaBuilder component for visual JSON schema editing
+
+    - Implemented SchemaBuilder for visual JSON schema editing.
+    - Added property management: add, remove, and edit schema properties.
+    - Created API client for custom tools with CRUD operations.
+    ```
+  - Source of truth: root `commitlint.config.js`, which `extends: ['@commitlint/config-conventional']`. The `body-max-line-length: 100` rule comes from that preset (not spelled out in the file itself).
 - **Pre-commit gates** (run by `.husky/pre-commit` on the changed subtree only):
   - Frontend → `bun run lint` (Biome).
   - Backend → `./gradlew spotlessCheck` (AOSP 4-space style via Palantir Java Format). Run `./gradlew spotlessApply` to auto-format if it fails.
