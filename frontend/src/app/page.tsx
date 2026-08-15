@@ -835,14 +835,11 @@ export default function Home() {
   );
 
   const handleRegenerate = useCallback(() => {
-    setMessages((prev) => {
-      const targetUserMsg = prev[prev.length - 2];
-      if (targetUserMsg && targetUserMsg.role === "user") {
-        setTimeout(() => handleSend(targetUserMsg.content), 0);
-      }
-      return prev;
-    });
-  }, [handleSend]);
+    const targetUserMsg = messages[messages.length - 2];
+    if (targetUserMsg && targetUserMsg.role === "user") {
+      void handleSend(targetUserMsg.content);
+    }
+  }, [messages, handleSend]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
