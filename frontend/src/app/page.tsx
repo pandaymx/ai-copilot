@@ -2,11 +2,8 @@
 
 import {
   AlertTriangle,
-  Code2,
-  Cpu,
   Download,
   FileText,
-  Layers,
   PanelLeftOpen,
   Paperclip,
   RotateCcw,
@@ -15,19 +12,15 @@ import {
   Sparkles,
   Square,
   UploadCloud,
-  Wand2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-import useSWR from "swr";
+import { useEffect, useRef, useState } from "react";
 import { CitationViewerDrawer } from "@/components/chat/citation-viewer-drawer";
 import { ConversationSummaryModal } from "@/components/chat/conversation-summary-modal";
 import { DocumentChatBar } from "@/components/chat/document-chat-bar";
+import { EmptyState } from "@/components/chat/empty-state";
 import { ExportDialog } from "@/components/chat/export-dialog";
 import {
-  type AttachmentItem,
-  type ChatMessage,
   LiveMessageBubble,
   MessageBubble,
 } from "@/components/chat/message-bubble";
@@ -38,61 +31,19 @@ import {
   type SelectedModel,
 } from "@/components/chat/model-selector";
 import { SearchDialog } from "@/components/chat/search-dialog";
-import { type ChatSession, Sidebar } from "@/components/chat/sidebar";
+import { Sidebar } from "@/components/chat/sidebar";
 import { VisionScenarioPills } from "@/components/chat/vision-scenario-pills";
 import { VoiceRecorderButton } from "@/components/chat/voice-recorder-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { useSpringAiStream } from "@/hooks/useSpringAiStream";
-import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
-import {
-  type DocChatDocItem,
-  type DocumentCitationItem,
-  deleteSessionApi,
-  fetchDocChatDocumentsApi,
-  fetchSessionDetailApi,
-  fetchSessionsApi,
-  renameSessionApi,
-} from "@/lib/api";
-import { compressImage } from "@/lib/image-compressor";
-import { fetchTitle } from "@/lib/title";
+import { useChatInput } from "@/hooks/useChatInput";
+import { useChatSession } from "@/hooks/useChatSession";
+import { useChatStreaming } from "@/hooks/useChatStreaming";
+import type { DocumentCitationItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { transcribe } from "@/lib/voice";
 
-const ACTIVE_KEY = "ai-copilot-active";
 const MODEL_STORAGE_KEY = "ai-copilot-selected-model";
-const SESSIONS_STORAGE_KEY = "ai-copilot-sessions";
-
-const nextId = () => `msg-${crypto.randomUUID()}`;
-const nextSessionId = () => `sess-${crypto.randomUUID()}`;
-
-const SUGGESTED_PROMPTS = [
-  {
-    icon: Code2,
-    category: "代码开发",
-    text: "用 Spring Boot 4.x 写一个 Reactive WebFlux SSE 流式控制器",
-    gradient: "from-blue-500 to-cyan-500",
-  },
-  {
-    icon: Cpu,
-    category: "性能调优",
-    text: "对比分析 Java 25 Virtual Threads 与 Kotlin 协程在 IO 密集场景的差异",
-    gradient: "from-emerald-500 to-teal-500",
-  },
-  {
-    icon: Layers,
-    category: "架构设计",
-    text: "设计一个高并发、低延迟的分布式 AI Agent 状态流转模型",
-    gradient: "from-purple-500 to-indigo-500",
-  },
-  {
-    icon: Wand2,
-    category: "前端工程",
-    text: "编写一个支持 Server-Sent Events 流式打字机效果的 React Hook",
-    gradient: "from-amber-500 to-orange-500",
-  },
-];
 
 /** 从 localStorage 读取上次使用的模型配置 */
 function loadSavedModel(): SelectedModel {
@@ -114,165 +65,17 @@ function loadSavedModel(): SelectedModel {
 }
 
 export default function Home() {
-  const {
-    data: dbSessions,
-    error: sessionsError,
-    isLoading: loadingSessions,
-    mutate: mutateSessions,
-  } = useSWR<ChatSession[] | null>("/api/chat/sessions", fetchSessionsApi, {
-    revalidateOnFocus: true,
-    dedupingInterval: 2000,
-  });
+  const [model, setModel] = useState<SelectedModel>(loadSavedModel);
+  const [catalog, setCatalog] = useState<BackendProviderEntry[]>([]);
 
-  const isOfflineFallback = Boolean(sessionsError || dbSessions === null);
-  const [offlineSessions, setOfflineSessions] = useState<ChatSession[]>([]);
-
-  useEffect(() => {
-    if (isOfflineFallback && typeof window !== "undefined") {
-      try {
-        const raw = localStorage.getItem(SESSIONS_STORAGE_KEY);
-        if (raw) {
-          setOfflineSessions(JSON.parse(raw) as ChatSession[]);
-        }
-      } catch {
-        // 忽略解析错误
-      }
-    }
-  }, [isOfflineFallback]);
-
-  const sessions = dbSessions ?? offlineSessions;
-
-  const { loading, error, send, stop, streamStore } = useSpringAiStream({
-    endpoint: "/api/chat/stream",
-    onConversationId: (serverConvId) => {
-      if (!serverConvId) return;
-      // 首次发送时 activeId 为 null，必须无条件设置；
-      // 后续仅在会话 ID 变更时更新（避免不必要的重渲染）。
-      if (!activeId || serverConvId !== activeId) {
-        setActiveId(serverConvId);
-        void mutateSessions(
-          (prev) =>
-            (prev ?? []).map((s) =>
-              s.id === activeId ? { ...s, id: serverConvId } : s,
-            ),
-          false,
-        );
-        if (typeof window !== "undefined") {
-          localStorage.setItem(ACTIVE_KEY, serverConvId);
-        }
-      }
-    },
-    onIntent: (intent, intentLabel) => {
-      const liveId = liveIdRef.current;
-      if (!liveId) return;
-      setMessages((prev) =>
-        prev.map((m) => (m.id === liveId ? { ...m, intent, intentLabel } : m)),
-      );
-    },
-    onContextCompression: (metadata) => {
-      const liveId = liveIdRef.current;
-      if (!liveId) return;
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === liveId ? { ...m, compressionMetadata: metadata } : m,
-        ),
-      );
-    },
-    onCitations: (citations) => {
-      const liveId = liveIdRef.current;
-      if (!liveId) return;
-      setMessages((prev) =>
-        prev.map((m) => (m.id === liveId ? { ...m, citations } : m)),
-      );
-    },
-    onFinish: (finalContent, finalThinking, finalUsage) => {
-      const liveId = liveIdRef.current;
-      if (!liveId || !activeId) return;
-      liveIdRef.current = null;
-      const question = liveUserTextRef.current;
-      liveUserTextRef.current = "";
-
-      const snap = streamStore.getSnapshot();
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === liveId
-            ? {
-                ...m,
-                content: finalContent,
-                thinking: finalThinking || m.thinking,
-                usage: finalUsage ?? m.usage,
-                compressionMetadata:
-                  snap.contextCompression ?? m.compressionMetadata,
-                citations:
-                  snap.citations && snap.citations.length > 0
-                    ? snap.citations
-                    : m.citations,
-              }
-            : m,
-        ),
-      );
-
-      void mutateSessions(
-        (prev) =>
-          (prev ?? []).map((s) => {
-            if (s.id !== activeId) return s;
-            const updatedMessages = (s.messages ?? []).map((m) =>
-              m.id === liveId
-                ? {
-                    ...m,
-                    content: finalContent,
-                    thinking: finalThinking || m.thinking,
-                    usage: finalUsage ?? m.usage,
-                    compressionMetadata:
-                      snap.contextCompression ?? m.compressionMetadata,
-                    citations:
-                      snap.citations && snap.citations.length > 0
-                        ? snap.citations
-                        : m.citations,
-                  }
-                : m,
-            );
-            return { ...s, messages: updatedMessages, updatedAt: Date.now() };
-          }),
-        false,
-      );
-
-      // 仅当标题仍为自动生成（未被用户重命名、也未被 AI 改写）时才更新标题
-      const target = sessionsRef.current.find((s) => s.id === activeId);
-      if (!target || target.isDefaultTitle !== true) return;
-
-      void (async () => {
-        const aiTitle = await fetchTitle({
-          message: question,
-          answer: finalContent,
-          provider: model.provider,
-          model: model.model,
-          conversationId: activeId,
-        });
-        const newTitle = aiTitle ?? deriveTitle(finalContent);
-        await renameSessionApi(activeId, newTitle);
-        void mutateSessions();
-      })();
-    },
-  });
-
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [imageMode, setImageMode] = useState(false);
+  // 侧边栏与弹窗状态
   const [collapsed, setCollapsed] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [confirmClear, setConfirmClear] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
-  // 文档对话模式（Chat with Document）状态
-  const [documentChatEnabled, setDocumentChatEnabled] = useState(false);
-  const [docChatDocuments, setDocChatDocuments] = useState<DocChatDocItem[]>(
-    [],
-  );
-  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+  // 原文引用抽屉状态
   const [citationDrawer, setCitationDrawer] = useState<{
     open: boolean;
     citations: DocumentCitationItem[];
@@ -282,45 +85,7 @@ export default function Home() {
     citations: [],
   });
 
-  const refreshDocChatDocs = useCallback(async () => {
-    if (!activeId) {
-      setDocChatDocuments([]);
-      return;
-    }
-    try {
-      const docs = await fetchDocChatDocumentsApi(activeId);
-      setDocChatDocuments(docs);
-      if (docs && docs.length > 0) {
-        setDocumentChatEnabled(true);
-      }
-    } catch {
-      setDocChatDocuments([]);
-    }
-  }, [activeId]);
-
-  useEffect(() => {
-    void refreshDocChatDocs();
-  }, [refreshDocChatDocs]);
-
-  // 全局 ⌘K / Ctrl+K 快捷键唤起全盘全文检索
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        // 强制打开搜索框，避免 toggle 在多测试/多快捷键下状态翻转导致的不确定行为
-        setSearchOpen(true);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-  const [model, setModel] = useState<SelectedModel>({
-    provider: "deepseek",
-    model: "deepseek-chat",
-  });
-  const [catalog, setCatalog] = useState<BackendProviderEntry[]>([]);
-
-  // 计算当前选中的模型是否支持视觉图片处理
+  // 计算当前选中的模型是否支持多模态视觉
   const currentProviderObj = catalog.find((p) => p.id === model.provider);
   const currentModelObj = currentProviderObj?.models.find(
     (m) => m.id === model.model,
@@ -332,278 +97,110 @@ export default function Home() {
       model.model.includes("gpt-4") ||
       model.model.includes("gemini");
 
-  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
-  const [agentEnabled, setAgentEnabled] = useState<boolean>(false);
-  const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
-  const dragCounterRef = useRef<number>(0);
-  const lastPastedRef = useRef<{ time: number; key: string }>({
-    time: 0,
-    key: "",
-  });
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // 语音录制：录音停止后自动上传转写并回填输入框
-  const recorder = useVoiceRecorder();
-  const handleVoiceStop = useCallback(async () => {
-    const result = await recorder.stop();
-    if (!result) return;
-    try {
-      const text = await transcribe(result.base64, result.mimeType);
-      if (text) setInput((prev) => (prev ? `${prev} ${text}` : text).trim());
-    } catch (err) {
-      console.error("语音识别失败:", err);
-    }
-  }, [recorder]);
-
-  const isStreaming = loading;
-  const hasError = Boolean(error);
-
-  const processFiles = useCallback(
-    async (files: FileList | File[]) => {
-      const fileList = Array.from(files);
-      if (fileList.length === 0) return;
-
-      const newAttachments: AttachmentItem[] = [];
-      for (const file of fileList) {
-        if (file.size > 10 * 1024 * 1024) {
-          toast.error(`文件 "${file.name}" 超过 10MB 限制`);
-          continue;
-        }
-
-        if (file.type.startsWith("image/")) {
-          if (!currentSupportsVision) {
-            toast.error(
-              "当前模型不支持图片，请切换到支持图片的模型 (如 GPT-4o, Gemini 等)",
-            );
-            continue;
-          }
-          try {
-            const compressed = await compressImage(file);
-            newAttachments.push({
-              id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-              name: compressed.name,
-              type: "image",
-              mimeType: compressed.mimeType,
-              url: compressed.dataUrl,
-              size: compressed.size,
-            });
-          } catch (err: unknown) {
-            toast.error(err instanceof Error ? err.message : "图片处理失败");
-          }
-        } else {
-          // 非图片文件：读取文本内容，存储为 AttachmentItem
-          const textContent = await file.text();
-          newAttachments.push({
-            id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            name: file.name,
-            type: "file",
-            mimeType: file.type || "text/plain",
-            url: "",
-            size: file.size,
-            textContent,
-          });
-        }
-      }
-
-      if (newAttachments.length > 0) {
-        setAttachments((prev) => [...prev, ...newAttachments].slice(0, 4));
-      }
-    },
-    [currentSupportsVision],
-  );
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      void processFiles(e.target.files);
-      e.target.value = "";
-    }
-  };
-
-  const removeAttachment = (id: string) => {
-    setAttachments((prev) => prev.filter((a) => a.id !== id));
-  };
-
-  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    if (e.clipboardData.files && e.clipboardData.files.length > 0) {
-      const files = Array.from(e.clipboardData.files);
-      const pasteKey = files.map((f) => `${f.name}-${f.size}`).join(",");
-      const now = Date.now();
-      if (
-        now - lastPastedRef.current.time < 500 &&
-        lastPastedRef.current.key === pasteKey
-      ) {
-        e.preventDefault();
-        return;
-      }
-      lastPastedRef.current = { time: now, key: pasteKey };
-
-      const imageFiles = files.filter((f) => f.type.startsWith("image/"));
-      if (imageFiles.length > 0) {
-        e.preventDefault();
-        if (!currentSupportsVision) {
-          toast.error(
-            "当前模型不支持图片，请切换到支持图片的模型 (如 GPT-4o, Gemini 等)",
-          );
-          return;
-        }
-        void processFiles(imageFiles);
-      }
-    }
-  };
-
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current += 1;
-    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-      setIsDraggingOver(true);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current -= 1;
-    if (dragCounterRef.current <= 0) {
-      dragCounterRef.current = 0;
-      setIsDraggingOver(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current = 0;
-    setIsDraggingOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      void processFiles(e.dataTransfer.files);
-    }
-  };
-
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const liveIdRef = useRef<string | null>(null);
-  // 当前流式轮次对应的用户问题文本，用于流结束后生成标题
-  const liveUserTextRef = useRef<string>("");
-  // 最新 sessions 的引用，供 onFinish 闭包读取最新标题状态，避免闭包捕获过期值
-  const sessionsRef = useRef<ChatSession[]>([]);
-  useEffect(() => {
-    sessionsRef.current = sessions;
-  }, [sessions]);
-
-  const handlePickPrompt = (text: string) => {
-    setInput(text);
-    if (!isStreaming) handleSend(text);
-  };
-
-  const goToRootDraft = useCallback(() => {
-    stop();
-    liveIdRef.current = null;
-    setActiveId(null);
-    setMessages([]);
-    setInput("");
-    if (typeof window !== "undefined") {
-      localStorage.removeItem(ACTIVE_KEY);
-      if (window.innerWidth < 768) {
+  // 1. 会话与历史消息 Hook
+  const {
+    sessions,
+    activeId,
+    setActiveId,
+    messages,
+    setMessages,
+    loadingSessions,
+    isOfflineFallback,
+    mutateSessions,
+    selectSession,
+    deleteSession,
+    renameSession,
+    newSession,
+    sessionsRef,
+  } = useChatSession({
+    onSelectSessionCallback: () => {
+      if (typeof window !== "undefined" && window.innerWidth < 768) {
         setCollapsed(true);
       }
-    }
-  }, [stop]);
+    },
+  });
 
-  // 快捷键 Cmd + B / Ctrl + B 切换侧边栏
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
-        e.preventDefault();
-        setCollapsed((prev) => !prev);
-      }
-    };
-    window.addEventListener("keydown", handleGlobalKeyDown);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, []);
+  // 2. 输入框、附件与文档对话管理 Hook
+  const {
+    input,
+    setInput,
+    attachments,
+    setAttachments,
+    imageMode,
+    setImageMode,
+    agentEnabled,
+    setAgentEnabled,
+    documentChatEnabled,
+    setDocumentChatEnabled,
+    docChatDocuments,
+    selectedDocIds,
+    setSelectedDocIds,
+    refreshDocChatDocs,
+    fileInputRef,
+    textareaRef,
+    recorder,
+    handleVoiceStop,
+    handleFileChange,
+    removeAttachment,
+    handlePaste,
+    isDraggingOver,
+    handleDragEnter,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+  } = useChatInput({
+    currentSupportsVision,
+    activeId,
+  });
 
-  // 初始化：模型选择与激活会话联动
-  useEffect(() => {
-    const savedModel = loadSavedModel();
-    setModel(savedModel);
-  }, []);
+  // 3. 流式 SSE 编排与发送 Hook
+  const {
+    isStreaming,
+    stop,
+    streamStore,
+    handleSend,
+    handleRegenerate,
+    liveIdRef,
+  } = useChatStreaming({
+    activeId,
+    setActiveId,
+    messages,
+    setMessages,
+    mutateSessions,
+    sessionsRef,
+    model,
+    currentSupportsVision,
+    attachments,
+    setAttachments,
+    input,
+    setInput,
+    imageMode,
+    agentEnabled,
+    documentChatEnabled,
+    docChatDocuments,
+    selectedDocIds,
+  });
 
-  useEffect(() => {
-    if (loadingSessions) return;
-    // 流式生成中或存在 live message 时，本地会话尚未同步到 dbSessions，
-    // 此时不能因会话列表为空就清空 activeId/messages，否则会丢失进行中的回复。
-    if (isStreaming || liveIdRef.current) return;
-    const activeRaw =
-      typeof window !== "undefined" ? localStorage.getItem(ACTIVE_KEY) : null;
-    const currentSessions = dbSessions ?? [];
-    const targetId =
-      activeRaw && currentSessions.some((s) => s.id === activeRaw)
-        ? activeRaw
-        : (currentSessions[0]?.id ?? null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-    if (targetId) {
-      if (targetId !== activeId) {
-        setActiveId(targetId);
-        if (typeof window !== "undefined") {
-          localStorage.setItem(ACTIVE_KEY, targetId);
-        }
-        void (async () => {
-          const detail = await fetchSessionDetailApi(targetId);
-          if (detail?.messages && detail.messages.length > 0) {
-            setMessages(detail.messages);
-          } else {
-            const fallback = currentSessions.find((s) => s.id === targetId);
-            setMessages(fallback?.messages ?? []);
-          }
-        })();
-      }
-    } else if (
-      activeId !== null &&
-      currentSessions.length === 0 &&
-      messages.length === 0
-    ) {
-      // 仅在本地没有任何消息时才清空：本地新建的会话尚未同步到 dbSessions，
-      // 列表为空不代表会话已删除，不能误清空进行中的对话。
-      setActiveId(null);
-      setMessages([]);
-      if (typeof window !== "undefined") {
-        localStorage.removeItem(ACTIVE_KEY);
-      }
-    }
-  }, [dbSessions, loadingSessions, activeId, isStreaming, messages]);
-
-  // 模型选择持久化
+  // 模型选择本地持久化
   useEffect(() => {
     if (typeof window !== "undefined" && model?.provider && model?.model) {
       localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(model));
     }
   }, [model]);
 
-  // 会话列表本地持久化：500ms 防抖，流式传输过程中跳过序列化以提升 UI 性能
+  // 全局 ⌘K / Ctrl+K 快捷键唤起全盘全文检索
   useEffect(() => {
-    if (
-      typeof window === "undefined" ||
-      isStreaming ||
-      !sessions ||
-      sessions.length === 0
-    ) {
-      return;
-    }
-    const timer = setTimeout(() => {
-      try {
-        localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
-      } catch (err) {
-        console.error("Failed to persist sessions to localStorage:", err);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
       }
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [sessions, isStreaming]);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // 自动滚动到底部
   // biome-ignore lint/correctness/useExhaustiveDependencies: 副作用触发滚动
@@ -611,250 +208,16 @@ export default function Home() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // 自适应文本框高度
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 高度随 input 重新计算
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-  }, [input]);
-
-  function scrollToMessage(targetMessageId: string | number) {
-    setTimeout(() => {
-      const targetEl =
-        document.getElementById(`msg-${targetMessageId}`) ||
-        document.querySelector(`[data-message-id="${targetMessageId}"]`);
-      if (targetEl) {
-        targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
-        targetEl.classList.add(
-          "ring-2",
-          "ring-indigo-500",
-          "bg-indigo-500/10",
-          "dark:bg-indigo-500/20",
-        );
-        setTimeout(() => {
-          targetEl.classList.remove(
-            "ring-2",
-            "ring-indigo-500",
-            "bg-indigo-500/10",
-            "dark:bg-indigo-500/20",
-          );
-        }, 2500);
-      }
-    }, 150);
-  }
-
-  async function selectSession(id: string, targetMessageId?: string | number) {
-    if (id === activeId) {
-      if (typeof window !== "undefined" && window.innerWidth < 768) {
-        setCollapsed(true);
-      }
-      if (targetMessageId !== undefined && targetMessageId !== null) {
-        scrollToMessage(targetMessageId);
-      }
-      return;
-    }
-    setActiveId(id);
-    liveIdRef.current = null;
-    stop();
-    if (typeof window !== "undefined") {
-      localStorage.setItem(ACTIVE_KEY, id);
-      if (window.innerWidth < 768) {
-        setCollapsed(true);
-      }
-    }
-    const detail = await fetchSessionDetailApi(id);
-    if (detail?.messages && detail.messages.length > 0) {
-      setMessages(detail.messages);
-    } else {
-      const target = sessions.find((s) => s.id === id);
-      setMessages(target?.messages ?? []);
-    }
-
-    if (targetMessageId !== undefined && targetMessageId !== null) {
-      scrollToMessage(targetMessageId);
-    }
-  }
-
-  function deleteSession(id: string) {
-    void (async () => {
-      await deleteSessionApi(id);
-      void mutateSessions();
-    })();
-    void mutateSessions(
-      (prev) => (prev ?? []).filter((s) => s.id !== id),
-      false,
-    );
-    if (id === activeId) {
-      goToRootDraft();
-    }
-  }
-
-  function renameSession(id: string, newTitle: string) {
-    void (async () => {
-      await renameSessionApi(id, newTitle);
-      void mutateSessions();
-    })();
-    void mutateSessions(
-      (prev) =>
-        (prev ?? []).map((s) =>
-          s.id === id ? { ...s, title: newTitle, isDefaultTitle: false } : s,
-        ),
-      false,
-    );
-  }
-
-  const handleSend = useCallback(
-    (textOverride?: string) => {
-      const text = (textOverride ?? input).trim();
-      if ((!text && attachments.length === 0) || isStreaming) return;
-
-      const liveId = nextId();
-      liveIdRef.current = liveId;
-
-      const currentAttachments = [...attachments];
-      const mediaPayload = currentAttachments
-        .filter((att) => att.type === "image")
-        .map((att) => ({ mimeType: att.mimeType, data: att.url }));
-
-      if (mediaPayload.length > 0 && !currentSupportsVision) {
-        toast.error("当前模型不支持图片，请切换到支持图片的模型");
-        return;
-      }
-
-      // 将非图片文件的文本内容拼接为上下文前缀，确保后端能收到文件内容
-      const fileAttachments = currentAttachments.filter(
-        (att) => att.type === "file" && att.textContent,
-      );
-      const fileContextPrefix = fileAttachments
-        .map(
-          (att) =>
-            `【附加上下文文件 ${att.name}】\n\`\`\`\n${att.textContent}\n\`\`\``,
-        )
-        .join("\n\n");
-
-      const isRegenerate = Boolean(textOverride);
-      const historySource = isRegenerate ? messages.slice(0, -2) : messages;
-      const historyPayload = historySource
-        .filter((m) => m.content.trim() !== "")
-        .map((m) => ({ role: m.role, content: m.content }));
-
-      // 界面显示的消息文本（不含文件内容，保持 UI 简洁）
-      const userMsgText =
-        text || (currentAttachments.length > 0 ? "[附件]" : "");
-
-      // 实际发送给后端的消息文本（包含文件上下文）
-      const sendText = fileContextPrefix
-        ? `${fileContextPrefix}\n\n${text}`
-        : userMsgText;
-
-      const next: ChatMessage[] = [
-        ...historySource,
-        {
-          id: nextId(),
-          role: "user",
-          content: userMsgText,
-          attachments:
-            currentAttachments.length > 0 ? currentAttachments : undefined,
-        },
-        { id: liveId, role: "assistant", content: "" },
-      ];
-
-      let currentConvId = activeId;
-
-      if (!currentConvId) {
-        // 处于根目录草稿状态时，发起对话才创建并保存会话
-        currentConvId = nextSessionId();
-        const newSession: ChatSession = {
-          id: currentConvId,
-          title: deriveTitle(userMsgText),
-          updatedAt: Date.now(),
-          messages: next,
-          isDefaultTitle: true,
-        };
-        setActiveId(currentConvId);
-        void mutateSessions((prev) => [newSession, ...(prev ?? [])], false);
-        if (typeof window !== "undefined") {
-          localStorage.setItem(ACTIVE_KEY, currentConvId);
-        }
-      } else {
-        void mutateSessions(
-          (prev) =>
-            (prev ?? []).map((s) =>
-              s.id === currentConvId
-                ? { ...s, messages: next, updatedAt: Date.now() }
-                : s,
-            ),
-          false,
-        );
-      }
-
-      setMessages(next);
-      setInput("");
-      setAttachments([]);
-      liveUserTextRef.current = userMsgText;
-
-      let payloadText = sendText;
-      if (
-        imageMode &&
-        !payloadText.startsWith("/image ") &&
-        !payloadText.startsWith("/img ")
-      ) {
-        payloadText = `/image ${payloadText}`;
-      }
-
-      send(payloadText, {
-        provider: model.provider,
-        model: model.model,
-        conversationId: currentConvId,
-        history: historyPayload,
-        media: mediaPayload.length > 0 ? mediaPayload : undefined,
-        agentEnabled,
-        documentChatEnabled: documentChatEnabled || docChatDocuments.length > 0,
-        docIds: selectedDocIds.length > 0 ? selectedDocIds : undefined,
-      });
-    },
-    [
-      attachments,
-      input,
-      isStreaming,
-      messages,
-      model.model,
-      model.provider,
-      send,
-      agentEnabled,
-      documentChatEnabled,
-      docChatDocuments.length,
-      selectedDocIds,
-      activeId,
-      currentSupportsVision,
-      imageMode,
-      mutateSessions,
-    ],
-  );
-
-  const handleRegenerate = useCallback(() => {
-    const targetUserMsg = messages[messages.length - 2];
-    if (targetUserMsg && targetUserMsg.role === "user") {
-      void handleSend(targetUserMsg.content);
-    }
-  }, [messages, handleSend]);
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    handleSend();
+    void handleSend();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      void handleSend();
     }
-  };
-
-  const handleReset = () => {
-    goToRootDraft();
   };
 
   return (
@@ -866,7 +229,7 @@ export default function Home() {
         loadingSessions={loadingSessions}
         isOfflineFallback={isOfflineFallback}
         onSelect={selectSession}
-        onNew={goToRootDraft}
+        onNew={newSession}
         onDelete={(id) => setDeleteTarget(id)}
         onRename={renameSession}
         onToggleCollapsed={() => setCollapsed((c) => !c)}
@@ -898,141 +261,103 @@ export default function Home() {
         {isDraggingOver && (
           <div className="pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-indigo-950/70 backdrop-blur-sm border-2 border-dashed border-indigo-400 text-white animate-in fade-in duration-200">
             <div className="flex size-16 items-center justify-center rounded-2xl bg-indigo-600/90 shadow-xl ring-4 ring-indigo-400/40 animate-bounce">
-              <UploadCloud className="size-8 text-white" />
+              <UploadCloud className="size-8" />
             </div>
-            <div className="text-center">
-              <p className="text-base font-semibold">
-                释放图片以添加至视觉对话
-              </p>
-              <p className="text-xs text-indigo-200 mt-1">
-                支持 JPG / PNG / WebP / GIF，客户端自动保真压缩 (≤ 4MB)
-              </p>
-            </div>
+            <p className="text-base font-semibold">释放文件以添加附件</p>
+            <p className="text-xs text-indigo-200">
+              支持图片 (JPG, PNG, WebP) 与各类文本代码文件 (最大 10MB)
+            </p>
           </div>
         )}
 
-        {/* 顶部 Header */}
-        <header className="shrink-0 z-10 border-b border-zinc-200/60 bg-white/70 backdrop-blur-xl dark:border-zinc-800/60 dark:bg-zinc-950/70">
-          <div className="flex w-full items-center justify-between px-4 py-3 sm:px-6">
-            <div className="flex items-center gap-3">
-              {collapsed && (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition-colors"
-                  onClick={() => setCollapsed(false)}
-                  aria-label="展开侧边栏"
-                  title="展开侧边栏 (⌘B)"
-                >
-                  <PanelLeftOpen className="size-4" />
-                </Button>
-              )}
-              <div className="flex items-center gap-2">
-                <span className="relative flex size-2.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
-                </span>
-                <h1 className="font-heading text-sm font-bold tracking-tight text-zinc-800 dark:text-zinc-100">
-                  Spring AI Copilot
-                </h1>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <ThemeToggle />
+        {/* 顶部状态栏 Header */}
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-zinc-200/80 bg-white/80 px-4 backdrop-blur-md dark:border-zinc-800/80 dark:bg-zinc-950/80">
+          <div className="flex items-center gap-2">
+            {collapsed && (
               <Button
                 variant="ghost"
-                size="icon-sm"
-                onClick={() => setSearchOpen(true)}
-                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors"
-                aria-label="搜索历史消息 (⌘K)"
-                title="搜索历史消息 (⌘K)"
+                size="icon"
+                onClick={() => setCollapsed(false)}
+                className="size-8 rounded-lg text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                aria-label="展开侧边栏"
               >
-                <Search className="size-4" />
+                <PanelLeftOpen className="size-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => setShowSummary(true)}
-                disabled={messages.length === 0}
-                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors"
-                aria-label="会话摘要与知识沉淀"
-                title="会话摘要与知识沉淀"
-              >
-                <Sparkles className="size-4 text-indigo-500" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => setShowExport(true)}
-                disabled={messages.length === 0}
-                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors"
-                aria-label="导出对话"
-                title="导出对话"
-              >
-                <Download className="size-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setConfirmClear(true)}
-                disabled={isStreaming || messages.length === 0}
-                className="gap-1.5 text-xs text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-              >
-                <RotateCcw className="size-3.5" />
-                清空
-              </Button>
-              {confirmClear && (
-                <div className="flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                  <span className="text-zinc-500 dark:text-zinc-400">
-                    确认清空？
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setConfirmClear(false);
-                      handleReset();
-                    }}
-                    className="h-6 px-2 text-rose-600 hover:text-rose-700 dark:text-rose-400"
-                  >
-                    确认清空
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setConfirmClear(false)}
-                    className="h-6 px-2"
-                  >
-                    取消
-                  </Button>
-                </div>
-              )}
-            </div>
+            )}
+
+            {/* 模型切换器 */}
+            <ModelSelector
+              value={model}
+              onChange={setModel}
+              onCatalogChange={setCatalog}
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* 全盘搜索按钮 */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSearchOpen(true)}
+              className="h-8 gap-1.5 rounded-lg px-2 text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+              title="搜索全部对话历史 (⌘K / Ctrl+K)"
+            >
+              <Search className="size-3.5" />
+              <span className="hidden sm:inline">搜索</span>
+              <kbd className="hidden rounded bg-zinc-100 px-1 py-0.5 font-mono text-[10px] text-zinc-400 dark:bg-zinc-800 md:inline-block">
+                ⌘K
+              </kbd>
+            </Button>
+
+            {/* 结构化摘要与沉淀按钮 */}
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={messages.length === 0}
+              onClick={() => setShowSummary(true)}
+              className="h-8 gap-1.5 rounded-lg px-2 text-xs text-zinc-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400"
+              title="生成当前会话核心摘要并一键沉淀至知识库"
+            >
+              <Sparkles className="size-3.5 text-indigo-500" />
+              <span className="hidden sm:inline">会话沉淀</span>
+            </Button>
+
+            {/* 历史导出按钮 */}
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={messages.length === 0}
+              onClick={() => setShowExport(true)}
+              className="h-8 gap-1.5 rounded-lg px-2 text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+              title="导出为 Markdown / JSON / TXT / 图片长图"
+            >
+              <Download className="size-3.5" />
+              <span className="hidden sm:inline">导出</span>
+            </Button>
+
+            <ThemeToggle />
           </div>
         </header>
 
-        {/* 错误提示卡片 */}
-        {hasError && (
-          <div className="mx-auto mt-4 w-full max-w-3xl shrink-0 px-4 sm:px-6">
-            <div className="flex items-start gap-2.5 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs text-rose-600 dark:text-rose-400 shadow-sm backdrop-blur-md">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-              <span>
-                服务连接受阻：{error?.message ?? "后端未能即时响应"}。请确保后端
-                Spring AI 服务已正常启动。
-              </span>
-            </div>
+        {/* 离线降级提示条 */}
+        {isOfflineFallback && (
+          <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/50 dark:text-amber-300">
+            <AlertTriangle className="size-3.5 shrink-0" />
+            <span>
+              无法连接后端服务器，已启用本地离线模式，历史记录仅保存在当前浏览器中。
+            </span>
           </div>
         )}
 
-        {/* 删除会话二次确认（破坏性操作保护） */}
+        {/* 会话删除确认对话框 */}
         {deleteTarget && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center bg-zinc-950/60 px-4 backdrop-blur-sm">
-            <div
-              role="alertdialog"
-              aria-modal="true"
-              aria-labelledby="delete-dialog-title"
-              className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900"
-            >
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-dialog-title"
+          >
+            <div className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-4 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
               <h2
                 id="delete-dialog-title"
                 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100"
@@ -1056,7 +381,7 @@ export default function Home() {
                   onClick={() => {
                     const id = deleteTarget;
                     setDeleteTarget(null);
-                    deleteSession(id);
+                    void deleteSession(id);
                   }}
                 >
                   确认删除
@@ -1080,12 +405,12 @@ export default function Home() {
               documents={docChatDocuments}
               selectedDocIds={selectedDocIds}
               onSelectDocIds={setSelectedDocIds}
-              onDocumentsChange={refreshDocChatDocs}
+              onDocumentsChange={() => void refreshDocChatDocs()}
             />
           </div>
 
           {messages.length === 0 ? (
-            <EmptyState onPickPrompt={handlePickPrompt} />
+            <EmptyState onPickPrompt={(text) => void handleSend(text)} />
           ) : (
             <div className="mx-auto w-full max-w-3xl py-4">
               {messages.map((m, index) => {
@@ -1133,7 +458,7 @@ export default function Home() {
         </main>
 
         {/* 底部悬浮发光输入框 */}
-        <div className="sticky bottom-0 z-10 bg-gradient-to-t from-zinc-50 via-zinc-50/90 to-transparent pb-4 pt-2 dark:from-zinc-950 dark:via-zinc-950/90 px-4 sm:px-6">
+        <div className="sticky bottom-0 z-10 bg-linear-to-t from-zinc-50 via-zinc-50/90 to-transparent pb-4 pt-2 dark:from-zinc-950 dark:via-zinc-950/90 px-4 sm:px-6">
           <form
             onSubmit={handleSubmit}
             className="mx-auto flex w-full max-w-3xl flex-col gap-2 rounded-2xl border border-zinc-200/80 bg-white/90 p-3 shadow-2xl shadow-indigo-500/10 backdrop-blur-xl transition-all duration-200 focus-within:border-indigo-500/60 focus-within:ring-2 focus-within:ring-indigo-500/20 dark:border-zinc-800/80 dark:bg-zinc-900/90 dark:shadow-none"
@@ -1148,7 +473,7 @@ export default function Home() {
               className="hidden"
             />
 
-            {/* 视觉快捷场景胶囊栏：在有图片附件或多模态模式下动态展示 */}
+            {/* 视觉快捷场景胶囊栏 */}
             {attachments.some((att) => att.type === "image") && (
               <div className="px-2 pt-1.5 pb-1 border-b border-zinc-100 dark:border-zinc-800/60 bg-zinc-50/40 dark:bg-zinc-900/40 rounded-t-xl">
                 <VisionScenarioPills
@@ -1201,113 +526,119 @@ export default function Home() {
               </div>
             )}
 
-            <div className="flex items-end gap-2">
-              <div className="flex h-9 shrink-0 items-center rounded-xl border border-zinc-200/80 bg-zinc-50/60 px-2.5 transition-colors dark:border-zinc-800/80 dark:bg-zinc-800/50">
-                <Switch
-                  checked={agentEnabled}
-                  onCheckedChange={setAgentEnabled}
-                  label="Agent"
-                  badge="Agent"
-                  id="agent-mode-switch"
-                />
-              </div>
+            {/* 文本输入区 */}
+            <div className="flex items-end gap-2 px-1">
               <textarea
                 ref={textareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
-                rows={1}
                 placeholder={
-                  currentSupportsVision
-                    ? "给 Spring AI 发送指令、问答或拖拽/粘贴图片..."
-                    : "给 Spring AI 发送指令、问答或文本文件..."
+                  imageMode
+                    ? "输入图像生成提示词，例如：赛博朋克风格的雨夜未来城市街道..."
+                    : documentChatEnabled
+                      ? "向已挂载的专属文档提问（仅依据文档内容回答，附段落引用）..."
+                      : "发送消息给 AI Copilot... (Shift + Enter 换行，支持拖入/粘贴图片与代码文件)"
                 }
-                className="max-h-36 min-h-9 flex-1 resize-none bg-transparent px-2 py-1 text-sm text-zinc-900 caret-indigo-500 outline-none placeholder:text-zinc-400 dark:text-zinc-100 dark:caret-indigo-400 dark:placeholder:text-zinc-500 leading-relaxed"
+                rows={1}
+                disabled={isStreaming}
+                className="max-h-50 min-h-[38px] flex-1 resize-none bg-transparent py-2 text-sm leading-relaxed text-zinc-900 placeholder:text-zinc-400 focus:outline-hidden disabled:opacity-50 dark:text-zinc-100 dark:placeholder:text-zinc-500"
               />
-              {isStreaming ? (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="icon"
-                  onClick={stop}
-                  aria-label="停止生成"
-                  className="rounded-xl shadow-sm"
-                >
-                  <Square className="size-4" />
-                </Button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={
-                    (!input.trim() && attachments.length === 0) ||
-                    recorder.recording
-                  }
-                  aria-label="发送"
-                  className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-500/25 transition-all duration-200 hover:scale-105 hover:shadow-indigo-500/40 disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none"
-                >
-                  <Send className="size-4" />
-                </button>
-              )}
-            </div>
 
-            {/* 底部工具栏 */}
-            <div className="flex items-center justify-between border-t border-zinc-100 px-1 pt-2 dark:border-zinc-800/60">
-              <div className="flex items-center gap-2">
+              {/* 语音录入与状态按钮 */}
+              <div className="flex shrink-0 items-center gap-1.5 pb-1">
                 <VoiceRecorderButton
                   recording={recorder.recording}
                   seconds={recorder.seconds}
-                  disabled={recorder.unsupported || isStreaming}
+                  disabled={recorder.unsupported}
                   onStart={() => void recorder.start()}
                   onStop={() => void handleVoiceStop()}
                 />
+
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon-sm"
+                  size="icon"
                   onClick={() => fileInputRef.current?.click()}
-                  className={cn(
-                    "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors",
-                    !currentSupportsVision && "opacity-80",
-                  )}
-                  aria-label="添加文件"
-                  title={
-                    currentSupportsVision
-                      ? "上传图片或代码/文本文件"
-                      : "当前模型不支持图片处理，仅可上传代码/文本文件"
-                  }
+                  className="size-8 rounded-xl text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                  title="添加附件 (支持拖入图片与代码文件)"
                 >
                   <Paperclip className="size-4" />
                 </Button>
-                <Button
-                  type="button"
-                  variant={imageMode ? "default" : "ghost"}
-                  size="icon-sm"
-                  onClick={() => setImageMode((prev) => !prev)}
-                  className={cn(
-                    "transition-colors rounded-lg",
-                    imageMode
-                      ? "bg-purple-600 text-white hover:bg-purple-700 dark:bg-purple-600 dark:text-white"
-                      : "text-zinc-400 hover:text-purple-600 dark:hover:text-purple-400",
-                  )}
-                  aria-label="生成图片模式"
-                  title={
-                    imageMode
-                      ? "生成图片模式已开启 (提示词将触发 AI 绘图)"
-                      : "切换为生成图片模式"
-                  }
-                >
-                  <Sparkles className="size-4" />
-                </Button>
-                <ModelSelector
-                  value={model}
-                  onChange={setModel}
-                  onCatalogChange={setCatalog}
-                />
+
+                {isStreaming ? (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    onClick={stop}
+                    className="size-8 rounded-xl bg-rose-500 shadow-md shadow-rose-500/20 hover:bg-rose-600"
+                    title="停止生成"
+                  >
+                    <Square className="size-3.5 fill-current" />
+                  </Button>
+                ) : (
+                  <Button
+                    type="submit"
+                    size="icon"
+                    disabled={!input.trim() && attachments.length === 0}
+                    className="size-8 rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-500/20 hover:bg-indigo-700 disabled:opacity-40 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+                    title="发送消息"
+                  >
+                    <Send className="size-3.5" />
+                  </Button>
+                )}
               </div>
-              <span className="select-none font-mono text-[11px] text-zinc-400 dark:text-zinc-500">
-                Enter 发送 / Shift+Enter 换行
-              </span>
+            </div>
+
+            {/* 输入框底部功能条 */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-100 px-1 pt-2 dark:border-zinc-800/60">
+              <div className="flex items-center gap-3">
+                {/* 图像生成模式开关 */}
+                <div className="flex items-center gap-1.5">
+                  <Switch
+                    id="image-mode"
+                    checked={imageMode}
+                    onCheckedChange={setImageMode}
+                    className="scale-75"
+                  />
+                  <label
+                    htmlFor="image-mode"
+                    className="cursor-pointer text-xs font-medium text-zinc-500 dark:text-zinc-400"
+                  >
+                    生图模式
+                  </label>
+                </div>
+
+                {/* Agent 工具开关 */}
+                <div className="flex items-center gap-1.5 border-l border-zinc-200 pl-3 dark:border-zinc-800">
+                  <Switch
+                    id="agent-mode"
+                    checked={agentEnabled}
+                    onCheckedChange={setAgentEnabled}
+                    className="scale-75"
+                  />
+                  <label
+                    htmlFor="agent-mode"
+                    className="cursor-pointer text-xs font-medium text-zinc-500 dark:text-zinc-400"
+                  >
+                    Agent 模式
+                  </label>
+                </div>
+              </div>
+
+              {/* 快捷清空草稿 */}
+              {messages.length > 0 && !isStreaming && (
+                <button
+                  type="button"
+                  onClick={newSession}
+                  className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                >
+                  <RotateCcw className="size-3" />
+                  <span>开启新对话</span>
+                </button>
+              )}
             </div>
           </form>
         </div>
@@ -1341,7 +672,7 @@ export default function Home() {
         onOpenChange={setSearchOpen}
         sessions={sessions}
         onSelectResult={(sessionId, messageId) =>
-          selectSession(sessionId, messageId)
+          void selectSession(sessionId, messageId)
         }
       />
 
@@ -1353,71 +684,6 @@ export default function Home() {
         provider={model?.provider}
         model={model?.model}
       />
-    </div>
-  );
-}
-
-/** 衍生会话标题 */
-function deriveTitle(text: string): string {
-  const firstLine = text.trim().split("\n")[0].trim();
-  if (!firstLine) return "新会话";
-  return firstLine.length > 18 ? `${firstLine.slice(0, 18)}…` : firstLine;
-}
-
-/** 沉浸式欢迎页与场景推荐卡片 */
-function EmptyState({
-  onPickPrompt,
-}: {
-  onPickPrompt: (text: string) => void;
-}) {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-8 px-6 py-12 text-center">
-      {/* 极光 Header Icon */}
-      <div className="relative">
-        <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-30 blur-lg animate-pulse" />
-        <div className="relative flex size-16 items-center justify-center rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 text-white shadow-xl shadow-indigo-500/25">
-          <Sparkles className="size-8" />
-        </div>
-      </div>
-
-      <div className="max-w-md space-y-2">
-        <h2 className="font-heading text-2xl font-bold tracking-tight bg-gradient-to-r from-zinc-900 via-zinc-700 to-zinc-900 bg-clip-text text-transparent dark:from-white dark:via-zinc-200 dark:to-white">
-          今天想与 AI 创造什么？
-        </h2>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
-          基于 Spring AI
-          企业级核心架构，支持高并发流式计算、代码实时构建与多维度推理。
-        </p>
-      </div>
-
-      {/* 预设场景 Prompt 推荐卡片 */}
-      <div className="grid w-full max-w-2xl grid-cols-1 sm:grid-cols-2 gap-3.5">
-        {SUGGESTED_PROMPTS.map((p) => {
-          const Icon = p.icon;
-          return (
-            <button
-              key={p.text}
-              type="button"
-              onClick={() => onPickPrompt(p.text)}
-              className="group flex flex-col items-start justify-between rounded-2xl border border-zinc-200/80 bg-white/80 p-4 text-left shadow-xs backdrop-blur-md transition-all duration-200 hover:border-indigo-500/40 hover:bg-white hover:shadow-lg hover:shadow-indigo-500/5 dark:border-zinc-800/80 dark:bg-zinc-900/60 dark:hover:border-indigo-500/50 dark:hover:bg-zinc-900"
-            >
-              <div className="flex w-full items-center justify-between gap-2">
-                <span
-                  className={`flex size-8 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-xs ${p.gradient}`}
-                >
-                  <Icon className="size-4" />
-                </span>
-                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-                  {p.category}
-                </span>
-              </div>
-              <p className="mt-3 text-xs font-medium text-zinc-800 dark:text-zinc-200 leading-relaxed group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                {p.text}
-              </p>
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }

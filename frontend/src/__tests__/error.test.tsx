@@ -7,11 +7,30 @@ if (typeof document === "undefined") {
   ).IS_REACT_ACT_ENVIRONMENT = true;
 }
 
-import { afterAll, describe, expect, it, mock } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+} from "bun:test";
 import type React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import GlobalError from "../app/error";
+
+let originalConsoleError: typeof console.error;
+
+beforeEach(() => {
+  originalConsoleError = console.error;
+  console.error = () => {};
+});
+
+afterEach(() => {
+  console.error = originalConsoleError;
+});
 
 afterAll(() => {
   if (typeof document !== "undefined") {
