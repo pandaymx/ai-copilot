@@ -35,6 +35,7 @@ import oneDark from "react-syntax-highlighter/dist/esm/styles/prism/one-dark";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import { ArtifactDispatcher } from "@/components/artifacts/artifact-dispatcher";
 import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 
@@ -467,6 +468,27 @@ export const Markdown = memo(function Markdown({
               code={String(children).replace(/\n$/, "")}
               isStreaming={isStreaming}
             />
+          );
+        }
+
+        if (
+          language === "chart" ||
+          language === "echarts" ||
+          language === "chartjs" ||
+          language === "svg"
+        ) {
+          const rawCode = String(children).replace(/\n$/, "");
+          return (
+            <div className="not-prose my-3 w-full">
+              <ArtifactDispatcher
+                artifact={{
+                  artifactId: `inline-${language}-${Math.random().toString(36).slice(2, 7)}`,
+                  artifactType: language === "svg" ? "svg" : "chart",
+                  content: rawCode,
+                  title: language === "svg" ? "SVG 矢量图形" : "多模态交互图表",
+                }}
+              />
+            </div>
           );
         }
 

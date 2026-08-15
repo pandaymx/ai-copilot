@@ -21,7 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
-import { ImageArtifactViewer } from "@/components/artifacts/image-artifact-viewer";
+import { ArtifactDispatcher } from "@/components/artifacts/artifact-dispatcher";
 import { ImagePreviewModal } from "@/components/chat/image-preview-modal";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -409,11 +409,11 @@ function MessageBubbleBase({
           </div>
         )}
 
-        {/* 可渲染产物卡片区（如图片 artifact） */}
+        {/* 可渲染多模态产物卡片区（图片 / 图表 / 表格 / SVG / HTML 组件） */}
         {!isUser && message.artifacts && message.artifacts.length > 0 && (
           <div className="flex w-full flex-col gap-2">
             {message.artifacts.map((art) => (
-              <ImageArtifactViewer key={art.artifactId} artifact={art} />
+              <ArtifactDispatcher key={art.artifactId} artifact={art} />
             ))}
           </div>
         )}
