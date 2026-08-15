@@ -1,7 +1,9 @@
 package xyz.ppmblszdp.ai.service;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +16,8 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import xyz.ppmblszdp.ai.factory.ChatOptionsFactory;
+import xyz.ppmblszdp.ai.registry.ModelDescriptor;
+import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
 
@@ -80,13 +84,23 @@ public class TitleService {
             return Mono.empty();
         }
 
-        ResolvedModel resolved;
+        ResolvedModel userResolved;
         try {
-            resolved = registry.resolve(provider, model);
+            userResolved = registry.resolve(provider, model);
         } catch (Exception ex) {
             log.warn("标题生成：模型解析失败 → {}", ex.getMessage());
             return Mono.empty();
         }
+
+        // 标题生成为轻量文本任务，显式改用当前供应商下最便宜的低成本模型，
+        // 避免占用用户高等级（高成本）模型的额度。
+        ResolvedModel resolved = selectLowCostModel(userResolved);
+        log.debug(
+                "标题生成：用户模型={}/{}，改用低成本模型={}/{}",
+                userResolved.provider().providerId(),
+                userResolved.model().id(),
+                resolved.provider().providerId(),
+                resolved.model().id());
 
         ChatOptions options = buildOptions(resolved);
         String userPrompt = "【用户问题】：\n" + question + (content.isBlank() ? "" : "\n\n【AI 回答要点】：\n" + content);
@@ -165,6 +179,37 @@ public class TitleService {
         }
         String trimmed = s.trim();
         return trimmed.length() <= max ? trimmed : trimmed.substring(0, max);
+    }
+
+    /**
+     * 在用户所选供应商下挑选成本最低的模型用于标题生成。
+     *
+     * <p>标题提炼是轻量级短文本任务，无需用户高等级模型的能力，使用清单中
+     * {@code (inputPricePerK + outputPricePerK)} 最小的模型即可，显著降低开销。
+     * 若供应商未登记任何模型（纯自定义模型场景），则回退到用户传入的模型。
+     *
+     * @param userResolved 用户传入模型解析结果（仅用于确定所属供应商与 ChatModel 实例）
+     * @return 用于标题生成的最终模型解析结果
+     */
+    private ResolvedModel selectLowCostModel(ResolvedModel userResolved) {
+        ProviderDescriptor provider = userResolved.provider();
+        Map<String, ModelDescriptor> models = provider.models();
+        if (models == null || models.isEmpty()) {
+            return userResolved;
+        }
+        ModelDescriptor cheapest = null;
+        BigDecimal lowestCost = null;
+        for (ModelDescriptor md : models.values()) {
+            BigDecimal cost = md.inputPricePerK().add(md.outputPricePerK());
+            if (lowestCost == null || cost.compareTo(lowestCost) < 0) {
+                lowestCost = cost;
+                cheapest = md;
+            }
+        }
+        if (cheapest == null) {
+            return userResolved;
+        }
+        return new ResolvedModel(provider.chatModel(), provider, cheapest);
     }
 
     /** 标题生成的采样温度设置为 0.5，赋予模型适度总结与改写能力，防止贪婪原样抄写 Prompt。 */
