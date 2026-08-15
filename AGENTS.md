@@ -60,7 +60,7 @@ This repository enforces commit hygiene via husky + commitlint (root `package.js
   - **Allowed scopes**: `backend`, `frontend`, `ci`, `docs`, `deps`, `release`, `root`
   - Example: `feat(frontend): add session rename shortcut`
 - Subject must be non-empty and ≤ 100 characters. The `commit-msg` hook (commitlint) rejects anything else.
-- **Body lines must also be ≤ 100 characters** (`body-max-line-length` rule). Keep each bullet/paragraph on its own short line — a long bullet (e.g. a run-on `- Added functionality to ...`) is the most common failure.
+- **Body lines must also be ≤ 100 characters** (`body-max-line-length` rule). Keep each bullet on its own short line. **If a bullet is too long, split it into multiple bullets or rephrase — never let a single line exceed 100 chars.** Run-on bullets like `- Added functionality to manage schema properties including adding, removing, and editing properties.` are the most common failure; break them up.
 - **Never use `--allow-empty-message`** (or `-m ""`); an empty subject is rejected by commitlint.
 - **Two-stage validation**: `pre-commit` (Spotless/Biome formatting) runs first, then `commit-msg` (commitlint). A commit can pass pre-commit yet still be rejected for a malformed message — fix the message and re-run `git commit` (staged files are preserved, nothing is lost).
 - Full multi-line example (subject + body, all lines within 100 chars):

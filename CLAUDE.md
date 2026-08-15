@@ -120,7 +120,7 @@ Commits are enforced by husky + commitlint (root `package.json` + `.husky/`) and
   - Scopes: `backend`, `frontend`, `ci`, `docs`, `deps`, `release`, `root`.
   - Example: `fix(backend): validate API key before provider registration`
   - **Subject ≤ 100 chars and must be non-empty**; never use `--allow-empty-message` (empty subject is rejected).
-  - **Body lines must also be ≤ 100 chars** (`body-max-line-length`). Keep each bullet on its own short line — long run-on bullets are the usual failure.
+  - **Body lines must also be ≤ 100 chars** (`body-max-line-length`). Keep each bullet on its own short line. **If a bullet is too long, split it into multiple bullets or rephrase — never let a single line exceed 100 chars.** Long run-on bullets are the usual failure; break them up.
   - **Two-stage hooks**: `pre-commit` (Spotless/Biome) runs first, then `commit-msg` (commitlint). A commit can pass pre-commit but still be rejected for a bad message — staged files are preserved, just fix the message and re-commit.
   - Compliant multi-line example:
     ```
