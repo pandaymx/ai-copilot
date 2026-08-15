@@ -46,6 +46,31 @@
       "name": "app.ai.image.keywords",
       "type": "java.util.List<java.lang.String>",
       "description": "用于判断图像生成意图的关键词列表"
+    },
+    {
+      "name": "spring.codec.max-in-memory-size",
+      "type": "org.springframework.util.unit.DataSize",
+      "description": "WebFlux 编解码器内存上限"
+    },
+    {
+      "name": "management.tracing.sampling.probability",
+      "type": "java.lang.Float",
+      "description": "Tracing 采样率 (0.0 - 1.0)"
+    },
+    {
+      "name": "management.otlp.tracing.endpoint",
+      "type": "java.lang.String",
+      "description": "OTLP Tracing 导出端点 URL"
+    },
+    {
+      "name": "management.otlp.tracing.export.timeout",
+      "type": "java.time.Duration",
+      "description": "OTLP Tracing 导出超时时间"
+    },
+    {
+      "name": "management.otlp.metrics.export.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用 OTLP Metrics 导出"
     }
   ]
 }

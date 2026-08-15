@@ -237,7 +237,7 @@ app:
             badge: 推荐
             tags: [chat]
             max-context-tokens: 32768
-            default: true
+            default-model: true
             input-price-per-k: 0.0010
             output-price-per-k: 0.0020
       openai:
@@ -249,7 +249,7 @@ app:
             description: OpenAI 多模态旗舰模型
             tags: [multimodal, vision]
             max-context-tokens: 128000
-            default: true
+            default-model: true
             input-price-per-k: 0.0180
             output-price-per-k: 0.0720
       google:
@@ -261,7 +261,7 @@ app:
             description: Google 轻量高速多模态模型（新版）
             tags: [multimodal, vision]
             max-context-tokens: 1048576
-            default: true
+            default-model: true
             input-price-per-k: 0.0005
             output-price-per-k: 0.0020
           - id: gemini-3.5-flash
@@ -321,7 +321,7 @@ app:
             description: 本地运行的开源模型，无需联网密钥
             tags: [local]
             max-context-tokens: 8192
-            default: true
+            default-model: true
             input-price-per-k: 0.0000
             output-price-per-k: 0.0000
       anthropic:
@@ -333,7 +333,7 @@ app:
             description: Anthropic 旗舰对话模型
             tags: [chat]
             max-context-tokens: 200000
-            default: true
+            default-model: true
             input-price-per-k: 0.0215
             output-price-per-k: 0.1075
 
@@ -392,7 +392,7 @@ app:
             badge: 推荐
             tags: [chat]
             max-context-tokens: 32768
-            default: true
+            default-model: true
             input-price-per-k: 0.0040
             output-price-per-k: 0.0120
           - id: qwen-plus
@@ -417,7 +417,7 @@ app:
             description: 百度文心大模型
             tags: [chat]
             max-context-tokens: 8192
-            default: true
+            default-model: true
             input-price-per-k: 0.0040
             output-price-per-k: 0.0120
 
@@ -434,6 +434,6 @@ app:
             description: 智谱开源对话模型
             tags: [chat]
             max-context-tokens: 32768
-            default: true
+            default-model: true
             input-price-per-k: 0.0050
             output-price-per-k: 0.0050
