@@ -78,6 +78,7 @@ export default function Home() {
   const [showSummary, setShowSummary] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
 
   // 原文引用抽屉状态
   const [citationDrawer, setCitationDrawer] = useState<{
@@ -357,6 +358,7 @@ export default function Home() {
             <Button
               variant="ghost"
               size="sm"
+              aria-label="导出对话"
               disabled={messages.length === 0}
               onClick={() => setShowExport(true)}
               className="h-8 gap-1.5 rounded-lg px-2 text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
@@ -696,17 +698,42 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 快捷清空草稿 */}
-              {messages.length > 0 && !isStreaming && (
-                <button
-                  type="button"
-                  onClick={newSession}
-                  className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-                >
-                  <RotateCcw className="size-3" />
-                  <span>开启新对话</span>
-                </button>
-              )}
+              {/* 快捷清空草稿（二次确认） */}
+              {messages.length > 0 &&
+                !isStreaming &&
+                (confirmClear ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                      确认清空？
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        newSession();
+                        setConfirmClear(false);
+                      }}
+                      className="rounded bg-rose-500 px-2 py-0.5 text-[11px] text-white hover:bg-rose-600"
+                    >
+                      确认清空
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmClear(false)}
+                      className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                    >
+                      取消
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClear(true)}
+                    className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                  >
+                    <RotateCcw className="size-3" />
+                    <span>清空</span>
+                  </button>
+                ))}
             </div>
           </form>
         </div>
