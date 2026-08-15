@@ -627,6 +627,7 @@ export default function Home() {
                     variant="destructive"
                     size="icon"
                     onClick={stop}
+                    aria-label="停止生成"
                     className="size-8 rounded-xl bg-rose-500 shadow-md shadow-rose-500/20 hover:bg-rose-600"
                     title="停止生成"
                   >
@@ -636,6 +637,7 @@ export default function Home() {
                   <Button
                     type="submit"
                     size="icon"
+                    aria-label="发送"
                     disabled={
                       isOverBudget ||
                       (!input.trim() && attachments.length === 0)
