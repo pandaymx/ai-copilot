@@ -125,7 +125,7 @@ public class ChatService implements DisposableBean {
             ObjectProvider<AugmentedToolCallbackProvider> augmentedToolProvider,
             ObjectProvider<ImageGenerationService> imageGenerationServiceProvider) {
         UsageRecorder uRecorder = new UsageRecorder(usageRepository, usageQuota);
-        ImageRouter iRouter = new ImageRouter(imageGenerationServiceProvider, properties);
+        ImageRouter iRouter = new ImageRouter(imageGenerationServiceProvider, properties, registry);
         VoiceService vService = new VoiceService(speechModelProvider, registry);
         IntentClassifier intentClassifier = new IntentClassifier();
         VisionService vVisionService = new VisionService();
