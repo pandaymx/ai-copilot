@@ -16,6 +16,7 @@ import {
   Trash2,
   User,
   Workflow,
+  Wrench,
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -231,6 +232,17 @@ export function Sidebar({
             >
               <Award className="size-4 text-amber-500 transition-transform duration-200 group-hover:scale-110" />
               <span>评测中心 (A/B)</span>
+            </Link>
+          </div>
+
+          {/* 自定义工具 (DSL) 入口 */}
+          <div className="px-0.5 pt-0.5">
+            <Link
+              href="/tools"
+              className="group flex items-center gap-2 rounded-xl border border-zinc-200/70 bg-white/70 px-3 py-2.5 text-xs font-semibold text-zinc-700 shadow-xs transition-all duration-200 hover:border-blue-500/40 hover:bg-white hover:text-blue-600 hover:shadow-md hover:shadow-blue-500/10 dark:border-zinc-800/70 dark:bg-zinc-900/50 dark:text-zinc-200 dark:hover:border-blue-500/50 dark:hover:bg-zinc-900 dark:hover:text-blue-400"
+            >
+              <Wrench className="size-4 text-blue-500 transition-transform duration-200 group-hover:scale-110" />
+              <span>自定义工具</span>
             </Link>
           </div>
         </div>

@@ -107,6 +107,7 @@ public class ChatOrchestrator implements DisposableBean {
     private final ObjectProvider<xyz.ppmblszdp.ai.feedback.IntentFeedbackAccumulator> intentFeedbackAccumulatorProvider;
     private final ObjectProvider<xyz.ppmblszdp.ai.context.ContextCompressor> contextCompressorProvider;
     private final ObjectProvider<DocumentChatService> documentChatServiceProvider;
+    private final ObjectProvider<xyz.ppmblszdp.ai.customtool.service.CustomToolService> customToolServiceProvider;
 
     private final ConcurrentLinkedQueue<Disposable> fireAndForgetSubscriptions = new ConcurrentLinkedQueue<>();
 
@@ -140,7 +141,8 @@ public class ChatOrchestrator implements DisposableBean {
             ObjectProvider<xyz.ppmblszdp.ai.context.ContextCompressor> contextCompressorProvider,
             ObjectProvider<DocumentChatService> documentChatServiceProvider,
             ObjectProvider<ModelPerformanceTracker> performanceTrackerProvider,
-            ObjectProvider<InteractionAnalyzer> interactionAnalyzerProvider) {
+            ObjectProvider<InteractionAnalyzer> interactionAnalyzerProvider,
+            ObjectProvider<xyz.ppmblszdp.ai.customtool.service.CustomToolService> customToolServiceProvider) {
         this.registry = registry;
         this.contextAssembler = contextAssembler;
         this.sessionChatMemory = sessionChatMemory;
@@ -181,6 +183,7 @@ public class ChatOrchestrator implements DisposableBean {
         this.intentFeedbackAccumulatorProvider = intentFeedbackAccumulatorProvider;
         this.contextCompressorProvider = contextCompressorProvider;
         this.documentChatServiceProvider = documentChatServiceProvider;
+        this.customToolServiceProvider = customToolServiceProvider;
     }
 
     public ChatOrchestrator(
@@ -241,6 +244,7 @@ public class ChatOrchestrator implements DisposableBean {
                 contextCompressorProvider,
                 documentChatServiceProvider,
                 performanceTrackerProvider,
+                null,
                 null);
     }
 
@@ -618,7 +622,7 @@ public class ChatOrchestrator implements DisposableBean {
                     })
                     .options(options.mutate());
             if (agentPath) {
-                ToolCallback[] agentTools = prepareAgentTools(req.conversationId());
+                ToolCallback[] agentTools = prepareAgentTools(req.conversationId(), userId);
                 requestSpec = requestSpec
                         .tools((Object[]) agentTools)
                         .toolContext(Map.of(
@@ -854,7 +858,7 @@ public class ChatOrchestrator implements DisposableBean {
 
         ChatClientRequestSpec requestSpec = primaryResolved.chatClient().prompt(prompt);
         if (agentPath) {
-            ToolCallback[] agentTools = prepareAgentTools(request.conversationId());
+            ToolCallback[] agentTools = prepareAgentTools(request.conversationId(), userId);
             requestSpec = requestSpec
                     .tools((Object[]) agentTools)
                     .toolContext(Map.of(
@@ -1109,14 +1113,36 @@ public class ChatOrchestrator implements DisposableBean {
         return mcpTools;
     }
 
-    private ToolCallback[] prepareAgentTools(String conversationId) {
+    private ToolCallback[] resolveCustomToolCallbacks(String userId) {
+        xyz.ppmblszdp.ai.customtool.service.CustomToolService service =
+                customToolServiceProvider != null ? customToolServiceProvider.getIfAvailable() : null;
+        if (service == null) return new ToolCallback[0];
+        List<ToolCallback> list = service.getCompiledTools(userId);
+        return list != null ? list.toArray(new ToolCallback[0]) : new ToolCallback[0];
+    }
+
+    private ToolCallback[] prepareAgentTools(String conversationId, String userId) {
         ToolCallback[] local = toolCallbacks != null ? toolCallbacks : new ToolCallback[0];
+        ToolCallback[] custom = resolveCustomToolCallbacks(userId);
         ToolCallback[] remote = resolveMcpToolCallbacks();
+
+        // 合并本地原生工具与用户自定义工具
+        ToolCallback[] combinedLocal;
+        if (custom.length == 0) {
+            combinedLocal = local;
+        } else if (local.length == 0) {
+            combinedLocal = custom;
+        } else {
+            combinedLocal = new ToolCallback[local.length + custom.length];
+            System.arraycopy(local, 0, combinedLocal, 0, local.length);
+            System.arraycopy(custom, 0, combinedLocal, local.length, custom.length);
+        }
+
         boolean augmentMcp = properties != null && properties.resolveAgent().isAugmentMcpTools();
-        ToolCallback[] merged = augmentedToolCallbackProvider.wrapTools(local, remote, augmentMcp);
+        ToolCallback[] merged = augmentedToolCallbackProvider.wrapTools(combinedLocal, remote, augmentMcp);
         ToolSearchAdvisorFactory factory = toolSearchFactory != null ? toolSearchFactory.getIfAvailable() : null;
-        if (factory != null && factory.shouldApply(merged, local.length, remote.length)) {
-            return factory.processTools(merged, local.length, remote.length, conversationId);
+        if (factory != null && factory.shouldApply(merged, combinedLocal.length, remote.length)) {
+            return factory.processTools(merged, combinedLocal.length, remote.length, conversationId);
         }
         return merged;
     }
@@ -1331,7 +1357,7 @@ public class ChatOrchestrator implements DisposableBean {
                 intentResult != null ? intentResult.label() : "多步任务规划");
         sink.tryEmitNext(initChunk);
 
-        ToolCallback[] allTools = prepareAgentTools(req.conversationId());
+        ToolCallback[] allTools = prepareAgentTools(req.conversationId(), userId);
         List<ToolCallback> toolList = allTools != null ? java.util.Arrays.asList(allTools) : List.of();
 
         java.util.concurrent.CompletableFuture.runAsync(() -> {
