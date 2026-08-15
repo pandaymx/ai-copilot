@@ -62,12 +62,14 @@ export default async function RootLayout({
         inter.variable,
       )}
     >
-      <Script
-        id="theme-anti-flash"
-        strategy="beforeInteractive"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: controlled, constant anti-flash theme script (no user input)
-        dangerouslySetInnerHTML={{ __html: THEME_ANTI_FLASH }}
-      />
+      <head>
+        <Script
+          id="theme-anti-flash"
+          strategy="beforeInteractive"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: controlled, constant anti-flash theme script (no user input)
+          dangerouslySetInnerHTML={{ __html: THEME_ANTI_FLASH }}
+        />
+      </head>
       <body className="min-h-full flex flex-col">
         <NextIntlClientProvider messages={messages}>
           <ThemeProvider
