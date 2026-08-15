@@ -41,23 +41,25 @@ public final class ChatOptionsFactory {
      * @return 供应商特定的 ChatOptions 实例
      */
     public static ChatOptions forProvider(String providerId, String modelName, Double temperature) {
+        // 规范化后的精确匹配：避免 contains() 子串误匹配（如自定义供应商 ID 含 "openai" 子串）。
+        // 每个供应商列出其全部合法别名（小写），仅当 providerId 精确等于某别名时才命中。
         String pid = providerId != null ? providerId.toLowerCase() : "";
 
-        if (pid.contains("deepseek")) {
+        if (pid.equals("deepseek")) {
             DeepSeekChatOptions.Builder builder = DeepSeekChatOptions.builder().model(modelName);
             if (temperature != null) {
                 builder.temperature(temperature);
             }
             return builder.build();
         }
-        if (pid.contains("openai")) {
+        if (pid.equals("openai")) {
             OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder().model(modelName);
             if (temperature != null) {
                 builder.temperature(temperature);
             }
             return builder.build();
         }
-        if (pid.contains("google") || pid.contains("gemini")) {
+        if (pid.equals("google") || pid.equals("gemini")) {
             GoogleGenAiChatOptions.Builder builder =
                     GoogleGenAiChatOptions.builder().model(modelName);
             if (temperature != null) {
@@ -65,7 +67,7 @@ public final class ChatOptionsFactory {
             }
             return builder.build();
         }
-        if (pid.contains("anthropic") || pid.contains("claude")) {
+        if (pid.equals("anthropic") || pid.equals("claude")) {
             AnthropicChatOptions.Builder builder =
                     AnthropicChatOptions.builder().model(modelName);
             if (temperature != null) {
@@ -73,7 +75,7 @@ public final class ChatOptionsFactory {
             }
             return builder.build();
         }
-        if (pid.contains("ollama")) {
+        if (pid.equals("ollama")) {
             OllamaChatOptions.Builder builder = OllamaChatOptions.builder().model(modelName);
             if (temperature != null) {
                 builder.temperature(temperature);
