@@ -32,6 +32,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.config.AiProviderProperties.MemoryConfig;
+import xyz.ppmblszdp.ai.context.AssembleResult;
 import xyz.ppmblszdp.ai.context.ContextAssembler;
 import xyz.ppmblszdp.ai.dto.ChatChunkDto;
 import xyz.ppmblszdp.ai.dto.ChatRequest;
@@ -89,6 +90,8 @@ class ChatServiceTest {
         registry = mock(ProviderRegistry.class);
         contextAssembler = mock(ContextAssembler.class);
         when(contextAssembler.defaultSystemPrompt()).thenReturn("You are a helpful assistant.");
+        when(contextAssembler.assembleWithResult(any(), any(), any(), any(), anyInt(), any(), any()))
+                .thenReturn(new AssembleResult(List.of()));
         sessionChatMemory = mock(ObjectProvider.class);
         longTermFactory = mock(ObjectProvider.class);
         longTermWriter = mock(ObjectProvider.class);

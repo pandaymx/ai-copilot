@@ -58,6 +58,6 @@ class FeedbackServiceTest {
         Thread.sleep(200);
 
         verify(evaluationService).ingestFeedbackCase(eq(request));
-        verify(intentAccumulator).record(eq("THUMBS_DOWN"), org.mockito.ArgumentMatchers.anyInt());
+        verify(intentAccumulator).record(eq("CODE"), org.mockito.ArgumentMatchers.anyInt());
     }
 }

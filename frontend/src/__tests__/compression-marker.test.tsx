@@ -11,8 +11,8 @@ import { afterAll, describe, expect, it } from "bun:test";
 import type React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { CompressionMarker } from "../components/chat/compression-marker";
 import type { CompressionMetadata } from "@/lib/api";
+import { CompressionMarker } from "../components/chat/compression-marker";
 
 afterAll(() => {
   if (typeof document !== "undefined") {
