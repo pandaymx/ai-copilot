@@ -41,25 +41,26 @@ public final class ChatOptionsFactory {
      * @return 供应商特定的 ChatOptions 实例
      */
     public static ChatOptions forProvider(String providerId, String modelName, Double temperature) {
-        // 规范化后的精确匹配：避免 contains() 子串误匹配（如自定义供应商 ID 含 "openai" 子串）。
-        // 每个供应商列出其全部合法别名（小写），仅当 providerId 精确等于某别名时才命中。
+        // 业务中的 providerId 为复合形式（如 "google-gemini"、"anthropic-claude"、"ollama-local"），
+        // 因此按前缀匹配各供应商的合法别名（小写）。相较于 contains() 子串匹配，startsWith()
+        // 可避免自定义供应商 ID 中间夹带 "openai" 等子串导致的误匹配，同时正确命中复合前缀 ID。
         String pid = providerId != null ? providerId.toLowerCase() : "";
 
-        if (pid.equals("deepseek")) {
+        if (pid.startsWith("deepseek")) {
             DeepSeekChatOptions.Builder builder = DeepSeekChatOptions.builder().model(modelName);
             if (temperature != null) {
                 builder.temperature(temperature);
             }
             return builder.build();
         }
-        if (pid.equals("openai")) {
+        if (pid.startsWith("openai")) {
             OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder().model(modelName);
             if (temperature != null) {
                 builder.temperature(temperature);
             }
             return builder.build();
         }
-        if (pid.equals("google") || pid.equals("gemini")) {
+        if (pid.startsWith("google") || pid.startsWith("gemini")) {
             GoogleGenAiChatOptions.Builder builder =
                     GoogleGenAiChatOptions.builder().model(modelName);
             if (temperature != null) {
@@ -67,7 +68,7 @@ public final class ChatOptionsFactory {
             }
             return builder.build();
         }
-        if (pid.equals("anthropic") || pid.equals("claude")) {
+        if (pid.startsWith("anthropic") || pid.startsWith("claude")) {
             AnthropicChatOptions.Builder builder =
                     AnthropicChatOptions.builder().model(modelName);
             if (temperature != null) {
@@ -75,7 +76,7 @@ public final class ChatOptionsFactory {
             }
             return builder.build();
         }
-        if (pid.equals("ollama")) {
+        if (pid.startsWith("ollama")) {
             OllamaChatOptions.Builder builder = OllamaChatOptions.builder().model(modelName);
             if (temperature != null) {
                 builder.temperature(temperature);
