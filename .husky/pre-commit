@@ -1,26 +1,37 @@
 # Fail fast on first error and treat unset vars as errors.
 set -eu
 
-echo "🔍 Running pre-commit checks..."
+echo "🔍 Running pre-commit formatting..."
 
-# --- Frontend: Biome lint (only if frontend changed) ---
-if git diff --cached --name-only --diff-filter=ACMR | grep -qE '^frontend/'; then
-  echo "→ Frontend changed, running Biome lint..."
-  cd "$(git rev-parse --show-toplevel)/frontend"
-  bun run lint
-  cd "$(git rev-parse --show-toplevel)"
+ROOT="$(git rev-parse --show-toplevel)"
+
+# --- Frontend: Biome format + SAFE autofix (scoped to staged files) ---
+FRONTEND_STAGED="$(git diff --cached --name-only --diff-filter=ACMR -- 'frontend/')"
+if [ -n "$FRONTEND_STAGED" ]; then
+  echo "→ Frontend changed, running Biome format (safe fixes only)..."
+  cd "$ROOT/frontend"
+  # Only write the files already staged, so unrelated files are never touched.
+  # `--write` applies SAFE fixes only; the unsafe `!` -> `?.` lint fix is NOT applied.
+  echo "$FRONTEND_STAGED" | sed 's|^frontend/||' | xargs -r bun run lint --write
+  cd "$ROOT"
+  # Re-stage the (now formatted) files so the committed content matches.
+  echo "$FRONTEND_STAGED" | xargs -r git add
 else
-  echo "→ No frontend changes, skipping Biome lint."
+  echo "→ No frontend changes, skipping Biome."
 fi
 
-# --- Backend: Spotless check (only if backend changed) ---
-if git diff --cached --name-only --diff-filter=ACMR | grep -qE '^backend/'; then
-  echo "→ Backend changed, running Spotless check..."
-  cd "$(git rev-parse --show-toplevel)/backend"
-  ./gradlew spotlessCheck --no-daemon
-  cd "$(git rev-parse --show-toplevel)"
+# --- Backend: Spotless apply (scoped to staged files on re-stage) ---
+BACKEND_STAGED="$(git diff --cached --name-only --diff-filter=ACMR -- 'backend/')"
+if [ -n "$BACKEND_STAGED" ]; then
+  echo "→ Backend changed, running Spotless apply..."
+  cd "$ROOT/backend"
+  ./gradlew spotlessApply --no-daemon
+  cd "$ROOT"
+  # Re-stage only the originally staged files (Spotless may touch others project-wide,
+  # but we don't want to pull unstaged files into the commit).
+  echo "$BACKEND_STAGED" | xargs -r git add
 else
-  echo "→ No backend changes, skipping Spotless check."
+  echo "→ No backend changes, skipping Spotless."
 fi
 
-echo "✅ Pre-commit checks passed."
+echo "✅ Pre-commit formatting done."
