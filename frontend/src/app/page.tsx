@@ -2,6 +2,7 @@
 
 import {
   AlertTriangle,
+  BarChart2,
   Download,
   FileText,
   PanelLeftOpen,
@@ -24,6 +25,7 @@ import {
   LiveMessageBubble,
   MessageBubble,
 } from "@/components/chat/message-bubble";
+import { ModelPerformanceModal } from "@/components/chat/model-performance-modal";
 import {
   type BackendProviderEntry,
   isVisionModel,
@@ -76,6 +78,7 @@ export default function Home() {
   const [collapsed, setCollapsed] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+  const [showPerformanceModal, setShowPerformanceModal] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -339,6 +342,19 @@ export default function Home() {
               <kbd className="hidden rounded bg-zinc-100 px-1 py-0.5 font-mono text-[10px] text-zinc-400 dark:bg-zinc-800 md:inline-block">
                 ⌘K
               </kbd>
+            </Button>
+
+            {/* 性能大盘与延迟对比按钮 */}
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="模型流式性能大盘"
+              onClick={() => setShowPerformanceModal(true)}
+              className="h-8 gap-1.5 rounded-lg px-2 text-xs text-zinc-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 cursor-pointer"
+              title="查看各模型首字延迟 (P50/P90)、Token 生成速率与性能对比"
+            >
+              <BarChart2 className="size-3.5 text-indigo-500" />
+              <span className="hidden sm:inline">性能大盘</span>
             </Button>
 
             {/* 结构化摘要与沉淀按钮 */}
@@ -778,6 +794,14 @@ export default function Home() {
         sessionId={activeId || ""}
         provider={model?.provider}
         model={model?.model}
+      />
+
+      {/* 模型流式性能大盘与 P50/P90 延迟对比弹窗 */}
+      <ModelPerformanceModal
+        isOpen={showPerformanceModal}
+        onClose={() => setShowPerformanceModal(false)}
+        initialProvider={model?.provider}
+        initialModel={model?.model}
       />
     </div>
   );

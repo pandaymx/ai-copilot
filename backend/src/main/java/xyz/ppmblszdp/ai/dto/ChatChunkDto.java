@@ -74,9 +74,65 @@ public record ChatChunkDto(
         String mimeType,
         String intent,
         String intentLabel,
-        List<DocumentCitationDto> citations) {
+        List<DocumentCitationDto> citations,
+        StreamMetricsDto metrics) {
 
-    /** 兼容 24 参数旧构造函数 */
+    /** 兼容 25 参数旧构造函数 */
+    public ChatChunkDto(
+            String type,
+            String conversationId,
+            String content,
+            String reasoning,
+            UsageDto usage,
+            String code,
+            String message,
+            String provider,
+            String model,
+            Boolean isFallback,
+            String toolName,
+            String toolCallId,
+            String arguments,
+            String result,
+            Boolean isError,
+            String artifactId,
+            String language,
+            String artifactType,
+            String title,
+            String html,
+            String status,
+            String mimeType,
+            String intent,
+            String intentLabel,
+            List<DocumentCitationDto> citations) {
+        this(
+                type,
+                conversationId,
+                content,
+                reasoning,
+                usage,
+                code,
+                message,
+                provider,
+                model,
+                isFallback,
+                toolName,
+                toolCallId,
+                arguments,
+                result,
+                isError,
+                artifactId,
+                language,
+                artifactType,
+                title,
+                html,
+                status,
+                mimeType,
+                intent,
+                intentLabel,
+                citations,
+                null);
+    }
+
     public ChatChunkDto(
             String type,
             String conversationId,
@@ -176,6 +232,18 @@ public record ChatChunkDto(
             Double monthlyPercent) {
         public UsageDto(int promptTokens, int completionTokens, int totalTokens, Double estimatedCostRmb) {
             this(promptTokens, completionTokens, totalTokens, estimatedCostRmb, null, null, null);
+        }
+    }
+
+    public record StreamMetricsDto(
+            Long timeToFirstToken,
+            Double tokensPerSecond,
+            Long totalDuration,
+            Long toolCallDuration,
+            Boolean isEstimated) {
+        public StreamMetricsDto(
+                Long timeToFirstToken, Double tokensPerSecond, Long totalDuration, Long toolCallDuration) {
+            this(timeToFirstToken, tokensPerSecond, totalDuration, toolCallDuration, false);
         }
     }
 
@@ -600,5 +668,29 @@ public record ChatChunkDto(
                 null,
                 null,
                 citations);
+    }
+
+    /**
+     * 实时流式性能指标帧（单帧快照，通常在内容生成完毕后、done 帧之前下发）。
+     */
+    public static ChatChunkDto metrics(StreamMetricsDto metrics) {
+        return new ChatChunkDto(
+                "metrics", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, metrics);
+    }
+
+    public static ChatChunkDto metrics(
+            Long timeToFirstToken, Double tokensPerSecond, Long totalDuration, Long toolCallDuration) {
+        return metrics(new StreamMetricsDto(timeToFirstToken, tokensPerSecond, totalDuration, toolCallDuration, false));
+    }
+
+    public static ChatChunkDto metrics(
+            Long timeToFirstToken,
+            Double tokensPerSecond,
+            Long totalDuration,
+            Long toolCallDuration,
+            Boolean isEstimated) {
+        return metrics(
+                new StreamMetricsDto(timeToFirstToken, tokensPerSecond, totalDuration, toolCallDuration, isEstimated));
     }
 }

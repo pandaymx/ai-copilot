@@ -26,6 +26,7 @@ import { ImagePreviewModal } from "@/components/chat/image-preview-modal";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   type ArtifactItem,
+  type StreamMetrics,
   type StreamStore,
   type TaskPlanState,
   type ToolCallItem,
@@ -44,6 +45,7 @@ import { CompressionMarker } from "./compression-marker";
 import { ChatMessageErrorBoundary } from "./error-boundary";
 import { Markdown } from "./markdown";
 import { ReasoningView } from "./reasoning-view";
+import { StreamingMetricsBar } from "./streaming-metrics-bar";
 import { TaskPlanCard } from "./task-plan-card";
 import { ToolCard } from "./tool-card";
 
@@ -79,6 +81,8 @@ export interface ChatMessage {
   compressionMetadata?: CompressionMetadata | null;
   /** 文档对话精准引用列表（若开启了文档对话模式） */
   citations?: DocumentCitationItem[];
+  /** 实时流式性能指标（TTFT、Token 生成速率、总耗时、工具执行耗时） */
+  metrics?: StreamMetrics;
 }
 
 interface MessageBubbleProps {
@@ -632,6 +636,16 @@ function MessageBubbleBase({
           </div>
         )}
 
+        {/* 实时流式性能指标条 (首字延迟 TTFT / 生成速率 / 总耗时 / 工具耗时) */}
+        {!isUser && (
+          <StreamingMetricsBar
+            metrics={message.metrics}
+            streaming={streaming}
+            contentLength={message.content?.length ?? 0}
+            toolCallsCount={message.toolCalls?.length ?? 0}
+          />
+        )}
+
         {/* AI 消息底栏 Action Bar (Hover 显示) */}
         {!isUser && message.content && (
           <div className="flex items-center gap-1 px-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
@@ -784,6 +798,7 @@ export function LiveMessageBubble({
     thinking,
     reasoningDurationMs,
     usage,
+    metrics,
     toolCalls,
     artifacts,
     taskPlan,
@@ -811,6 +826,7 @@ export function LiveMessageBubble({
     thinking: thinking || message.thinking,
     reasoningDurationMs: reasoningDurationMs ?? message.reasoningDurationMs,
     usage: usage ?? message.usage,
+    metrics: metrics ?? message.metrics,
     // 将流式 Map 转为数组（保留 callId 作 ToolCard key, artifactId 作 ImageArtifactViewer key）
     toolCalls: Object.values(toolCalls),
     artifacts: Object.values(artifacts),

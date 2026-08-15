@@ -122,7 +122,7 @@ export function useChatStreaming({
         prev.map((m) => (m.id === liveId ? { ...m, citations } : m)),
       );
     },
-    onFinish: (finalContent, finalThinking, finalUsage) => {
+    onFinish: (finalContent, finalThinking, finalUsage, finalMetrics) => {
       if (finalUsage) {
         updateFromSseUsage(finalUsage);
       }
@@ -133,6 +133,7 @@ export function useChatStreaming({
       liveUserTextRef.current = "";
 
       const snap = streamStore.getSnapshot();
+      const resolvedMetrics = finalMetrics ?? snap.metrics;
       setMessages((prev) =>
         prev.map((m) =>
           m.id === liveId
@@ -141,6 +142,7 @@ export function useChatStreaming({
                 content: finalContent,
                 thinking: finalThinking || m.thinking,
                 usage: finalUsage ?? m.usage,
+                metrics: resolvedMetrics ?? m.metrics,
                 compressionMetadata:
                   snap.contextCompression ?? m.compressionMetadata,
                 citations:
@@ -163,6 +165,7 @@ export function useChatStreaming({
                     content: finalContent,
                     thinking: finalThinking || m.thinking,
                     usage: finalUsage ?? m.usage,
+                    metrics: resolvedMetrics ?? m.metrics,
                     compressionMetadata:
                       snap.contextCompression ?? m.compressionMetadata,
                     citations:

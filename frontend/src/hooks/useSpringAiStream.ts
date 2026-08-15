@@ -46,6 +46,14 @@ export interface UsageInfo {
   monthlyPercent?: number;
 }
 
+export interface StreamMetrics {
+  timeToFirstToken?: number; // 首字延迟 (ms)
+  tokensPerSecond?: number; // 实时/最终生成速率 (tokens/s)
+  totalDuration?: number; // 总耗时 (ms)
+  toolCallDuration?: number; // 工具调用耗时 (ms)
+  isEstimated?: boolean; // 是否为估算值
+}
+
 export interface UseSpringAiStreamOptions {
   /** 后端流式接口地址，默认复用 Spring AI 的 SSE 端点。 */
   endpoint?: string;
@@ -70,6 +78,8 @@ export interface UseSpringAiStreamOptions {
   onReasoning?: (reasoningDelta: string) => void;
   /** 收到 Token 用量统计时的回调 */
   onUsage?: (usage: UsageInfo) => void;
+  /** 收到实时流式性能指标时的回调 */
+  onMetrics?: (metrics: StreamMetrics) => void;
   /** 收到 artifact 帧（可渲染产物）时的回调 */
   onArtifact?: (item: ArtifactItem) => void;
   /** 收到 task_plan 帧（多步任务规划总览）时的回调 */
@@ -84,11 +94,12 @@ export interface UseSpringAiStreamOptions {
   onContextCompression?: (metadata: CompressionMetadata) => void;
   /** 收到文档对话精准引用时的回调 */
   onCitations?: (citations: DocumentCitationItem[]) => void;
-  /** 流完整结束后回调（成功完成或异常均触发），参数为最终累计文本、思考过程与 Token 用量。 */
+  /** 流完整结束后回调（成功完成或异常均触发），参数为最终累计文本、思考过程、Token 用量与流式指标。 */
   onFinish?: (
     finalContent: string,
     finalThinking?: string,
     finalUsage?: UsageInfo | null,
+    finalMetrics?: StreamMetrics | null,
   ) => void;
 }
 
@@ -99,6 +110,8 @@ export interface UseSpringAiStreamResult {
   thinking: string;
   /** 当前统计的 Usage 信息。 */
   usage: UsageInfo | null;
+  /** 当前流式指标信息。 */
+  metrics: StreamMetrics | null;
   /** 是否正在流式接收。 */
   loading: boolean;
   /** 最近一次错误信息。 */
@@ -165,6 +178,7 @@ export interface StreamData {
   thinking: string;
   reasoningDurationMs?: number;
   usage: UsageInfo | null;
+  metrics?: StreamMetrics | null;
   /** 工具调用列表，以 callId 为唯一 key（Map 结构用普通对象表达以保证快照不可变）。 */
   toolCalls: Record<string, ToolCallItem>;
   /** 可渲染产物列表，以 artifactId 为唯一 key。 */
@@ -182,6 +196,7 @@ export class StreamStore {
     content: "",
     thinking: "",
     usage: null,
+    metrics: null,
     toolCalls: {},
     artifacts: {},
     taskPlan: null,
@@ -206,8 +221,24 @@ export class StreamStore {
     thinking: string,
     usage: StreamData["usage"],
     reasoningDurationMs?: number,
+    metrics?: StreamData["metrics"],
   ) {
-    this.data = { ...this.data, content, thinking, usage, reasoningDurationMs };
+    this.data = {
+      ...this.data,
+      content,
+      thinking,
+      usage,
+      reasoningDurationMs,
+      metrics: metrics !== undefined ? metrics : this.data.metrics,
+    };
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+
+  /** 更新流式性能指标 */
+  updateMetrics(metrics: StreamMetrics) {
+    this.data = { ...this.data, metrics };
     for (const listener of this.listeners) {
       listener();
     }
@@ -299,6 +330,7 @@ export class StreamStore {
       content: "",
       thinking: "",
       usage: null,
+      metrics: null,
       toolCalls: {},
       artifacts: {},
       taskPlan: null,
@@ -318,42 +350,40 @@ const DEFAULT_ENDPOINT = "/api/chat/stream";
  * 仅当以 { 或 [ 开头、且包含标准 API 键名模式（如 "type":, "content":, "choices": 等）、但未能成功解析时，
  * 才判定为半截 JSON；反之，若只是以 { 开头的普通代码或文本（如 { foo: bar }），回退为增量文本返回，防止吞字。
  */
-function looksLikeIncompleteJson(data: string): boolean {
-  const trimmed = data.trimStart();
-  const head = trimmed[0];
-  if (head !== "{" && head !== "[") return false;
-  return /"?(type|content|result|choices|error|reasoning|usage)"?\s*:/i.test(
-    trimmed,
+function isTruncatedJson(str: string): boolean {
+  if (!str.startsWith("{") && !str.startsWith("[")) return false;
+  return /"(?:type|content|reasoning|usage|metrics|artifact|task_plan|task_step|tool_call|tool_result|choices|delta)"\s*:/i.test(
+    str,
   );
 }
 
+/**
+ * 默认增量文本解析器。
+ * 兼容 Spring AI 原生 Chunk 格式 {"choices":[{"delta":{"content":"..."}}]}
+ * 以及自定义 {"content":"..."} 格式。
+ * 收到包含 [DONE] 的 Chunk 时返回 null。
+ * 若遇到半截 JSON（网络截断），返回 null 等待完整分包，避免半截源码/JSON 打印到用户界面。
+ */
 function defaultParseChunk(data: string): string | null {
-  if (!data || data === "[DONE]") return null;
+  const trimmed = data.trim();
+  if (trimmed === "[DONE]") return null;
+
   try {
     const parsed = JSON.parse(data);
-    if (typeof parsed === "string") return parsed;
-
-    if (parsed?.type === "conversation" || parsed?.type === "done") {
-      return null;
+    if (parsed?.type === "content" && typeof parsed.content === "string") {
+      return parsed.content;
     }
-
-    // 业务级错误帧（type:"error" / 携带 error 字段）不应作为正文文本追加，
-    // 交由调用方 onmessage 统一通过 setError 处理，以触发错误卡片与重试联动。
-    if (parsed?.type === "error" || parsed?.error) {
-      return null;
-    }
-
-    const nested =
-      parsed?.content ??
-      parsed?.result?.output?.text ??
-      parsed?.choices?.[0]?.delta?.content ??
-      parsed?.choices?.[0]?.message?.content ??
-      parsed?.text;
-    return typeof nested === "string" ? nested : null;
+    const delta = parsed?.choices?.[0]?.delta?.content;
+    if (typeof delta === "string") return delta;
+    if (typeof parsed?.content === "string") return parsed.content;
   } catch {
-    if (looksLikeIncompleteJson(data)) return null;
+    if (isTruncatedJson(trimmed)) {
+      return null;
+    }
     return data;
   }
+
+  return null;
 }
 
 function defaultBuildBody(input: string, extraBody?: Record<string, unknown>) {
@@ -377,6 +407,7 @@ export function useSpringAiStream(
     onIntent,
     onReasoning,
     onUsage,
+    onMetrics,
     onArtifact,
     onTaskPlan,
     onTaskStep,
@@ -393,6 +424,7 @@ export function useSpringAiStream(
   const onIntentRef = useRef(onIntent);
   const onReasoningRef = useRef(onReasoning);
   const onUsageRef = useRef(onUsage);
+  const onMetricsRef = useRef(onMetrics);
   const onArtifactRef = useRef(onArtifact);
   const onTaskPlanRef = useRef(onTaskPlan);
   const onTaskStepRef = useRef(onTaskStep);
@@ -406,6 +438,7 @@ export function useSpringAiStream(
     onIntentRef.current = onIntent;
     onReasoningRef.current = onReasoning;
     onUsageRef.current = onUsage;
+    onMetricsRef.current = onMetrics;
     onArtifactRef.current = onArtifact;
     onTaskPlanRef.current = onTaskPlan;
     onTaskStepRef.current = onTaskStep;
@@ -419,6 +452,7 @@ export function useSpringAiStream(
     onIntent,
     onReasoning,
     onUsage,
+    onMetrics,
     onArtifact,
     onTaskPlan,
     onTaskStep,
@@ -431,6 +465,7 @@ export function useSpringAiStream(
 
   const [streamData, setStreamData] = useState({ content: "", thinking: "" });
   const [usage, setUsage] = useState<UsageInfo | null>(null);
+  const [metrics, setMetrics] = useState<StreamMetrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -440,7 +475,10 @@ export function useSpringAiStream(
   const thinkingRef = useRef("");
   const reasoningStartTimeRef = useRef<number | null>(null);
   const reasoningDurationMsRef = useRef<number | null>(null);
+  const streamStartTimeRef = useRef<number | null>(null);
+  const firstTokenTimeRef = useRef<number | null>(null);
   const usageRef = useRef<UsageInfo | null>(null);
+  const metricsRef = useRef<StreamMetrics | null>(null);
   const rafRef = useRef<number | null>(null);
 
   const flushState = useCallback(() => {
@@ -453,19 +491,19 @@ export function useSpringAiStream(
       thinkingRef.current,
       usageRef.current,
       reasoningDurationMsRef.current ?? undefined,
+      metricsRef.current ?? undefined,
     );
     setStreamData({
       content: contentRef.current,
       thinking: thinkingRef.current,
     });
+    if (metricsRef.current) {
+      setMetrics(metricsRef.current);
+    }
   }, []);
 
   const scheduleUpdate = useCallback(() => {
     if (rafRef.current !== null) return;
-    // 用 microtask 批处理增量刷新，而非 requestAnimationFrame：
-    // headless/后台标签页下 rAF 会被节流甚至暂停，导致流式内容无法刷新到
-    // streamStore（进而气泡内容永远为空）。microtask 在所有环境下都会执行，
-    // 同时仍能把同一轮同步 deltas 合并到一次刷新。
     rafRef.current = 1 as unknown as number;
     queueMicrotask(() => {
       rafRef.current = null;
@@ -474,11 +512,15 @@ export function useSpringAiStream(
         thinkingRef.current,
         usageRef.current,
         reasoningDurationMsRef.current ?? undefined,
+        metricsRef.current ?? undefined,
       );
       setStreamData({
         content: contentRef.current,
         thinking: thinkingRef.current,
       });
+      if (metricsRef.current) {
+        setMetrics(metricsRef.current);
+      }
     });
   }, []);
 
@@ -502,10 +544,14 @@ export function useSpringAiStream(
     thinkingRef.current = "";
     reasoningStartTimeRef.current = null;
     reasoningDurationMsRef.current = null;
+    streamStartTimeRef.current = null;
+    firstTokenTimeRef.current = null;
     usageRef.current = null;
+    metricsRef.current = null;
     streamStoreRef.current.reset();
     setStreamData({ content: "", thinking: "" });
     setUsage(null);
+    setMetrics(null);
     setLoading(false);
     setError(null);
   }, []);
@@ -515,11 +561,32 @@ export function useSpringAiStream(
       const currentContent = contentRef.current;
       const currentThinking = thinkingRef.current;
       const currentUsage = usageRef.current;
+      const totalDur = streamStartTimeRef.current
+        ? Date.now() - streamStartTimeRef.current
+        : 1;
+      const ttft =
+        firstTokenTimeRef.current && streamStartTimeRef.current
+          ? firstTokenTimeRef.current - streamStartTimeRef.current
+          : totalDur;
+      const finalMetrics: StreamMetrics = metricsRef.current ?? {
+        timeToFirstToken: Math.max(0, ttft),
+        totalDuration: Math.max(1, totalDur),
+        tokensPerSecond: Math.round(
+          ((currentContent.length / 3.5) * 1000) / Math.max(1, totalDur - ttft),
+        ),
+        isEstimated: true,
+      };
+      metricsRef.current = finalMetrics;
       abortRef.current.abort();
       abortRef.current = null;
       flushState();
       setLoading(false);
-      onFinishRef.current?.(currentContent, currentThinking, currentUsage);
+      onFinishRef.current?.(
+        currentContent,
+        currentThinking,
+        currentUsage,
+        finalMetrics,
+      );
     }
   }, [flushState]);
 
@@ -540,10 +607,14 @@ export function useSpringAiStream(
       thinkingRef.current = "";
       reasoningStartTimeRef.current = null;
       reasoningDurationMsRef.current = null;
+      streamStartTimeRef.current = Date.now();
+      firstTokenTimeRef.current = null;
       usageRef.current = null;
+      metricsRef.current = null;
       streamStoreRef.current.reset();
       setStreamData({ content: "", thinking: "" });
       setUsage(null);
+      setMetrics(null);
       setError(null);
       setLoading(true);
 
@@ -607,7 +678,18 @@ export function useSpringAiStream(
                   setError(new Error(msg));
                   return;
                 }
+                if (parsed?.type === "metrics" || parsed?.metrics) {
+                  const m: StreamMetrics = parsed.metrics ?? parsed;
+                  metricsRef.current = m;
+                  streamStoreRef.current.updateMetrics(m);
+                  setMetrics(m);
+                  onMetricsRef.current?.(m);
+                  return;
+                }
                 if (parsed?.type === "reasoning" && parsed.reasoning) {
+                  if (firstTokenTimeRef.current === null) {
+                    firstTokenTimeRef.current = Date.now();
+                  }
                   if (reasoningStartTimeRef.current === null) {
                     reasoningStartTimeRef.current = Date.now();
                   }
@@ -711,6 +793,9 @@ export function useSpringAiStream(
 
               const delta = parseChunk(ev.data);
               if (delta) {
+                if (firstTokenTimeRef.current === null) {
+                  firstTokenTimeRef.current = Date.now();
+                }
                 contentRef.current += delta;
                 scheduleUpdate();
               }
@@ -729,10 +814,29 @@ export function useSpringAiStream(
             abortRef.current = null;
             flushState();
             setLoading(false);
+            const totalDur = streamStartTimeRef.current
+              ? Date.now() - streamStartTimeRef.current
+              : 1;
+            const ttft =
+              firstTokenTimeRef.current && streamStartTimeRef.current
+                ? firstTokenTimeRef.current - streamStartTimeRef.current
+                : totalDur;
+            const finalMetrics: StreamMetrics = metricsRef.current ?? {
+              timeToFirstToken: Math.max(0, ttft),
+              totalDuration: Math.max(1, totalDur),
+              tokensPerSecond: Math.round(
+                ((contentRef.current.length / 3.5) * 1000) /
+                  Math.max(1, totalDur - ttft),
+              ),
+              isEstimated: true,
+            };
+            metricsRef.current = finalMetrics;
+            setMetrics(finalMetrics);
             onFinishRef.current?.(
               contentRef.current,
               thinkingRef.current,
               usageRef.current,
+              finalMetrics,
             );
           }
         }
@@ -755,6 +859,7 @@ export function useSpringAiStream(
     content: streamData.content,
     thinking: streamData.thinking,
     usage,
+    metrics,
     loading,
     error,
     send,

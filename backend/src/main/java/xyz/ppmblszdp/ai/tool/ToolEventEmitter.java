@@ -59,6 +59,9 @@ public class ToolEventEmitter {
     /** 工具上下文键：当前用户 id（知识库/文件隔离维度）。 */
     public static final String CTX_USER_ID = "userId";
 
+    /** 工具上下文键：累计工具调用耗时（毫秒，AtomicLong）。 */
+    public static final String CTX_TOOL_DURATION = "__toolDuration";
+
     private final AiProviderProperties properties;
 
     public ToolEventEmitter(AiProviderProperties properties) {
@@ -148,18 +151,39 @@ public class ToolEventEmitter {
         emit(sink, ChatChunkDto.toolCall(callId, toolName, effectiveArgsJson));
         log.debug("[{}] tool_call emitted, callId={}, step={}", toolName, callId, step);
 
+        long toolStart = System.currentTimeMillis();
         try {
             String result = runWithTimeout(executor);
+            long duration = System.currentTimeMillis() - toolStart;
+            recordToolDuration(ctx, duration);
             emit(sink, ChatChunkDto.toolResult(callId, toolName, result, false));
-            log.debug("[{}] tool_result emitted (success), callId={}", toolName, callId);
+            log.debug("[{}] tool_result emitted (success), callId={}, duration={}ms", toolName, callId, duration);
             return result;
         } catch (Exception e) {
+            long duration = System.currentTimeMillis() - toolStart;
+            recordToolDuration(ctx, duration);
             // 对齐 AGENTS.md：不掩盖错误根因，但必须发送错误帧保证流完整性（异常不冒泡中断 SSE）
             String safeMsg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             String errJson = "{\"output\":\"" + escape(safeMsg) + "\"}";
             emit(sink, ChatChunkDto.toolResult(callId, toolName, errJson, true));
-            log.warn("[{}] tool_result emitted (error), callId={}, cause={}", toolName, callId, e.getMessage());
+            log.warn(
+                    "[{}] tool_result emitted (error), callId={}, duration={}ms, cause={}",
+                    toolName,
+                    callId,
+                    duration,
+                    e.getMessage());
             return "{\"output\":\"工具执行失败\"}";
+        }
+    }
+
+    private void recordToolDuration(Map<String, Object> ctx, long durationMs) {
+        if (ctx == null) return;
+        try {
+            Object obj = ctx.get(CTX_TOOL_DURATION);
+            if (obj instanceof java.util.concurrent.atomic.AtomicLong accum) {
+                accum.addAndGet(durationMs);
+            }
+        } catch (Exception ignored) {
         }
     }
 

@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   ArrowLeft,
+  BarChart3,
   Calendar,
   CheckCircle2,
   Coins,
@@ -17,6 +18,7 @@ import {
 import Link from "next/link";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ModelPerformanceModal } from "@/components/chat/model-performance-modal";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { QuotaConfigDialog } from "@/components/usage/quota-config-dialog";
@@ -47,6 +49,7 @@ export default function UsageDashboardPage() {
   const [data, setData] = useState<UsageDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [configOpen, setConfigOpen] = useState(false);
+  const [showPerformanceModal, setShowPerformanceModal] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
 
@@ -152,9 +155,19 @@ export default function UsageDashboardPage() {
             </Button>
 
             <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowPerformanceModal(true)}
+              className="gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 border-indigo-200/80 dark:border-indigo-800/80 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 cursor-pointer"
+            >
+              <BarChart3 className="size-3.5" />
+              <span>流式性能大盘</span>
+            </Button>
+
+            <Button
               size="sm"
               onClick={() => setConfigOpen(true)}
-              className="gap-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-xs font-semibold text-white shadow-md hover:from-indigo-500 hover:to-purple-500"
+              className="gap-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-xs font-semibold text-white shadow-md hover:from-indigo-500 hover:to-purple-500 cursor-pointer"
             >
               <Settings className="size-3.5" />
               <span>设置告警阈值</span>
@@ -318,6 +331,12 @@ export default function UsageDashboardPage() {
         saving={savingConfig}
         onClose={() => setConfigOpen(false)}
         onSave={handleSaveConfig}
+      />
+
+      {/* 流式性能对比与 P50/P90 延迟大盘弹窗 */}
+      <ModelPerformanceModal
+        isOpen={showPerformanceModal}
+        onClose={() => setShowPerformanceModal(false)}
       />
 
       {/* Toast */}

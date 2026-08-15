@@ -1411,3 +1411,41 @@ export async function fetchSupportedLanguagesApi(
     return [];
   }
 }
+
+export interface ModelPerformanceSummary {
+  providerId: string;
+  modelId: string;
+  sampleCount: number;
+  p50TtftMs: number;
+  p90TtftMs: number;
+  avgTtftMs: number;
+  minTtftMs: number;
+  maxTtftMs: number;
+  p50TotalDurationMs: number;
+  p90TotalDurationMs: number;
+  avgTotalDurationMs: number;
+  avgTokensPerSecond: number;
+  maxTokensPerSecond: number;
+  avgToolCallDurationMs: number;
+  lowSampleWarning: boolean;
+}
+
+export interface ModelsMetricsResponse {
+  timestamp: number;
+  models: ModelPerformanceSummary[];
+  defaultProvider?: string;
+  defaultModel?: string;
+}
+
+/** 获取模型实时流式性能统计与 P50/P90 延迟大盘。 */
+export async function fetchModelsMetricsApi(
+  signal?: AbortSignal,
+): Promise<ModelsMetricsResponse | null> {
+  try {
+    const res = await fetch("/api/models/metrics", { signal });
+    if (!res.ok) return null;
+    return (await res.json()) as ModelsMetricsResponse;
+  } catch {
+    return null;
+  }
+}

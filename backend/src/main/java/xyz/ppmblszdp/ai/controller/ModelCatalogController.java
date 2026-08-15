@@ -14,14 +14,15 @@ import xyz.ppmblszdp.ai.identity.UserIdentityFilter;
 import xyz.ppmblszdp.ai.registry.HealthStatus;
 import xyz.ppmblszdp.ai.registry.ModelDescriptor;
 import xyz.ppmblszdp.ai.registry.ModelHealthTracker;
+import xyz.ppmblszdp.ai.registry.ModelPerformanceTracker;
 import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 
 /**
- * 模型清单接口：{@code GET /api/models} 与健康诊断 {@code GET /api/models/health}。
+ * 模型清单接口：{@code GET /api/models}、健康诊断 {@code GET /api/models/health} 与流式性能指标 {@code GET /api/models/metrics}。
  *
  * <p>主清单接口需经身份解析（strict 缺 {@code X-User-Id} Header 抛 401）；
- * /health 为诊断端点，保持公开。
+ * /health 与 /metrics 为诊断/监控端点，保持公开。
  */
 @RestController
 @RequestMapping("/api/models")
@@ -29,13 +30,24 @@ public class ModelCatalogController {
 
     private final ProviderRegistry registry;
     private final ModelHealthTracker healthTracker;
+    private final ModelPerformanceTracker performanceTracker;
     private final AuthProperties authProperties;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ModelCatalogController(
+            ProviderRegistry registry,
+            ModelHealthTracker healthTracker,
+            ModelPerformanceTracker performanceTracker,
+            AuthProperties authProperties) {
+        this.registry = registry;
+        this.healthTracker = healthTracker;
+        this.performanceTracker = performanceTracker != null ? performanceTracker : new ModelPerformanceTracker();
+        this.authProperties = authProperties;
+    }
 
     public ModelCatalogController(
             ProviderRegistry registry, ModelHealthTracker healthTracker, AuthProperties authProperties) {
-        this.registry = registry;
-        this.healthTracker = healthTracker;
-        this.authProperties = authProperties;
+        this(registry, healthTracker, new ModelPerformanceTracker(), authProperties);
     }
 
     @GetMapping
@@ -78,6 +90,22 @@ public class ModelCatalogController {
             }
         }
         res.put("models", healthMap);
+        return res;
+    }
+
+    @GetMapping("/metrics")
+    public Map<String, Object> metrics() {
+        Map<String, Object> res = new HashMap<>();
+        res.put("timestamp", System.currentTimeMillis());
+        List<ModelPerformanceTracker.ModelPerformanceSummaryDto> summaries = new ArrayList<>();
+        for (ProviderDescriptor pd : registry.providers().values()) {
+            for (ModelDescriptor md : pd.models().values()) {
+                summaries.add(performanceTracker.getSummary(pd.providerId(), md.id()));
+            }
+        }
+        res.put("models", summaries);
+        res.put("defaultProvider", registry.defaultProviderId());
+        res.put("defaultModel", registry.defaultModelId());
         return res;
     }
 }

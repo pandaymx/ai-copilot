@@ -18,6 +18,7 @@
 | `tool_result` | 工具调用结果 | **Single Snapshot** | `toolCallId`, `toolName`, `result`, `isError` |
 | `artifact` | 可渲染产物 | **可流式** | `artifactId`, `language`, `artifactType`, `title`, `html`, `status` |
 | `usage` | Token 用量 | 单帧 | `usage` |
+| `metrics` | 实时流式性能指标 | 单帧快照（流结束前） | `metrics` (`timeToFirstToken`, `tokensPerSecond`, `totalDuration`, `toolCallDuration`) |
 | `error` | 错误 | 单帧 | `code`, `message` |
 | `done` | 流结束 | 单帧 | （无） |
 
@@ -160,6 +161,7 @@ conversation
 → (tool_call → tool_result)*    // 每轮工具调用：先意图后结果，按 toolCallId 配对
 → artifact*                     // 产物可多次下发（流式更新）
 → usage                         // 用量统计（可选，done 携带时亦可省略）
+→ metrics                       // 实时性能指标（流结束前下发精准 TTFT、速率与耗时）
 → done                          // 流结束
 → [DONE]                        // SSE 原生结束标记（可选）
 ```
@@ -168,10 +170,11 @@ conversation
 
 1. `conversation` 必须永远是流的第一帧。
 2. `tool_call` 与 `tool_result` 必须成对出现，且 `tool_result.toolCallId` 必须等于其前序 `tool_call.toolCallId`。
-3. `error` 帧可出现在任意位置以中断当前阶段；出现 `error` 后通常紧跟 `done`。
-4. `done` 必须是业务最后一帧（其后可跟 SSE 原生 `[DONE]`）。
+3. `metrics` 帧在所有文本、思考及工具调用执行完毕、`done` 帧之前发送，确保前端精准接收完整调用性能指标。
+4. `error` 帧可出现在任意位置以中断当前阶段；出现 `error` 后通常紧跟 `done`。
+5. `done` 必须是业务最后一帧（其后可跟 SSE 原生 `[DONE]`）。
 
-### 完整顺序示例（含工具调用与产物）
+### 完整顺序示例（含工具调用、产物与性能指标）
 
 ```text
 data: {"type":"conversation","conversationId":"c-1001","provider":"deepseek","model":"deepseek-chat","isFallback":false}
@@ -189,6 +192,8 @@ data: {"type":"content","content":"晴，26℃。"}
 data: {"type":"artifact","artifactId":"art_1","language":"html","artifactType":"document","title":"天气卡片","html":"<div>晴 26℃</div>","status":"final"}
 
 data: {"type":"usage","usage":{"promptTokens":20,"completionTokens":40,"totalTokens":60,"estimatedCostRmb":0.0003}}
+
+data: {"type":"metrics","metrics":{"timeToFirstToken":280,"tokensPerSecond":42.5,"totalDuration":1220,"toolCallDuration":450,"isEstimated":false}}
 
 data: {"type":"done"}
 
