@@ -1449,3 +1449,119 @@ export async function fetchModelsMetricsApi(
     return null;
   }
 }
+
+export interface InheritedKeyDecision {
+  decision: string;
+  rationale?: string;
+  category?: string;
+  timestamp?: number;
+}
+
+export interface InheritedCodeSnippet {
+  language: string;
+  code: string;
+  description?: string;
+  filePath?: string;
+}
+
+export interface InheritedFileReference {
+  fileName: string;
+  fileType?: string;
+  description?: string;
+  referenceUrl?: string;
+}
+
+export interface InheritedPendingQuestion {
+  question: string;
+  context?: string;
+  priority?: "HIGH" | "MEDIUM" | "LOW";
+}
+
+export interface InheritedEntityRelation {
+  subject: string;
+  relation: string;
+  object: string;
+  description?: string;
+}
+
+export interface InheritedContext {
+  sourceSessionId: string;
+  sourceSessionTitle: string;
+  contextSummary: string;
+  keyDecisions: InheritedKeyDecision[];
+  codeSnippets: InheritedCodeSnippet[];
+  fileReferences: InheritedFileReference[];
+  pendingQuestions: InheritedPendingQuestion[];
+  entityRelations: InheritedEntityRelation[];
+  exportedAt: number;
+  estimatedTokens: number;
+  extractionMode: "LLM" | "RULE_FALLBACK";
+}
+
+export interface ImportContextRequest {
+  context: InheritedContext;
+  selectedModules?: string[];
+  customNote?: string;
+  targetTitle?: string;
+}
+
+export interface ImportContextResponse {
+  success: boolean;
+  targetSessionId: string;
+  targetTitle: string;
+  importedModules: string[];
+  formattedContextPreview: string;
+  importedAt: number;
+}
+
+/** 导出指定源会话的结构化上下文。 */
+export async function exportSessionContextApi(
+  sessionId: string,
+  provider?: string,
+  model?: string,
+  signal?: AbortSignal,
+): Promise<InheritedContext | null> {
+  try {
+    const params = new URLSearchParams();
+    if (provider) params.set("provider", provider);
+    if (model) params.set("model", model);
+    const queryString = params.toString() ? `?${params.toString()}` : "";
+
+    const res = await fetch(
+      `/api/chat/sessions/${sessionId}/export-context${queryString}`,
+      {
+        method: "POST",
+        signal,
+      },
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as InheritedContext;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}
+
+/** 导入结构化上下文到指定目标会话。 */
+export async function importSessionContextApi(
+  targetSessionId: string,
+  request: ImportContextRequest,
+  signal?: AbortSignal,
+): Promise<ImportContextResponse | null> {
+  try {
+    const res = await fetch(
+      `/api/chat/sessions/${targetSessionId}/import-context`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+        signal,
+      },
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as ImportContextResponse;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}

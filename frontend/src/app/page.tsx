@@ -5,6 +5,7 @@ import {
   BarChart2,
   Download,
   FileText,
+  GitFork,
   PanelLeftOpen,
   Paperclip,
   RotateCcw,
@@ -17,10 +18,12 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { CitationViewerDrawer } from "@/components/chat/citation-viewer-drawer";
+import { ContextInheritanceModal } from "@/components/chat/context-inheritance-modal";
 import { ConversationSummaryModal } from "@/components/chat/conversation-summary-modal";
 import { DocumentChatBar } from "@/components/chat/document-chat-bar";
 import { EmptyState } from "@/components/chat/empty-state";
 import { ExportDialog } from "@/components/chat/export-dialog";
+import { InheritedContextBanner } from "@/components/chat/inherited-context-banner";
 import {
   LiveMessageBubble,
   MessageBubble,
@@ -78,6 +81,10 @@ export default function Home() {
   const [collapsed, setCollapsed] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+  const [showInheritanceModal, setShowInheritanceModal] = useState(false);
+  const [inheritanceSourceId, setInheritanceSourceId] = useState<string | null>(
+    null,
+  );
   const [showPerformanceModal, setShowPerformanceModal] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -109,6 +116,7 @@ export default function Home() {
   const {
     sessions,
     activeId,
+    activeSession,
     setActiveId,
     messages,
     setMessages,
@@ -264,6 +272,10 @@ export default function Home() {
         onNew={newSession}
         onDelete={(id) => setDeleteTarget(id)}
         onRename={renameSession}
+        onInherit={(id) => {
+          setInheritanceSourceId(id);
+          setShowInheritanceModal(true);
+        }}
         onToggleCollapsed={() => setCollapsed((c) => !c)}
         onOpenSearch={() => setSearchOpen(true)}
       />
@@ -370,6 +382,21 @@ export default function Home() {
               <span className="hidden sm:inline">会话沉淀</span>
             </Button>
 
+            {/* 跨会话上下文继承按钮 */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setInheritanceSourceId(null);
+                setShowInheritanceModal(true);
+              }}
+              className="h-8 gap-1.5 rounded-lg px-2 text-xs text-zinc-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400"
+              title="跨会话继承关键决策、代码片段、文件引用与待办"
+            >
+              <GitFork className="size-3.5 text-indigo-500" />
+              <span className="hidden sm:inline">继承上下文</span>
+            </Button>
+
             {/* 历史导出按钮 */}
             <Button
               variant="ghost"
@@ -457,6 +484,15 @@ export default function Home() {
               onDocumentsChange={() => void refreshDocChatDocs()}
             />
           </div>
+
+          {/* 跨会话继承专属上下文卡片 Banner */}
+          {activeSession?.inheritedContextJson && (
+            <InheritedContextBanner
+              inheritedContextJson={activeSession.inheritedContextJson}
+              parentSessionId={activeSession.parentSessionId}
+              onSelectSourceSession={(id) => void selectSession(id)}
+            />
+          )}
 
           {messages.length === 0 ? (
             <EmptyState onPickPrompt={(text) => void handleSend(text)} />
@@ -802,6 +838,22 @@ export default function Home() {
         onClose={() => setShowPerformanceModal(false)}
         initialProvider={model?.provider}
         initialModel={model?.model}
+      />
+
+      {/* 跨会话上下文继承弹窗 */}
+      <ContextInheritanceModal
+        isOpen={showInheritanceModal}
+        onClose={() => {
+          setShowInheritanceModal(false);
+          setInheritanceSourceId(null);
+        }}
+        sessions={sessions}
+        currentSessionId={activeId}
+        initialSourceSessionId={inheritanceSourceId}
+        onSuccess={(resp) => {
+          void mutateSessions();
+          void selectSession(resp.targetSessionId);
+        }}
       />
     </div>
   );

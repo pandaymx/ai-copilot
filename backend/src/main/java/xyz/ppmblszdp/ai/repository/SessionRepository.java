@@ -29,7 +29,12 @@ public class SessionRepository {
     }
 
     private static final RowMapper<SessionDto> ROW_MAPPER = (rs, rowNum) -> new SessionDto(
-            rs.getString("id"), rs.getString("title"), rs.getLong("updated_at"), rs.getBoolean("is_default_title"));
+            rs.getString("id"),
+            rs.getString("title"),
+            rs.getLong("updated_at"),
+            rs.getBoolean("is_default_title"),
+            rs.getString("parent_session_id"),
+            rs.getString("inherited_context_json"));
 
     @PostConstruct
     public void initSchema() {
@@ -40,11 +45,15 @@ public class SessionRepository {
 						title VARCHAR(255) NOT NULL,
 						updated_at BIGINT NOT NULL,
 						is_default_title BOOLEAN DEFAULT TRUE,
-						user_id VARCHAR(128)
+						user_id VARCHAR(128),
+						parent_session_id VARCHAR(128),
+						inherited_context_json TEXT
 					);
 					""");
             // 兼容存量表：缺列则补列
             jdbcTemplate.execute("ALTER TABLE chat_session ADD COLUMN IF NOT EXISTS user_id VARCHAR(128);");
+            jdbcTemplate.execute("ALTER TABLE chat_session ADD COLUMN IF NOT EXISTS parent_session_id VARCHAR(128);");
+            jdbcTemplate.execute("ALTER TABLE chat_session ADD COLUMN IF NOT EXISTS inherited_context_json TEXT;");
             // 复合索引覆盖原单列索引，按 (user_id, updated_at DESC) 查询会话列表
             jdbcTemplate.execute("DROP INDEX IF EXISTS idx_chat_session_updated;");
             jdbcTemplate.execute(
@@ -67,6 +76,29 @@ public class SessionRepository {
 					is_default_title = EXCLUDED.is_default_title;
 				""";
         jdbcTemplate.update(sql, id, userId, title, updatedAt, isDefaultTitle);
+    }
+
+    /** 写入带上下文继承关联的会话元数据 */
+    public void upsertSessionWithInheritance(
+            String id,
+            String userId,
+            String title,
+            long updatedAt,
+            boolean isDefaultTitle,
+            String parentSessionId,
+            String inheritedContextJson) {
+        String sql = """
+				INSERT INTO chat_session (id, user_id, title, updated_at, is_default_title, parent_session_id, inherited_context_json)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT (id) DO UPDATE SET
+					user_id = EXCLUDED.user_id,
+					title = EXCLUDED.title,
+					updated_at = EXCLUDED.updated_at,
+					is_default_title = EXCLUDED.is_default_title,
+					parent_session_id = EXCLUDED.parent_session_id,
+					inherited_context_json = EXCLUDED.inherited_context_json;
+				""";
+        jdbcTemplate.update(sql, id, userId, title, updatedAt, isDefaultTitle, parentSessionId, inheritedContextJson);
     }
 
     /** 仅更新会话时间戳（已有会话发送消息时，绑定用户） */
@@ -93,13 +125,14 @@ public class SessionRepository {
     /** 获取指定用户的所有会话元数据（按更新时间倒序） */
     public List<SessionDto> findAllByUserId(String userId) {
         String sql =
-                "SELECT id, title, updated_at, is_default_title FROM chat_session WHERE user_id = ? ORDER BY updated_at DESC";
+                "SELECT id, title, updated_at, is_default_title, parent_session_id, inherited_context_json FROM chat_session WHERE user_id = ? ORDER BY updated_at DESC";
         return jdbcTemplate.query(sql, ROW_MAPPER, userId);
     }
 
     /** 根据 ID 与用户查询单个会话元数据（归属校验） */
     public Optional<SessionDto> findByIdAndUserId(String id, String userId) {
-        String sql = "SELECT id, title, updated_at, is_default_title FROM chat_session WHERE id = ? AND user_id = ?";
+        String sql =
+                "SELECT id, title, updated_at, is_default_title, parent_session_id, inherited_context_json FROM chat_session WHERE id = ? AND user_id = ?";
         List<SessionDto> list = jdbcTemplate.query(sql, ROW_MAPPER, id, userId);
         return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
     }

@@ -73,11 +73,17 @@ public class SessionService {
         if (metaOpt.isPresent()) {
             SessionDto meta = metaOpt.get();
             return Optional.of(new SessionDto.SessionDetail(
-                    meta.id(), meta.title(), meta.updatedAt(), meta.isDefaultTitle(), messageItems));
+                    meta.id(),
+                    meta.title(),
+                    meta.updatedAt(),
+                    meta.isDefaultTitle(),
+                    meta.parentSessionId(),
+                    meta.inheritedContextJson(),
+                    messageItems));
         } else if (!messageItems.isEmpty()) {
             // 如果元数据表中未命中，但 ChatMemory 中有记录，构造兜底元数据
-            return Optional.of(
-                    new SessionDto.SessionDetail(id, "历史会话", System.currentTimeMillis(), false, messageItems));
+            return Optional.of(new SessionDto.SessionDetail(
+                    id, "历史会话", System.currentTimeMillis(), false, null, null, messageItems));
         }
         return Optional.empty();
     }
@@ -85,6 +91,18 @@ public class SessionService {
     /** 新建/置顶/更新会话元数据（绑定用户） */
     public void recordSession(String id, String userId, String title, boolean isDefaultTitle) {
         sessionRepository.upsertSession(id, userId, title, System.currentTimeMillis(), isDefaultTitle);
+    }
+
+    /** 写入带上下文继承关系的会话元数据 */
+    public void recordSessionWithInheritance(
+            String id,
+            String userId,
+            String title,
+            boolean isDefaultTitle,
+            String parentSessionId,
+            String inheritedContextJson) {
+        sessionRepository.upsertSessionWithInheritance(
+                id, userId, title, System.currentTimeMillis(), isDefaultTitle, parentSessionId, inheritedContextJson);
     }
 
     /** 发送消息时刷新会话时间戳（绑定用户） */

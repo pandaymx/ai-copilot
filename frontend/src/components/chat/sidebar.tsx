@@ -8,6 +8,7 @@ import {
   CloudOff,
   Database,
   Edit2,
+  GitFork,
   MessageSquare,
   PanelLeftClose,
   Plus,
@@ -38,6 +39,10 @@ export interface ChatSession {
    * 老数据未定义时一律视作 false（见 loadSessions）。
    */
   isDefaultTitle?: boolean;
+  /** 继承上下文的父会话 ID */
+  parentSessionId?: string;
+  /** 继承的结构化上下文 JSON */
+  inheritedContextJson?: string;
 }
 
 interface SidebarProps {
@@ -50,6 +55,7 @@ interface SidebarProps {
   onNew: () => void;
   onDelete: (id: string) => void;
   onRename?: (id: string, newTitle: string) => void;
+  onInherit?: (sessionId: string) => void;
   onToggleCollapsed: () => void;
   onOpenSearch?: () => void;
 }
@@ -107,6 +113,7 @@ export function Sidebar({
   onNew,
   onDelete,
   onRename,
+  onInherit,
   onToggleCollapsed,
   onOpenSearch,
 }: SidebarProps) {
@@ -371,6 +378,20 @@ export function Sidebar({
 
                       {!isEditing && (
                         <div className="mr-1.5 hidden items-center gap-0.5 group-hover:flex">
+                          {onInherit && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onInherit(s.id);
+                              }}
+                              className="flex size-6 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-indigo-500/10 hover:text-indigo-600 dark:hover:bg-indigo-500/20 dark:hover:text-indigo-400"
+                              aria-label="以此为基础继承上下文"
+                              title="以此为基础继承上下文"
+                            >
+                              <GitFork className="size-3" />
+                            </button>
+                          )}
                           {onRename && (
                             <button
                               type="button"

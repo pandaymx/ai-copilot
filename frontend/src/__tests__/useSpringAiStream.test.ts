@@ -534,7 +534,9 @@ describe("useSpringAiStream SSE Frame Parsing & Behavior", () => {
   });
 
   it("should parse context_compression frame and notify onContextCompression and streamStore", async () => {
-    let receivedMetadata: CompressionMetadata | null = null;
+    const receivedRef: { current: CompressionMetadata | null } = {
+      current: null,
+    };
 
     mockFetchEventSourceImpl = async (_url, options) => {
       options.onmessage({
@@ -556,7 +558,7 @@ describe("useSpringAiStream SSE Frame Parsing & Behavior", () => {
     const { result, unmount } = renderHook(() =>
       useSpringAiStream({
         onContextCompression: (meta) => {
-          receivedMetadata = meta;
+          receivedRef.current = meta;
         },
       }),
     );
@@ -566,10 +568,13 @@ describe("useSpringAiStream SSE Frame Parsing & Behavior", () => {
     });
     await new Promise((r) => setTimeout(r, 20));
 
-    expect(receivedMetadata!.compressedTurnCount).toBe(4);
-    expect(receivedMetadata!.originalTokens).toBe(2500);
-    expect(receivedMetadata!.compressedTokens).toBe(450);
-    expect(receivedMetadata!.summarySnippet).toContain("Spring Security");
+    expect(receivedRef.current).not.toBeNull();
+    if (receivedRef.current) {
+      expect(receivedRef.current.compressedTurnCount).toBe(4);
+      expect(receivedRef.current.originalTokens).toBe(2500);
+      expect(receivedRef.current.compressedTokens).toBe(450);
+      expect(receivedRef.current.summarySnippet).toContain("Spring Security");
+    }
 
     const snap = result.current.streamStore.getSnapshot();
     expect(snap.contextCompression).not.toBeNull();
