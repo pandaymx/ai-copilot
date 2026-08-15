@@ -88,7 +88,6 @@ describe("useVoiceRecorder Hook Unit Tests", () => {
       onstop: null,
     };
 
-    // biome-ignore lint/correctness/noConstructorReturn: Mock MediaRecorder factory instance return
     function MockMediaRecorder(this: typeof mockMediaRecorderInstance) {
       mockMediaRecorderInstance.state = "recording";
       return mockMediaRecorderInstance;

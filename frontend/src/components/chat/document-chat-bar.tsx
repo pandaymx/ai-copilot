@@ -11,7 +11,7 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -85,7 +85,7 @@ export function DocumentChatBar({
           rawText: textContent,
         });
 
-        if (res && res.docId) {
+        if (res?.docId) {
           successCount++;
         } else {
           toast.error(`文档 "${file.name}" 解析入库失败`);

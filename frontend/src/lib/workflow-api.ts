@@ -114,13 +114,13 @@ export interface WorkflowExecutionRecord {
 
 export async function fetchWorkflows(): Promise<WorkflowDefinition[]> {
   const res = await fetch("/api/workflows");
-  if (!res.ok) throw new Error("获取工作流列表失败: " + res.statusText);
+  if (!res.ok) throw new Error(`获取工作流列表失败: ${res.statusText}`);
   return res.json();
 }
 
 export async function fetchWorkflow(id: string): Promise<WorkflowDefinition> {
   const res = await fetch(`/api/workflows/${id}`);
-  if (!res.ok) throw new Error("获取工作流详情失败: " + res.statusText);
+  if (!res.ok) throw new Error(`获取工作流详情失败: ${res.statusText}`);
   return res.json();
 }
 
@@ -132,7 +132,7 @@ export async function saveWorkflow(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(def),
   });
-  if (!res.ok) throw new Error("保存工作流失败: " + res.statusText);
+  if (!res.ok) throw new Error(`保存工作流失败: ${res.statusText}`);
   return res.json();
 }
 
@@ -150,7 +150,7 @@ export async function fetchWorkflowExecutions(
     ? `/api/workflows/executions?workflowId=${encodeURIComponent(workflowId)}`
     : "/api/workflows/executions";
   const res = await fetch(url);
-  if (!res.ok) throw new Error("获取执行记录失败: " + res.statusText);
+  if (!res.ok) throw new Error(`获取执行记录失败: ${res.statusText}`);
   return res.json();
 }
 

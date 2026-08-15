@@ -145,7 +145,6 @@ export function ThemeProvider({
     };
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enableSystem, theme, applyTheme]);
 
   // storage 事件：多标签页同步
@@ -159,15 +158,13 @@ export function ThemeProvider({
     };
     window.addEventListener("storage", handler);
     return () => window.removeEventListener("storage", handler);
-    // biome-ignore lint/correctness/useExhaustiveDependencies: storage handler intentionally closes over stable setters
   }, [storageKey, applyTheme, defaultTheme, systemTheme]);
 
   // 初始 & theme 变化应用
   React.useEffect(() => {
     const current = theme ?? defaultTheme;
     applyTheme(current === "system" ? systemTheme : current);
-    // biome-ignore lint/correctness/useExhaustiveDependencies: applyTheme is stable via useCallback
-  }, [theme, systemTheme]);
+  }, [theme, systemTheme, defaultTheme, applyTheme]);
 
   const allThemes = React.useMemo(
     () => (enableSystem ? [...themes, "system"] : themes),
@@ -179,8 +176,7 @@ export function ThemeProvider({
       theme,
       setTheme,
       forcedTheme: undefined,
-      resolvedTheme:
-        theme === "system" ? systemTheme : theme,
+      resolvedTheme: theme === "system" ? systemTheme : theme,
       themes: allThemes,
       systemTheme,
     }),

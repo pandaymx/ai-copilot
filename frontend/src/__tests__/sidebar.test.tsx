@@ -14,9 +14,7 @@ import {
   describe,
   expect,
   it,
-  mock,
 } from "bun:test";
-import type React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { type ChatSession, Sidebar } from "../components/chat/sidebar";

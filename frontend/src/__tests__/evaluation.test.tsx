@@ -8,7 +8,6 @@ if (typeof document === "undefined") {
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import type React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import EvaluationPage from "@/app/evaluation/page";

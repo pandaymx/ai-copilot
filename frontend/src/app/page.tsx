@@ -45,11 +45,8 @@ import { cn } from "@/lib/utils";
 
 const MODEL_STORAGE_KEY = "ai-copilot-selected-model";
 
-/** 从 localStorage 读取上次使用的模型配置 */
+/** 从 localStorage 读取上次使用的模型配置（仅在客户端挂载后调用，避免 SSR 水合不匹配） */
 function loadSavedModel(): SelectedModel {
-  if (typeof window === "undefined") {
-    return { provider: "deepseek", model: "deepseek-chat" };
-  }
   try {
     const raw = localStorage.getItem(MODEL_STORAGE_KEY);
     if (raw) {
@@ -65,7 +62,12 @@ function loadSavedModel(): SelectedModel {
 }
 
 export default function Home() {
-  const [model, setModel] = useState<SelectedModel>(loadSavedModel);
+  // 初始状态使用固定的 SSR 安全默认值，确保服务端渲染与客户端首次渲染一致，
+  // 避免 hydration mismatch（从 localStorage 读取的模型在挂载后再应用）。
+  const [model, setModel] = useState<SelectedModel>({
+    provider: "deepseek",
+    model: "deepseek-chat",
+  });
   const [catalog, setCatalog] = useState<BackendProviderEntry[]>([]);
 
   // 侧边栏与弹窗状态
@@ -182,6 +184,15 @@ export default function Home() {
   });
 
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // 挂载后从 localStorage 恢复上次选中的模型（不在 useState 初始化时读取，
+  // 否则服务端渲染与客户端首次渲染会不一致导致 hydration mismatch）。
+  useEffect(() => {
+    const saved = loadSavedModel();
+    setModel(saved);
+    // 仅运行一次：客户端挂载后应用持久化模型
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 模型选择本地持久化
   useEffect(() => {
