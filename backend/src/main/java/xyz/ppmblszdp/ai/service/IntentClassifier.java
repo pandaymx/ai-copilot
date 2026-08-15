@@ -1,7 +1,9 @@
 package xyz.ppmblszdp.ai.service;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,6 +17,8 @@ import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.factory.ChatOptionsFactory;
 import xyz.ppmblszdp.ai.intent.IntentResult;
 import xyz.ppmblszdp.ai.intent.IntentType;
+import xyz.ppmblszdp.ai.registry.ModelDescriptor;
+import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
 
 /**
@@ -156,6 +160,9 @@ public class IntentClassifier {
     }
 
     private IntentResult classifyViaLlm(String msg, ResolvedModel resolved) {
+        // 意图分类为简单 JSON 枚举输出任务，显式改用当前供应商下最便宜的低成本模型，
+        // 避免占用用户高等级（高成本）模型的额度。
+        ResolvedModel classifyModel = selectLowCostModel(resolved);
         String systemPrompt = """
 				你是一个极简意图分类器。请判断用户输入的意图类型，仅返回如下枚举值之一：
 				CHAT, CODE, TRANSLATION, WRITING, ANALYSIS, SEARCH, MATH, MULTIMODAL, IMAGE
@@ -163,9 +170,9 @@ public class IntentClassifier {
 				""";
         Prompt prompt = new Prompt(
                 List.of(new SystemMessage(systemPrompt), new UserMessage(msg)),
-                ChatOptionsFactory.forProvider(resolved, 0.0));
+                ChatOptionsFactory.forProvider(classifyModel, 0.0));
 
-        return Mono.fromCallable(() -> resolved.chatModel().call(prompt))
+        return Mono.fromCallable(() -> classifyModel.chatModel().call(prompt))
                 .timeout(LLM_TIMEOUT)
                 .subscribeOn(Schedulers.boundedElastic())
                 .map(resp -> {
@@ -186,6 +193,46 @@ public class IntentClassifier {
                 })
                 .onErrorReturn(buildDefaultResult(IntentType.CHAT))
                 .block();
+    }
+
+    /**
+     * 在用户所选供应商下挑选成本最低的模型用于意图分类。
+     *
+     * <p>意图分类是轻量级枚举输出任务，无需用户高等级模型的能力，使用清单中
+     * {@code (inputPricePerK + outputPricePerK)} 最小的模型即可，显著降低开销。
+     * 若供应商未登记任何模型（纯自定义模型场景），或传入模型为空，则回退到用户传入的模型。
+     *
+     * @param userResolved 用户传入模型解析结果（仅用于确定所属供应商与 ChatModel 实例）
+     * @return 用于意图分类的最终模型解析结果
+     */
+    private ResolvedModel selectLowCostModel(ResolvedModel userResolved) {
+        if (userResolved == null || userResolved.provider() == null) {
+            return userResolved;
+        }
+        ProviderDescriptor provider = userResolved.provider();
+        Map<String, ModelDescriptor> models = provider.models();
+        if (models == null || models.isEmpty()) {
+            return userResolved;
+        }
+        ModelDescriptor cheapest = null;
+        BigDecimal lowestCost = null;
+        for (ModelDescriptor md : models.values()) {
+            BigDecimal cost = md.inputPricePerK().add(md.outputPricePerK());
+            if (lowestCost == null || cost.compareTo(lowestCost) < 0) {
+                lowestCost = cost;
+                cheapest = md;
+            }
+        }
+        if (cheapest == null) {
+            return userResolved;
+        }
+        log.debug(
+                "意图分类：用户模型={}/{}，改用低成本模型={}/{}",
+                userResolved.provider().providerId(),
+                userResolved.model().id(),
+                provider.providerId(),
+                cheapest.id());
+        return new ResolvedModel(provider.chatModel(), provider, cheapest);
     }
 
     /**
