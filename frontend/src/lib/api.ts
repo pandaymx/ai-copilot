@@ -542,6 +542,15 @@ export async function memoryResolveConflictsApi(): Promise<{
 
 // ====================== 成本看板与用量配额 API ======================
 
+export interface RealtimeUsageData {
+  month: string;
+  usedTokens: number;
+  quotaTokens: number;
+  remainingTokens: number;
+  usedPercent: number;
+  alertThresholdPercent: number;
+}
+
 export interface QuotaConfig {
   monthlyTokenQuota: number;
   alertThresholdPercent: number;
@@ -633,6 +642,20 @@ export async function updateQuotaConfigApi(
     if (!res.ok) return null;
     return (await res.json()) as QuotaConfig;
   } catch {
+    return null;
+  }
+}
+
+/** 获取用户本月实时 Token 配额与消耗状态（基于 Redis，不查 DB）。 */
+export async function fetchRealtimeUsageApi(
+  signal?: AbortSignal,
+): Promise<RealtimeUsageData | null> {
+  try {
+    const res = await fetch("/api/usage/realtime", { signal });
+    if (!res.ok) return null;
+    return (await res.json()) as RealtimeUsageData;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
     return null;
   }
 }

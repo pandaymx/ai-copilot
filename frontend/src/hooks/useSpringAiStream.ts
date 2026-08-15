@@ -36,6 +36,16 @@ export interface ToolCallItem {
   status: "calling" | "success" | "error";
 }
 
+export interface UsageInfo {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCostRmb?: number;
+  monthlyUsed?: number;
+  monthlyQuota?: number;
+  monthlyPercent?: number;
+}
+
 export interface UseSpringAiStreamOptions {
   /** 后端流式接口地址，默认复用 Spring AI 的 SSE 端点。 */
   endpoint?: string;
@@ -59,12 +69,7 @@ export interface UseSpringAiStreamOptions {
   /** 收到 Reasoning/Thinking 思考过程增量时的回调 */
   onReasoning?: (reasoningDelta: string) => void;
   /** 收到 Token 用量统计时的回调 */
-  onUsage?: (usage: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    estimatedCostRmb?: number;
-  }) => void;
+  onUsage?: (usage: UsageInfo) => void;
   /** 收到 artifact 帧（可渲染产物）时的回调 */
   onArtifact?: (item: ArtifactItem) => void;
   /** 收到 task_plan 帧（多步任务规划总览）时的回调 */
@@ -83,12 +88,7 @@ export interface UseSpringAiStreamOptions {
   onFinish?: (
     finalContent: string,
     finalThinking?: string,
-    finalUsage?: {
-      promptTokens: number;
-      completionTokens: number;
-      totalTokens: number;
-      estimatedCostRmb?: number;
-    } | null,
+    finalUsage?: UsageInfo | null,
   ) => void;
 }
 
@@ -98,12 +98,7 @@ export interface UseSpringAiStreamResult {
   /** 当前累计的思考过程文本。 */
   thinking: string;
   /** 当前统计的 Usage 信息。 */
-  usage: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    estimatedCostRmb?: number;
-  } | null;
+  usage: UsageInfo | null;
   /** 是否正在流式接收。 */
   loading: boolean;
   /** 最近一次错误信息。 */
@@ -169,12 +164,7 @@ export interface StreamData {
   content: string;
   thinking: string;
   reasoningDurationMs?: number;
-  usage: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    estimatedCostRmb?: number;
-  } | null;
+  usage: UsageInfo | null;
   /** 工具调用列表，以 callId 为唯一 key（Map 结构用普通对象表达以保证快照不可变）。 */
   toolCalls: Record<string, ToolCallItem>;
   /** 可渲染产物列表，以 artifactId 为唯一 key。 */
@@ -440,12 +430,7 @@ export function useSpringAiStream(
   ]);
 
   const [streamData, setStreamData] = useState({ content: "", thinking: "" });
-  const [usage, setUsage] = useState<{
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    estimatedCostRmb?: number;
-  } | null>(null);
+  const [usage, setUsage] = useState<UsageInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -455,12 +440,7 @@ export function useSpringAiStream(
   const thinkingRef = useRef("");
   const reasoningStartTimeRef = useRef<number | null>(null);
   const reasoningDurationMsRef = useRef<number | null>(null);
-  const usageRef = useRef<{
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    estimatedCostRmb?: number;
-  } | null>(null);
+  const usageRef = useRef<UsageInfo | null>(null);
   const rafRef = useRef<number | null>(null);
 
   const flushState = useCallback(() => {

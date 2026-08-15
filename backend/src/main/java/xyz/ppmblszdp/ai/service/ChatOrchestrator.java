@@ -328,7 +328,7 @@ public class ChatOrchestrator implements DisposableBean {
                                 resolved.model().id());
                         touchSessionAsync(userId, req.conversationId(), null);
                         recordLongTermMemoryAsync(userId, req.conversationId(), req.message(), replyText);
-                        ChatChunkDto.UsageDto usageDto = usageRecorder.extractUsageDto(resp, resolved);
+                        ChatChunkDto.UsageDto usageDto = usageRecorder.extractUsageDto(resp, resolved, userId);
                         usageRecorder.settleUsage(
                                 userId, resolved, req.conversationId(), usageDto, fireAndForgetSubscriptions);
                         return new ChatResponseDto(
@@ -489,7 +489,7 @@ public class ChatOrchestrator implements DisposableBean {
                                 effectiveResolved.provider().providerId(),
                                 effectiveResolved.model().id());
                         Flux<ChatChunkDto> chunkFlux = usageRecorder.accumulateUsage(
-                                processChatResponseToChunks(resp, fullContent, effectiveResolved), lastUsage);
+                                processChatResponseToChunks(resp, fullContent, effectiveResolved, userId), lastUsage);
                         if (isFirst) {
                             ChatChunkDto initChunk = ChatChunkDto.conversation(
                                     req.conversationId(),
@@ -585,7 +585,7 @@ public class ChatOrchestrator implements DisposableBean {
                     healthTracker.recordSuccess(
                             primaryResolved.provider().providerId(),
                             primaryResolved.model().id());
-                    ChatChunkDto.UsageDto usageDto = usageRecorder.extractUsageDto(response, primaryResolved);
+                    ChatChunkDto.UsageDto usageDto = usageRecorder.extractUsageDto(response, primaryResolved, userId);
                     usageRecorder.settleUsage(
                             userId, primaryResolved, request.conversationId(), usageDto, fireAndForgetSubscriptions);
                     return new ChatResponseDto(
@@ -695,7 +695,7 @@ public class ChatOrchestrator implements DisposableBean {
                         .chatResponse()
                         .timeout(STREAM_TIMEOUT)
                         .concatMap(resp -> usageRecorder.accumulateUsage(
-                                processChatResponseToChunks(resp, fullContent, primaryResolved), usageAccum)));
+                                processChatResponseToChunks(resp, fullContent, primaryResolved, userId), usageAccum)));
 
         if (agentPath && toolSink != null) {
             Flux<ChatChunkDto> merged = Flux.merge(contentFlux, toolSink.asFlux());
@@ -751,7 +751,7 @@ public class ChatOrchestrator implements DisposableBean {
                         healthTracker.recordSuccess(
                                 fallbackResolved.provider().providerId(),
                                 fallbackResolved.model().id());
-                        ChatChunkDto.UsageDto usageDto = usageRecorder.extractUsageDto(resp, fallbackResolved);
+                        ChatChunkDto.UsageDto usageDto = usageRecorder.extractUsageDto(resp, fallbackResolved, userId);
                         usageRecorder.settleUsage(
                                 userId,
                                 fallbackResolved,
@@ -795,7 +795,7 @@ public class ChatOrchestrator implements DisposableBean {
     }
 
     private Flux<ChatChunkDto> processChatResponseToChunks(
-            ChatResponse resp, StringBuilder fullContent, ResolvedModel resolved) {
+            ChatResponse resp, StringBuilder fullContent, ResolvedModel resolved, String userId) {
         if (resp == null) return Flux.empty();
         List<ChatChunkDto> chunks = new ArrayList<>();
 
@@ -810,7 +810,7 @@ public class ChatOrchestrator implements DisposableBean {
             chunks.add(ChatChunkDto.content(text));
         }
 
-        ChatChunkDto.UsageDto usageDto = usageRecorder.extractUsageDto(resp, resolved);
+        ChatChunkDto.UsageDto usageDto = usageRecorder.extractUsageDto(resp, resolved, userId);
         if (usageDto != null) {
             chunks.add(ChatChunkDto.usage(usageDto));
         }

@@ -166,7 +166,18 @@ public record ChatChunkDto(
                 null);
     }
 
-    public record UsageDto(int promptTokens, int completionTokens, int totalTokens, Double estimatedCostRmb) {}
+    public record UsageDto(
+            int promptTokens,
+            int completionTokens,
+            int totalTokens,
+            Double estimatedCostRmb,
+            Long monthlyUsed,
+            Long monthlyQuota,
+            Double monthlyPercent) {
+        public UsageDto(int promptTokens, int completionTokens, int totalTokens, Double estimatedCostRmb) {
+            this(promptTokens, completionTokens, totalTokens, estimatedCostRmb, null, null, null);
+        }
+    }
 
     public static ChatChunkDto conversation(String conversationId) {
         return new ChatChunkDto(

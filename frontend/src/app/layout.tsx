@@ -6,6 +6,7 @@ import { Toaster } from "sonner";
 import "./globals.css";
 import { PwaRegister } from "@/components/pwa-register";
 import { ThemeProvider } from "@/components/theme-provider";
+import { TokenBudgetProvider } from "@/context/token-budget-context";
 import { cn } from "@/lib/utils";
 
 // 防闪烁主题脚本：必须在 hydration 前于 <head> 同步执行（beforeInteractive）。
@@ -78,9 +79,11 @@ export default async function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            {children}
-            <PwaRegister />
-            <Toaster position="top-right" richColors />
+            <TokenBudgetProvider>
+              {children}
+              <PwaRegister />
+              <Toaster position="top-right" richColors />
+            </TokenBudgetProvider>
           </ThemeProvider>
         </NextIntlClientProvider>
       </body>

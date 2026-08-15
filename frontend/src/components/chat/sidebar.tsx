@@ -6,7 +6,6 @@ import {
   Calendar,
   Check,
   CloudOff,
-  Coins,
   Database,
   Edit2,
   MessageSquare,
@@ -24,6 +23,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ChatMessage } from "./message-bubble";
+import { TokenBudgetBar } from "./token-budget-bar";
 
 export interface ChatSession {
   id: string;
@@ -185,15 +185,9 @@ export function Sidebar({
             )}
           </div>
 
-          {/* 成本看板入口 */}
+          {/* 实时 Token 配额与预算进度条 */}
           <div className="px-0.5 pt-1">
-            <Link
-              href="/usage"
-              className="group flex items-center gap-2 rounded-xl border border-zinc-200/70 bg-white/70 px-3 py-2.5 text-xs font-semibold text-zinc-700 shadow-xs transition-all duration-200 hover:border-emerald-500/40 hover:bg-white hover:text-emerald-600 hover:shadow-md hover:shadow-emerald-500/10 dark:border-zinc-800/70 dark:bg-zinc-900/50 dark:text-zinc-200 dark:hover:border-emerald-500/50 dark:hover:bg-zinc-900 dark:hover:text-emerald-400"
-            >
-              <Coins className="size-4 text-emerald-500 transition-transform duration-200 group-hover:scale-110" />
-              <span>成本看板</span>
-            </Link>
+            <TokenBudgetBar />
           </div>
 
           {/* 知识库管理入口（任务 7.4） */}

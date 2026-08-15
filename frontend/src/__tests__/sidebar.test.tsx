@@ -90,7 +90,7 @@ describe("Sidebar Component Tests - components/chat/sidebar.tsx", () => {
 
     expect(container.textContent).toContain("AI Copilot Pro");
     expect(container.textContent).toContain("开启新会话");
-    expect(container.textContent).toContain("成本看板");
+    expect(container.textContent).toContain("月度 Token 配额");
     expect(container.textContent).toContain("知识库管理");
     expect(container.textContent).toContain("长期记忆");
 

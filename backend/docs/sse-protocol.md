@@ -58,9 +58,23 @@
   "promptTokens": 12,
   "completionTokens": 34,
   "totalTokens": 46,
-  "estimatedCostRmb": 0.00021
+  "estimatedCostRmb": 0.00021,
+  "monthlyUsed": 124500,
+  "monthlyQuota": 1000000,
+  "monthlyPercent": 12.45
 }
 ```
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `promptTokens` | integer | 本次请求 Prompt Token 数 |
+| `completionTokens` | integer | 本次请求模型生成 Token 数 |
+| `totalTokens` | integer | 本次请求总 Token 数 |
+| `estimatedCostRmb` | double | 本次请求预估费用（元，人民币） |
+| `monthlyUsed` | integer (long) | 用户当月累计消耗总 Token 数（含本次） |
+| `monthlyQuota` | integer (long) | 用户当月配额上限（0 表示无限制） |
+| `monthlyPercent` | double | 用户当月配额使用百分比（0.0 ~ 100.0） |
+
 
 ---
 

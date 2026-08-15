@@ -2,6 +2,7 @@ package xyz.ppmblszdp.ai.controller;
 
 import java.math.BigDecimal;
 import java.util.List;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.dto.QuotaConfigDto;
+import xyz.ppmblszdp.ai.dto.RealtimeUsageDto;
 import xyz.ppmblszdp.ai.dto.UsageDailySummary;
 import xyz.ppmblszdp.ai.dto.UsageDashboardDto;
 import xyz.ppmblszdp.ai.dto.UsageModelDetailSummary;
@@ -21,6 +23,7 @@ import xyz.ppmblszdp.ai.dto.UsageUserSummary;
 import xyz.ppmblszdp.ai.identity.AuthProperties;
 import xyz.ppmblszdp.ai.identity.UserIdentityFilter;
 import xyz.ppmblszdp.ai.memory.UsageQuotaChecker;
+import xyz.ppmblszdp.ai.memory.UsageQuotaChecker.UsageQuota;
 import xyz.ppmblszdp.ai.repository.UsageRepository;
 
 /**
@@ -35,12 +38,34 @@ public class UsageController {
     private final UsageRepository usageRepository;
     private final AiProviderProperties properties;
     private final AuthProperties authProperties;
+    private final ObjectProvider<UsageQuota> usageQuotaProvider;
 
     public UsageController(
-            UsageRepository usageRepository, AiProviderProperties properties, AuthProperties authProperties) {
+            UsageRepository usageRepository,
+            AiProviderProperties properties,
+            AuthProperties authProperties,
+            ObjectProvider<UsageQuota> usageQuotaProvider) {
         this.usageRepository = usageRepository;
         this.properties = properties;
         this.authProperties = authProperties;
+        this.usageQuotaProvider = usageQuotaProvider;
+    }
+
+    /**
+     * 返回当前用户本月实时配额与消耗状态（基于 Redis 实时数据，不查 DB）。
+     */
+    @GetMapping("/realtime")
+    public ResponseEntity<RealtimeUsageDto> getRealtimeUsage(ServerWebExchange exchange) {
+        String userId = UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
+        UsageQuota quota = usageQuotaProvider != null ? usageQuotaProvider.getIfAvailable() : null;
+        if (quota != null) {
+            RealtimeUsageDto dto = quota.getRealtimeUsage(userId, 80.0);
+            return ResponseEntity.ok(dto);
+        }
+        long defaultQuota = properties.resolveMemory().resolveUsageQuota().resolveMonthlyTokenQuota();
+        RealtimeUsageDto fallback =
+                new RealtimeUsageDto(UsageQuotaChecker.currentMonthKey(), 0L, defaultQuota, defaultQuota, 0.0, 80.0);
+        return ResponseEntity.ok(fallback);
     }
 
     /**

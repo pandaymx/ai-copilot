@@ -32,11 +32,13 @@ import {
 } from "@/components/chat/model-selector";
 import { SearchDialog } from "@/components/chat/search-dialog";
 import { Sidebar } from "@/components/chat/sidebar";
+import { TokenBudgetBar } from "@/components/chat/token-budget-bar";
 import { VisionScenarioPills } from "@/components/chat/vision-scenario-pills";
 import { VoiceRecorderButton } from "@/components/chat/voice-recorder-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { useTokenBudget } from "@/context/token-budget-context";
 import { useChatInput } from "@/hooks/useChatInput";
 import { useChatSession } from "@/hooks/useChatSession";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
@@ -155,6 +157,13 @@ export default function Home() {
     currentSupportsVision,
     activeId,
   });
+
+  // 实时 Token 预算与草稿估算 Hook
+  const { setDraft, isOverBudget } = useTokenBudget();
+
+  useEffect(() => {
+    setDraft(input, currentModelObj);
+  }, [input, currentModelObj, setDraft]);
 
   // 3. 流式 SSE 编排与发送 Hook
   const {
@@ -310,6 +319,9 @@ export default function Home() {
               onChange={setModel}
               onCatalogChange={setCatalog}
             />
+
+            {/* 紧凑型实时 Token 预算进度条 */}
+            <TokenBudgetBar compact className="hidden sm:inline-flex" />
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
@@ -624,9 +636,21 @@ export default function Home() {
                   <Button
                     type="submit"
                     size="icon"
-                    disabled={!input.trim() && attachments.length === 0}
-                    className="size-8 rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-500/20 hover:bg-indigo-700 disabled:opacity-40 dark:bg-indigo-500 dark:hover:bg-indigo-600"
-                    title="发送消息"
+                    disabled={
+                      isOverBudget ||
+                      (!input.trim() && attachments.length === 0)
+                    }
+                    className={cn(
+                      "size-8 rounded-xl text-white shadow-md transition-all",
+                      isOverBudget
+                        ? "bg-rose-500/80 cursor-not-allowed opacity-60 hover:bg-rose-500/80"
+                        : "bg-indigo-600 shadow-indigo-500/20 hover:bg-indigo-700 disabled:opacity-40 dark:bg-indigo-500 dark:hover:bg-indigo-600",
+                    )}
+                    title={
+                      isOverBudget
+                        ? "本月 Token 配额已耗尽，请前往成本中心调整"
+                        : "发送消息"
+                    }
                   >
                     <Send className="size-3.5" />
                   </Button>

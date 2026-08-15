@@ -45,7 +45,7 @@ public class UsageQuotaChecker {
 
     private static final String KEY_PREFIX = "usagequota:";
     private static final DateTimeFormatter MONTH_FMT = DateTimeFormatter.ofPattern("yyyy-MM");
-    private static final Duration KEY_TTL = Duration.ofDays(35);
+    private static final Duration KEY_TTL = Duration.ofDays(90);
 
     @Bean
     @ConditionalOnProperty(prefix = "app.ai.memory.rate-limit", name = "enabled", havingValue = "true")
@@ -96,6 +96,29 @@ public class UsageQuotaChecker {
          * @param realTokens 本次对话真实产生的 token 数（≥0）
          */
         void consumeActual(String userId, long realTokens);
+
+        /**
+         * 事后校准并原子返回校准后的月度最新累计 Token 数。
+         *
+         * @param userId     受信任用户身份
+         * @param realTokens 本次对话真实产生的 token 数（≥0）
+         * @return 校准后的月度累计已用 Token 数
+         */
+        long consumeAndGetActual(String userId, long realTokens);
+
+        /** 获取配置的月度配额上限（0 表示无限制）。 */
+        long getMonthlyQuota();
+
+        /** 获取用户当前在 Redis 中的月度已用 Token 数（不查 DB）。 */
+        long getUsedTokens(String userId);
+
+        /** 获取用户当前月度实时配额摘要（基于 Redis，不查 DB）。 */
+        xyz.ppmblszdp.ai.dto.RealtimeUsageDto getRealtimeUsage(String userId, double alertThresholdPercent);
+
+        /**
+         * 根据当前 Redis 预扣状态与本次实际产生的 token 数，推算本次会话结束后的月度累计已用量与占比。
+         */
+        xyz.ppmblszdp.ai.dto.RealtimeUsageDto getProjectedUsage(String userId, long requestTotalTokens);
     }
 
     static final class NoopUsageQuota implements UsageQuota {
@@ -108,14 +131,39 @@ public class UsageQuotaChecker {
         public void consumeActual(String userId, long realTokens) {
             // 未启用配额：不计入 Redis
         }
+
+        @Override
+        public long consumeAndGetActual(String userId, long realTokens) {
+            return 0L;
+        }
+
+        @Override
+        public long getMonthlyQuota() {
+            return 0L;
+        }
+
+        @Override
+        public long getUsedTokens(String userId) {
+            return 0L;
+        }
+
+        @Override
+        public xyz.ppmblszdp.ai.dto.RealtimeUsageDto getRealtimeUsage(String userId, double alertThresholdPercent) {
+            return new xyz.ppmblszdp.ai.dto.RealtimeUsageDto(currentMonthKey(), 0L, 0L, 0L, 0.0, alertThresholdPercent);
+        }
+
+        @Override
+        public xyz.ppmblszdp.ai.dto.RealtimeUsageDto getProjectedUsage(String userId, long requestTotalTokens) {
+            return new xyz.ppmblszdp.ai.dto.RealtimeUsageDto(currentMonthKey(), requestTotalTokens, 0L, 0L, 0.0, 80.0);
+        }
     }
 
     static final class RedisUsageQuota implements UsageQuota {
 
         /**
-         * 原子脚本：INCRBY 累计 delta，并在 key 为新创建（TTL 缺失）时设置 35d 过期。
+         * 原子脚本：INCRBY 累计 delta，并在 key 为新创建（TTL 缺失）时设置 90d 过期。
          * KEYS[1]=quotaKey, ARGV[1]=delta, ARGV[2]=ttlSeconds
-         * 返回当前累计值（仅用于 tryReserve 的超额判定，单位 token）。
+         * 返回当前累计值（单位 token）。
          */
         private static final RedisScript<Long> INCRBY_WITH_TTL_LUA = new DefaultRedisScript<>(
                 "local key = KEYS[1]\n" + "local delta = tonumber(ARGV[1])\n"
@@ -168,21 +216,78 @@ public class UsageQuotaChecker {
 
         @Override
         public void consumeActual(String userId, long realTokens) {
+            consumeAndGetActual(userId, realTokens);
+        }
+
+        @Override
+        public long consumeAndGetActual(String userId, long realTokens) {
             if (userId == null || userId.isBlank() || monthlyQuota <= 0) {
-                return;
+                return 0L;
             }
             // 净增量 = 真实消耗 - 预扣基础值（可能为负，表示实际少于预扣）
             long delta = realTokens - reserveTokens;
             String redisKey = KEY_PREFIX + userId + ":" + currentMonthKey();
             try {
-                redis.execute(
+                Long updated = redis.execute(
                         INCRBY_WITH_TTL_LUA,
                         Collections.singletonList(redisKey),
                         String.valueOf(delta),
                         String.valueOf(KEY_TTL.getSeconds()));
+                return updated != null ? Math.max(0L, updated) : 0L;
             } catch (RuntimeException ex) {
                 log.warn("月度配额校准异常，跳过（不影响对话）：{}", ex.getMessage());
+                return getUsedTokens(userId);
             }
+        }
+
+        @Override
+        public long getMonthlyQuota() {
+            return monthlyQuota;
+        }
+
+        @Override
+        public long getUsedTokens(String userId) {
+            if (userId == null || userId.isBlank()) {
+                return 0L;
+            }
+            String redisKey = KEY_PREFIX + userId + ":" + currentMonthKey();
+            try {
+                String val = redis.opsForValue().get(redisKey);
+                return val != null ? Math.max(0L, Long.parseLong(val)) : 0L;
+            } catch (RuntimeException ex) {
+                log.warn("读取 Redis 实时月度用量异常: {}", ex.getMessage());
+                return 0L;
+            }
+        }
+
+        @Override
+        public xyz.ppmblszdp.ai.dto.RealtimeUsageDto getRealtimeUsage(String userId, double alertThresholdPercent) {
+            long usedTokens = getUsedTokens(userId);
+            long remainingTokens = (monthlyQuota > 0) ? Math.max(0L, monthlyQuota - usedTokens) : monthlyQuota;
+            double usedPercent = (monthlyQuota > 0) ? Math.min(100.0, (usedTokens * 100.0) / monthlyQuota) : 0.0;
+            return new xyz.ppmblszdp.ai.dto.RealtimeUsageDto(
+                    currentMonthKey(), usedTokens, monthlyQuota, remainingTokens, usedPercent, alertThresholdPercent);
+        }
+
+        @Override
+        public xyz.ppmblszdp.ai.dto.RealtimeUsageDto getProjectedUsage(String userId, long requestTotalTokens) {
+            if (userId == null || userId.isBlank()) {
+                return new xyz.ppmblszdp.ai.dto.RealtimeUsageDto(
+                        currentMonthKey(),
+                        requestTotalTokens,
+                        monthlyQuota,
+                        (monthlyQuota > 0) ? Math.max(0L, monthlyQuota - requestTotalTokens) : monthlyQuota,
+                        (monthlyQuota > 0) ? Math.min(100.0, (requestTotalTokens * 100.0) / monthlyQuota) : 0.0,
+                        80.0);
+            }
+            long currentRedis = getUsedTokens(userId);
+            // 预扣值 reserveTokens 已在 tryReserve 时累加入 Redis，
+            // 结束后的净累计 = currentRedis + (requestTotalTokens - reserveTokens)
+            long projectedUsed = Math.max(requestTotalTokens, currentRedis + requestTotalTokens - reserveTokens);
+            long remaining = (monthlyQuota > 0) ? Math.max(0L, monthlyQuota - projectedUsed) : monthlyQuota;
+            double percent = (monthlyQuota > 0) ? Math.min(100.0, (projectedUsed * 100.0) / monthlyQuota) : 0.0;
+            return new xyz.ppmblszdp.ai.dto.RealtimeUsageDto(
+                    currentMonthKey(), projectedUsed, monthlyQuota, remaining, percent, 80.0);
         }
     }
 }

@@ -18,6 +18,7 @@ import xyz.ppmblszdp.ai.config.AiProviderProperties.UsageQuotaConfig;
 import xyz.ppmblszdp.ai.dto.QuotaConfigDto;
 import xyz.ppmblszdp.ai.identity.AuthProperties;
 import xyz.ppmblszdp.ai.identity.UserIdentityFilter;
+import xyz.ppmblszdp.ai.memory.UsageQuotaChecker;
 import xyz.ppmblszdp.ai.repository.UsageRepository;
 
 /**
@@ -46,7 +47,10 @@ class UsageControllerTest {
         when(quotaConfig.resolveMonthlyTokenQuota()).thenReturn(1000000L);
 
         authProperties = new AuthProperties("strict", "X-User-Id", Set.of("admin", "root"));
-        controller = new UsageController(usageRepository, properties, authProperties);
+        @SuppressWarnings("unchecked")
+        org.springframework.beans.factory.ObjectProvider<UsageQuotaChecker.UsageQuota> usageQuotaProvider =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
+        controller = new UsageController(usageRepository, properties, authProperties, usageQuotaProvider);
 
         webClient = WebTestClient.bindToController(controller)
                 .webFilter(new UserIdentityFilter(authProperties))
@@ -138,5 +142,26 @@ class UsageControllerTest {
                 .value(dto -> Assertions.assertThat(dto.monthlyTokenQuota()).isEqualTo(2000000L));
 
         verify(usageRepository).saveQuotaConfig(updateDto);
+    }
+
+    @Test
+    void getRealtimeUsage_shouldReturn401_whenMissingHeaderInStrictMode() {
+        webClient.get().uri("/api/usage/realtime").exchange().expectStatus().isUnauthorized();
+    }
+
+    @Test
+    void getRealtimeUsage_shouldReturn200_whenAuthenticated() {
+        webClient
+                .get()
+                .uri("/api/usage/realtime")
+                .header("X-User-Id", REGULAR_USER)
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(xyz.ppmblszdp.ai.dto.RealtimeUsageDto.class)
+                .value(dto -> {
+                    Assertions.assertThat(dto.month()).isNotBlank();
+                    Assertions.assertThat(dto.quotaTokens()).isEqualTo(1000000L);
+                });
     }
 }

@@ -26,6 +26,7 @@ import {
   type StreamStore,
   type TaskPlanState,
   type ToolCallItem,
+  type UsageInfo,
   useStreamData,
 } from "@/hooks/useSpringAiStream";
 import type { CompressionMetadata, DocumentCitationItem } from "@/lib/api";
@@ -55,12 +56,7 @@ export interface ChatMessage {
   content: string;
   thinking?: string;
   reasoningDurationMs?: number;
-  usage?: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    estimatedCostRmb?: number;
-  };
+  usage?: UsageInfo;
   attachments?: AttachmentItem[];
   /** 工具调用列表（已完成消息持久化用；流式消息由 streamStore.toolCalls 驱动）。 */
   toolCalls?: ToolCallItem[];

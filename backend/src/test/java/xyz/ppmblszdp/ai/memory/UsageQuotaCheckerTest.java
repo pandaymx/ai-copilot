@@ -95,7 +95,39 @@ class UsageQuotaCheckerTest {
         UsageQuotaChecker.UsageQuota noop = new UsageQuotaChecker.NoopUsageQuota();
         assertTrue(noop.tryReserve("user-1"));
         noop.consumeActual("user-1", 9999L);
+        assertEquals(0L, noop.consumeAndGetActual("user-1", 9999L));
+        assertEquals(0L, noop.getUsedTokens("user-1"));
+        assertEquals(0L, noop.getMonthlyQuota());
+        var rt = noop.getRealtimeUsage("user-1", 80.0);
+        assertEquals(0L, rt.usedTokens());
+        assertEquals(0L, rt.quotaTokens());
+        var proj = noop.getProjectedUsage("user-1", 150L);
+        assertEquals(150L, proj.usedTokens());
         // noop 不应触碰 redis
         verify(redis, times(0)).execute(any(), anyList(), any(), any());
+    }
+
+    @Test
+    void getRealtimeUsageCalculatesCorrectly() {
+        when(valueOps.get("usagequota:user-1:" + UsageQuotaChecker.currentMonthKey()))
+                .thenReturn("600");
+        var rt = redisQuota.getRealtimeUsage("user-1", 80.0);
+        assertEquals(600L, rt.usedTokens());
+        assertEquals(QUOTA, rt.quotaTokens());
+        assertEquals(400L, rt.remainingTokens());
+        assertEquals(60.0, rt.usedPercent());
+        assertEquals(80.0, rt.alertThresholdPercent());
+    }
+
+    @Test
+    void getProjectedUsageAccountsForReserve() {
+        // 当前 Redis 里包含预扣 200，实际用量 350 → 最终净累计 = 200 + (350 - 200) = 350
+        when(valueOps.get("usagequota:user-1:" + UsageQuotaChecker.currentMonthKey()))
+                .thenReturn("200");
+        var proj = redisQuota.getProjectedUsage("user-1", 350L);
+        assertEquals(350L, proj.usedTokens());
+        assertEquals(QUOTA, proj.quotaTokens());
+        assertEquals(650L, proj.remainingTokens());
+        assertEquals(35.0, proj.usedPercent());
     }
 }

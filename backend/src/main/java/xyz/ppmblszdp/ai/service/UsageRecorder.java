@@ -140,6 +140,11 @@ public class UsageRecorder {
 
     /** 提取 ChatResponse 中的 UsageDto (包含 Prompt / Completion / Total Tokens 及预估费用)。 */
     public ChatChunkDto.UsageDto extractUsageDto(ChatResponse resp, ResolvedModel resolved) {
+        return extractUsageDto(resp, resolved, null);
+    }
+
+    /** 提取 ChatResponse 中的 UsageDto 并附加当前用户月度实时配额状态。 */
+    public ChatChunkDto.UsageDto extractUsageDto(ChatResponse resp, ResolvedModel resolved, String userId) {
         if (resp == null || resp.getMetadata() == null || resp.getMetadata().getUsage() == null) {
             log.trace("LLM 响应未包含 Usage 元数据");
             return null;
@@ -171,6 +176,20 @@ public class UsageRecorder {
                 .multiply(outputPrice);
 
         BigDecimal totalCostRmb = promptCost.add(completionCost).setScale(4, RoundingMode.HALF_UP);
-        return new ChatChunkDto.UsageDto(prompt, completion, total, totalCostRmb.doubleValue());
+
+        Long monthlyUsed = null;
+        Long monthlyQuota = null;
+        Double monthlyPercent = null;
+
+        UsageQuota quota = usageQuota != null ? usageQuota.getIfAvailable() : null;
+        if (quota != null && userId != null && !userId.isBlank()) {
+            var projected = quota.getProjectedUsage(userId, total);
+            monthlyUsed = projected.usedTokens();
+            monthlyQuota = projected.quotaTokens();
+            monthlyPercent = projected.usedPercent();
+        }
+
+        return new ChatChunkDto.UsageDto(
+                prompt, completion, total, totalCostRmb.doubleValue(), monthlyUsed, monthlyQuota, monthlyPercent);
     }
 }

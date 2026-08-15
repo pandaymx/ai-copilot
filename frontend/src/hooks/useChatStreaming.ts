@@ -9,6 +9,7 @@ import type {
 } from "@/components/chat/message-bubble";
 import type { SelectedModel } from "@/components/chat/model-selector";
 import type { ChatSession } from "@/components/chat/sidebar";
+import { useTokenBudget } from "@/context/token-budget-context";
 import { type StreamStore, useSpringAiStream } from "@/hooks/useSpringAiStream";
 import type { DocChatDocItem } from "@/lib/api";
 import { renameSessionApi } from "@/lib/api";
@@ -75,9 +76,13 @@ export function useChatStreaming({
 }: UseChatStreamingOptions): UseChatStreamingResult {
   const liveIdRef = useRef<string | null>(null);
   const liveUserTextRef = useRef<string>("");
+  const { updateFromSseUsage } = useTokenBudget();
 
   const { loading, error, send, stop, streamStore } = useSpringAiStream({
     endpoint: "/api/chat/stream",
+    onUsage: (u) => {
+      updateFromSseUsage(u);
+    },
     onConversationId: (serverConvId) => {
       if (!serverConvId) return;
       if (!activeId || serverConvId !== activeId) {
@@ -118,6 +123,9 @@ export function useChatStreaming({
       );
     },
     onFinish: (finalContent, finalThinking, finalUsage) => {
+      if (finalUsage) {
+        updateFromSseUsage(finalUsage);
+      }
       const liveId = liveIdRef.current;
       if (!liveId || !activeId) return;
       liveIdRef.current = null;
