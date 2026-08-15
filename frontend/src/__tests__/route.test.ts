@@ -4,14 +4,22 @@ import { DELETE, GET, OPTIONS, POST, PUT } from "../app/api/[...path]/route";
 
 let mockFetch: ReturnType<typeof mock>;
 const originalFetch = globalThis.fetch;
+const originalTrustXUserId = process.env.PROXY_TRUST_X_USER_ID;
 
 beforeEach(() => {
   mockFetch = mock();
   globalThis.fetch = mockFetch as unknown as typeof fetch;
+  // 开启「信任客户端 X-User-Id」模式，覆盖代理透传分支（对应生产经 Caddy 网关注入的场景）。
+  process.env.PROXY_TRUST_X_USER_ID = "true";
 });
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  if (originalTrustXUserId === undefined) {
+    delete process.env.PROXY_TRUST_X_USER_ID;
+  } else {
+    process.env.PROXY_TRUST_X_USER_ID = originalTrustXUserId;
+  }
 });
 
 describe("API Proxy Router Unit Tests - app/api/[...path]/route.ts", () => {
