@@ -161,6 +161,7 @@ export default function Home() {
     isStreaming,
     stop,
     streamStore,
+    error: streamError,
     handleSend,
     handleRegenerate,
     liveIdRef,
@@ -371,7 +372,7 @@ export default function Home() {
         {deleteTarget && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-            role="dialog"
+            role="alertdialog"
             aria-modal="true"
             aria-labelledby="delete-dialog-title"
           >
@@ -471,6 +472,29 @@ export default function Home() {
                 );
               })}
               <div ref={bottomRef} className="h-6" />
+            </div>
+          )}
+
+          {streamError && (
+            <div className="mx-auto w-full max-w-3xl py-4">
+              <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
+                <span aria-hidden className="mt-0.5 text-base leading-none">
+                  ⚠️
+                </span>
+                <div className="flex-1">
+                  <p className="font-medium">服务连接受阻</p>
+                  <p className="mt-0.5 text-xs opacity-80">
+                    {streamError.message || "请求失败，请稍后重试。"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleRegenerate()}
+                  className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 transition-colors hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-200 dark:hover:bg-red-900"
+                >
+                  重试
+                </button>
+              </div>
             </div>
           )}
         </main>

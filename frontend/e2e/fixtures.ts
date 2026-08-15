@@ -47,7 +47,7 @@ function createSseStream(
  * 选择器常量：复用组件既有可访问性属性，避免依赖易变的 class 名。
  */
 export const selectors = {
-  textarea: 'textarea[placeholder*="发送指令"]',
+  textarea: 'textarea[placeholder*="发送消息给 AI Copilot"]',
   send: 'button[aria-label="发送"]',
   stop: 'button[aria-label="停止生成"]',
   newChat: 'button:has-text("开启新会话")',

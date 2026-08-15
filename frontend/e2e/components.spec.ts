@@ -93,7 +93,7 @@ test.describe("UI 组件与弹窗（Mock）", () => {
     await page.goto("/");
 
     // 写入一个临时文本文件供上传
-    const fileInput = page.locator('input[type="file"]');
+    const fileInput = page.locator('form input[type="file"]');
     await fileInput.setInputFiles({
       name: "test.txt",
       mimeType: "text/plain",
