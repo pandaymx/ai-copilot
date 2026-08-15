@@ -155,7 +155,7 @@ describe("useVoiceRecorder Hook Unit Tests", () => {
       stopResult = await promise;
     });
 
-    expect(stopResult).toEqual({
+    expect(stopResult!).toEqual({
       base64: "MOCK_BASE64_DATA",
       mimeType: "audio/webm",
     });

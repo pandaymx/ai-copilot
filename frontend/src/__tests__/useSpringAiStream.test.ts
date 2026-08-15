@@ -436,7 +436,7 @@ describe("useSpringAiStream SSE Frame Parsing & Behavior", () => {
     });
     await new Promise((r) => setTimeout(r, 20));
 
-    expect(capturedUsage).toEqual({
+    expect(capturedUsage!).toEqual({
       promptTokens: 100,
       completionTokens: 50,
       totalTokens: 150,
@@ -566,11 +566,10 @@ describe("useSpringAiStream SSE Frame Parsing & Behavior", () => {
     });
     await new Promise((r) => setTimeout(r, 20));
 
-    expect(receivedMetadata).not.toBeNull();
-    expect(receivedMetadata.compressedTurnCount).toBe(4);
-    expect(receivedMetadata.originalTokens).toBe(2500);
-    expect(receivedMetadata.compressedTokens).toBe(450);
-    expect(receivedMetadata.summarySnippet).toContain("Spring Security");
+    expect(receivedMetadata!.compressedTurnCount).toBe(4);
+    expect(receivedMetadata!.originalTokens).toBe(2500);
+    expect(receivedMetadata!.compressedTokens).toBe(450);
+    expect(receivedMetadata!.summarySnippet).toContain("Spring Security");
 
     const snap = result.current.streamStore.getSnapshot();
     expect(snap.contextCompression).not.toBeNull();
