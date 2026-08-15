@@ -56,3 +56,6 @@ target/
 frontend/playwright-report/
 frontend/test-results/
 frontend/playwright/.cache/
+
+# Git worktrees (AI task isolation sandboxes)
+.worktrees/
