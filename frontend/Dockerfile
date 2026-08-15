@@ -11,7 +11,7 @@ COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
 # 2. Builder Stage (Node.js V8 engine for reliable Next.js Turbopack build)
-FROM node:22-alpine AS builder
+FROM node:26.7-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -23,7 +23,7 @@ ENV NODE_ENV=production
 RUN npx next build
 
 # 3. Runner Stage (Minimal Node.js 22 runtime for standalone output)
-FROM node:22-alpine AS runner
+FROM node:26.7-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
