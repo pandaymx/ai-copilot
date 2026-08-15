@@ -71,6 +71,8 @@ public class SessionRepository {
 
     /** 仅更新会话时间戳（已有会话发送消息时，绑定用户） */
     public void touchSession(String id, String userId, String fallbackTitle, long updatedAt) {
+        // title 列 NOT NULL：fallbackTitle 为 null/blank 时回落默认标题，避免会话元数据落库失败
+        String title = (fallbackTitle == null || fallbackTitle.isBlank()) ? "新会话" : fallbackTitle;
         String sql = """
 				INSERT INTO chat_session (id, user_id, title, updated_at, is_default_title)
 				VALUES (?, ?, ?, ?, TRUE)
@@ -78,7 +80,7 @@ public class SessionRepository {
 					user_id = EXCLUDED.user_id,
 					updated_at = EXCLUDED.updated_at;
 				""";
-        jdbcTemplate.update(sql, id, userId, fallbackTitle, updatedAt);
+        jdbcTemplate.update(sql, id, userId, title, updatedAt);
     }
 
     /** 更新会话标题（按用户隔离） */
