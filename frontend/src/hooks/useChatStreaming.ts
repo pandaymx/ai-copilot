@@ -50,8 +50,15 @@ export interface UseChatStreamingResult {
   error: Error | null;
   stop: () => void;
   streamStore: StreamStore;
-  handleSend: (textOverride?: string) => Promise<void>;
-  handleRegenerate: () => void;
+  handleSend: (
+    textOverride?: string,
+    modelOverride?: { provider: string; model: string },
+  ) => Promise<void>;
+  handleRegenerate: (
+    messageIndex?: number,
+    modelOverride?: { provider: string; model: string },
+  ) => void;
+  handleEditAndResend: (messageIndex: number, newText: string) => void;
   liveIdRef: React.RefObject<string | null>;
 }
 
@@ -204,7 +211,10 @@ export function useChatStreaming({
   const isStreaming = loading;
 
   const handleSend = useCallback(
-    async (textOverride?: string) => {
+    async (
+      textOverride?: string,
+      modelOverride?: { provider: string; model: string },
+    ) => {
       const text = (textOverride ?? input).trim();
       if ((!text && attachments.length === 0) || isStreaming) return;
 
@@ -238,11 +248,11 @@ export function useChatStreaming({
         .filter((m) => m.content.trim() !== "")
         .map((m) => ({ role: m.role, content: m.content }));
 
-      const userMsgText =
-        text || (currentAttachments.length > 0 ? "[附件]" : "");
       const sendText = fileContextPrefix
         ? `${fileContextPrefix}\n\n${text}`
-        : userMsgText;
+        : text;
+
+      const userMsgText = text || (mediaPayload.length > 0 ? "[图片]" : "");
 
       const next: ChatMessage[] = [
         ...historySource,
@@ -298,9 +308,12 @@ export function useChatStreaming({
         payloadText = `/image ${payloadText}`;
       }
 
+      const activeProvider = modelOverride?.provider || model.provider;
+      const activeModel = modelOverride?.model || model.model;
+
       send(payloadText, {
-        provider: model.provider,
-        model: model.model,
+        provider: activeProvider,
+        model: activeModel,
         conversationId: currentConvId,
         history: historyPayload,
         media: mediaPayload.length > 0 ? mediaPayload : undefined,
@@ -332,12 +345,45 @@ export function useChatStreaming({
     ],
   );
 
-  const handleRegenerate = useCallback(() => {
-    const targetUserMsg = messages[messages.length - 2];
-    if (targetUserMsg && targetUserMsg.role === "user") {
-      void handleSend(targetUserMsg.content);
-    }
-  }, [messages, handleSend]);
+  const handleRegenerate = useCallback(
+    (
+      messageIndex?: number,
+      modelOverride?: { provider: string; model: string },
+    ) => {
+      if (isStreaming) return;
+      let userMsgIdx = -1;
+      if (typeof messageIndex === "number" && messageIndex >= 0) {
+        if (messages[messageIndex]?.role === "user") {
+          userMsgIdx = messageIndex;
+        } else if (
+          messages[messageIndex]?.role === "assistant" &&
+          messageIndex > 0
+        ) {
+          userMsgIdx = messageIndex - 1;
+        }
+      } else {
+        userMsgIdx = messages.length - 2;
+      }
+
+      if (userMsgIdx >= 0 && messages[userMsgIdx]?.role === "user") {
+        const targetUserMsg = messages[userMsgIdx];
+        const historyBefore = messages.slice(0, userMsgIdx);
+        setMessages(historyBefore);
+        void handleSend(targetUserMsg.content, modelOverride);
+      }
+    },
+    [messages, isStreaming, handleSend, setMessages],
+  );
+
+  const handleEditAndResend = useCallback(
+    (messageIndex: number, newText: string) => {
+      if (isStreaming || !newText.trim()) return;
+      const historyBefore = messages.slice(0, messageIndex);
+      setMessages(historyBefore);
+      void handleSend(newText.trim());
+    },
+    [messages, isStreaming, handleSend, setMessages],
+  );
 
   return {
     loading,
@@ -347,6 +393,7 @@ export function useChatStreaming({
     streamStore,
     handleSend,
     handleRegenerate,
+    handleEditAndResend,
     liveIdRef,
   };
 }

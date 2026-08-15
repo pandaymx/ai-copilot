@@ -1565,3 +1565,68 @@ export async function importSessionContextApi(
     return null;
   }
 }
+
+export interface CompareTarget {
+  provider: string;
+  model: string;
+}
+
+export interface CompareRequest {
+  prompt: string;
+  models: CompareTarget[];
+  systemPrompt?: string;
+  temperature?: number;
+  conversationId?: string;
+}
+
+export interface ModelCompareResult {
+  modelIndex: number;
+  provider: string;
+  model: string;
+  content: string;
+  thinking?: string;
+  ttftMs?: number;
+  totalDurationMs?: number;
+  tokensPerSecond?: number;
+  tokensCount?: number;
+  error?: string;
+}
+
+export interface CompareResponse {
+  prompt: string;
+  timestamp: number;
+  results: ModelCompareResult[];
+}
+
+export interface CompareChunk {
+  modelIndex: number;
+  provider: string;
+  model: string;
+  chunkType: "text" | "thinking" | "metrics" | "error" | "done";
+  content?: string;
+  ttftMs?: number;
+  totalDurationMs?: number;
+  tokensPerSecond?: number;
+  tokensCount?: number;
+  error?: string;
+}
+
+/** 非流式多模型并行对比 API */
+export async function compareModelsApi(
+  request: CompareRequest,
+  signal?: AbortSignal,
+): Promise<CompareResponse | null> {
+  try {
+    const res = await fetch("/api/chat/compare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as CompareResponse;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}

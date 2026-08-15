@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { CitationViewerDrawer } from "@/components/chat/citation-viewer-drawer";
 import { ContextInheritanceModal } from "@/components/chat/context-inheritance-modal";
 import { ConversationSummaryModal } from "@/components/chat/conversation-summary-modal";
@@ -25,9 +26,11 @@ import { EmptyState } from "@/components/chat/empty-state";
 import { ExportDialog } from "@/components/chat/export-dialog";
 import { InheritedContextBanner } from "@/components/chat/inherited-context-banner";
 import {
+  type ChatMessage,
   LiveMessageBubble,
   MessageBubble,
 } from "@/components/chat/message-bubble";
+import { ModelCompareModal } from "@/components/chat/model-compare-modal";
 import { ModelPerformanceModal } from "@/components/chat/model-performance-modal";
 import {
   type BackendProviderEntry,
@@ -185,6 +188,7 @@ export default function Home() {
     error: streamError,
     handleSend,
     handleRegenerate,
+    handleEditAndResend,
     liveIdRef,
   } = useChatStreaming({
     activeId,
@@ -205,6 +209,10 @@ export default function Home() {
     docChatDocuments,
     selectedDocIds,
   });
+
+  // 多模型并排对比竞技场弹窗状态
+  const [compareModalOpen, setCompareModalOpen] = useState(false);
+  const [comparePrompt, setComparePrompt] = useState("");
 
   // 将流式状态桥接进会话持久化 Hook：流式传输期间跳过 localStorage 全量写入，
   // 配合 useChatSession 内部的 500ms 防抖，避免每帧 SSE 更新阻塞主线程。
@@ -517,16 +525,30 @@ export default function Home() {
                     />
                   );
                 }
-                const isLastAssistant =
-                  m.role === "assistant" && index === messages.length - 1;
+                const isAssistant = m.role === "assistant";
                 return (
                   <MessageBubble
                     key={m.id}
                     message={m}
                     conversationId={activeId || undefined}
                     onRegenerate={
-                      isLastAssistant ? handleRegenerate : undefined
+                      isAssistant ? () => handleRegenerate(index) : undefined
                     }
+                    onRegenerateWithModel={
+                      isAssistant
+                        ? (provider, model) =>
+                            handleRegenerate(index, { provider, model })
+                        : undefined
+                    }
+                    onEditAndResend={
+                      !isAssistant
+                        ? (newText) => handleEditAndResend(index, newText)
+                        : undefined
+                    }
+                    onOpenCompare={(prompt) => {
+                      setComparePrompt(prompt);
+                      setCompareModalOpen(true);
+                    }}
                     onCitationClick={(cite) =>
                       setCitationDrawer({
                         open: true,
@@ -853,6 +875,23 @@ export default function Home() {
         onSuccess={(resp) => {
           void mutateSessions();
           void selectSession(resp.targetSessionId);
+        }}
+      />
+
+      {/* 多模型并排对比竞技场弹窗 */}
+      <ModelCompareModal
+        open={compareModalOpen}
+        onClose={() => setCompareModalOpen(false)}
+        initialPrompt={comparePrompt}
+        conversationId={activeId || undefined}
+        onAdopt={(adoptedContent, provider, adoptedModel) => {
+          const newAssistantMsg: ChatMessage = {
+            id: `msg-${crypto.randomUUID()}`,
+            role: "assistant",
+            content: adoptedContent,
+          };
+          setMessages((prev) => [...prev, newAssistantMsg]);
+          toast.success(`已采纳来自 ${provider}/${adoptedModel} 的回答！`);
         }}
       />
     </div>

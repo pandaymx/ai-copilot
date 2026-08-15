@@ -10,10 +10,12 @@ import {
   Languages,
   Loader2,
   Maximize2,
+  Pencil,
   RotateCcw,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Swords,
   ThumbsDown,
   ThumbsUp,
   User,
@@ -93,6 +95,9 @@ interface MessageBubbleProps {
   streaming?: boolean;
   conversationId?: string;
   onRegenerate?: () => void;
+  onRegenerateWithModel?: (provider: string, model: string) => void;
+  onEditAndResend?: (newText: string) => void;
+  onOpenCompare?: (prompt: string) => void;
   onCitationClick?: (citation: DocumentCitationItem) => void;
 }
 
@@ -117,12 +122,21 @@ function MessageBubbleBase({
   streaming,
   conversationId,
   onRegenerate,
+  onRegenerateWithModel,
+  onEditAndResend,
+  onOpenCompare,
   onCitationClick,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [liked, setLiked] = useState<boolean | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  // 用户消息原地编辑状态
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState(message.content || "");
+  // 换模型重试下拉菜单
+  const [showRegenMenu, setShowRegenMenu] = useState(false);
+  const regenMenuRef = useRef<HTMLDivElement>(null);
   // 语音播放：合成中状态与音频对象 URL
   const [speaking, setSpeaking] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -140,7 +154,7 @@ function MessageBubbleBase({
   const abortControllerRef = useRef<AbortController | null>(null);
   const langMenuRef = useRef<HTMLDivElement>(null);
 
-  // 点击外部关闭语言菜单
+  // 点击外部关闭语言菜单与换模型菜单
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (
@@ -149,14 +163,20 @@ function MessageBubbleBase({
       ) {
         setShowLangMenu(false);
       }
+      if (
+        regenMenuRef.current &&
+        !regenMenuRef.current.contains(e.target as Node)
+      ) {
+        setShowRegenMenu(false);
+      }
     }
-    if (showLangMenu) {
+    if (showLangMenu || showRegenMenu) {
       document.addEventListener("mousedown", handleClickOutside);
     }
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [showLangMenu]);
+  }, [showLangMenu, showRegenMenu]);
 
   // 组件卸载时终止未完成的翻译请求
   useEffect(() => {
@@ -444,9 +464,44 @@ function MessageBubbleBase({
               )}
             >
               {isUser ? (
-                <p className="whitespace-pre-wrap break-words">
-                  {message.content}
-                </p>
+                isEditing ? (
+                  <div className="w-full min-w-[240px] space-y-2 text-zinc-900 dark:text-zinc-100">
+                    <textarea
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      onInput={(e) =>
+                        setEditText((e.target as HTMLTextAreaElement).value)
+                      }
+                      rows={3}
+                      className="w-full resize-none rounded-xl border border-zinc-200 bg-white p-2.5 text-xs text-zinc-900 focus:border-indigo-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsEditing(false)}
+                        className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 transition-colors"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (editText.trim() && onEditAndResend) {
+                            onEditAndResend(editText.trim());
+                            setIsEditing(false);
+                          }
+                        }}
+                        className="rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700 shadow-2xs transition-colors cursor-pointer"
+                      >
+                        保存并重发
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-wrap break-words">
+                    {message.content}
+                  </p>
+                )
               ) : message.content ? (
                 <div className="space-y-3">
                   {/* 文档限定范围自动拒答提示条 */}
@@ -649,6 +704,49 @@ function MessageBubbleBase({
           />
         )}
 
+        {/* 用户提问底栏 Action Bar (Hover 显示) */}
+        {isUser && !isEditing && (
+          <div className="flex items-center gap-1 self-end px-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="flex size-6 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200 transition-colors cursor-pointer"
+              title="复制提问"
+            >
+              {copied ? (
+                <Check className="size-3 text-emerald-500" />
+              ) : (
+                <Copy className="size-3" />
+              )}
+            </button>
+
+            {onEditAndResend && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditText(message.content);
+                  setIsEditing(true);
+                }}
+                className="flex size-6 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200 transition-colors cursor-pointer"
+                title="编辑并重新发送"
+              >
+                <Pencil className="size-3" />
+              </button>
+            )}
+
+            {onOpenCompare && (
+              <button
+                type="button"
+                onClick={() => onOpenCompare(message.content)}
+                className="flex size-6 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-indigo-600 dark:hover:bg-zinc-800 dark:hover:text-indigo-400 transition-colors cursor-pointer"
+                title="多模型对比此问题"
+              >
+                <Swords className="size-3" />
+              </button>
+            )}
+          </div>
+        )}
+
         {/* AI 消息底栏 Action Bar (Hover 显示) */}
         {!isUser && message.content && (
           <div className="flex items-center gap-1 px-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
@@ -711,14 +809,92 @@ function MessageBubbleBase({
               )}
             </button>
 
-            {onRegenerate && (
+            {/* 重新生成与换模型重试下拉菜单 */}
+            {(onRegenerate || onRegenerateWithModel) && (
+              <div className="relative" ref={regenMenuRef}>
+                <div className="flex items-center rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+                  <button
+                    type="button"
+                    onClick={onRegenerate}
+                    className="flex size-7 items-center justify-center text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors cursor-pointer"
+                    title="使用当前模型重新生成"
+                  >
+                    <RotateCcw className="size-3.5" />
+                  </button>
+                  {onRegenerateWithModel && (
+                    <button
+                      type="button"
+                      onClick={() => setShowRegenMenu((prev) => !prev)}
+                      className="flex h-7 w-3.5 items-center justify-center text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors cursor-pointer"
+                      title="换模型重新生成..."
+                    >
+                      <ChevronDown className="size-2.5" />
+                    </button>
+                  )}
+                </div>
+
+                {showRegenMenu && onRegenerateWithModel && (
+                  <div className="absolute left-0 bottom-full mb-1.5 z-40 w-44 rounded-xl border border-zinc-200 bg-white p-1.5 shadow-xl dark:border-zinc-800 dark:bg-zinc-900 animate-in fade-in-50 zoom-in-95 duration-100">
+                    <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-100 dark:border-zinc-800">
+                      换模型重新生成
+                    </div>
+                    {[
+                      { provider: "openai", model: "gpt-4o", name: "GPT-4o" },
+                      {
+                        provider: "anthropic",
+                        model: "claude-3-5-sonnet",
+                        name: "Claude 3.5 Sonnet",
+                      },
+                      {
+                        provider: "deepseek",
+                        model: "deepseek-chat",
+                        name: "DeepSeek V3",
+                      },
+                      {
+                        provider: "deepseek",
+                        model: "deepseek-reasoner",
+                        name: "DeepSeek R1",
+                      },
+                      {
+                        provider: "google",
+                        model: "gemini-2.5-flash",
+                        name: "Gemini Flash",
+                      },
+                      {
+                        provider: "ollama",
+                        model: "qwen2.5:7b",
+                        name: "Qwen 2.5 (本地)",
+                      },
+                    ].map((m) => (
+                      <button
+                        key={`${m.provider}-${m.model}`}
+                        type="button"
+                        onClick={() => {
+                          onRegenerateWithModel(m.provider, m.model);
+                          setShowRegenMenu(false);
+                        }}
+                        className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs text-zinc-700 hover:bg-indigo-50 hover:text-indigo-600 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-indigo-400 transition-colors cursor-pointer"
+                      >
+                        <span>{m.name}</span>
+                        <span className="font-mono text-[9px] text-zinc-400">
+                          {m.provider}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 多模型对比快捷入口 */}
+            {onOpenCompare && (
               <button
                 type="button"
-                onClick={onRegenerate}
-                className="flex size-7 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200 transition-colors"
-                title="重新生成"
+                onClick={() => onOpenCompare(message.content)}
+                className="flex size-7 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-indigo-600 dark:hover:bg-zinc-800 dark:hover:text-indigo-400 transition-colors cursor-pointer"
+                title="多模型对比生成"
               >
-                <RotateCcw className="size-3.5" />
+                <Swords className="size-3.5" />
               </button>
             )}
 
@@ -780,7 +956,10 @@ export const MessageBubble = memo(
     prev.message === next.message &&
     prev.streaming === next.streaming &&
     prev.conversationId === next.conversationId &&
-    prev.onRegenerate === next.onRegenerate,
+    prev.onRegenerate === next.onRegenerate &&
+    prev.onRegenerateWithModel === next.onRegenerateWithModel &&
+    prev.onEditAndResend === next.onEditAndResend &&
+    prev.onOpenCompare === next.onOpenCompare,
 );
 
 interface LiveMessageBubbleProps {
