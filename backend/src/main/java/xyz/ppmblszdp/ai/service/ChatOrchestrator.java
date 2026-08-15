@@ -46,6 +46,7 @@ import xyz.ppmblszdp.ai.interaction.InteractionAnalysis;
 import xyz.ppmblszdp.ai.interaction.InteractionAnalyzer;
 import xyz.ppmblszdp.ai.interaction.InteractionPromptPolicy;
 import xyz.ppmblszdp.ai.interaction.InteractionState;
+import xyz.ppmblszdp.ai.memory.ChatRateLimiter;
 import xyz.ppmblszdp.ai.memory.ChatRateLimiter.RateLimiter;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryAdvisorFactory;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryWriter;
@@ -531,10 +532,13 @@ public class ChatOrchestrator implements DisposableBean {
         RateLimiter limiter = rateLimiter.getIfAvailable();
         if (limiter != null && !limiter.tryAcquire(userId)) {
             log.warn("流式请求被限流 → 用户={}", userId);
-            return Flux.just(ChatChunkDto.error("RATE_LIMIT", "请求过于频繁，请稍后再试。"));
+            ChatRateLimiter.WindowQuotaDto status = limiter.getQuotaStatus(userId);
+            String retryHint =
+                    status.resetAfterSeconds() > 0 ? "，请等待 " + status.resetAfterSeconds() + " 秒后重试。" : "，请稍后再试。";
+            return Flux.just(ChatChunkDto.error("RATE_LIMITED", "请求过于频繁" + retryHint));
         }
         if (!usageRecorder.tryReserveMonthlyQuota(userId, resolved)) {
-            return Flux.just(ChatChunkDto.error("RATE_LIMIT", "本月对话额度已用尽，请下月再试或联系管理员提升配额。"));
+            return Flux.just(ChatChunkDto.error("QUOTA_EXHAUSTED", "本月对话 Token 额度已用尽，请下月再试或联系管理员提升配额。"));
         }
 
         IntentResult intentResult = intentClassifier.classify(request, resolved);

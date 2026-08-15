@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.dto.QuotaConfigDto;
+import xyz.ppmblszdp.ai.dto.RateLimitStatusDto;
 import xyz.ppmblszdp.ai.dto.RealtimeUsageDto;
 import xyz.ppmblszdp.ai.dto.UsageDailySummary;
 import xyz.ppmblszdp.ai.dto.UsageDashboardDto;
@@ -22,6 +23,8 @@ import xyz.ppmblszdp.ai.dto.UsageSummaryDto;
 import xyz.ppmblszdp.ai.dto.UsageUserSummary;
 import xyz.ppmblszdp.ai.identity.AuthProperties;
 import xyz.ppmblszdp.ai.identity.UserIdentityFilter;
+import xyz.ppmblszdp.ai.memory.ChatRateLimiter;
+import xyz.ppmblszdp.ai.memory.ChatRateLimiter.RateLimiter;
 import xyz.ppmblszdp.ai.memory.UsageQuotaChecker;
 import xyz.ppmblszdp.ai.memory.UsageQuotaChecker.UsageQuota;
 import xyz.ppmblszdp.ai.repository.UsageRepository;
@@ -39,16 +42,83 @@ public class UsageController {
     private final AiProviderProperties properties;
     private final AuthProperties authProperties;
     private final ObjectProvider<UsageQuota> usageQuotaProvider;
+    private final ObjectProvider<RateLimiter> rateLimiterProvider;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    public UsageController(
+            UsageRepository usageRepository,
+            AiProviderProperties properties,
+            AuthProperties authProperties,
+            ObjectProvider<UsageQuota> usageQuotaProvider,
+            ObjectProvider<RateLimiter> rateLimiterProvider) {
+        this.usageRepository = usageRepository;
+        this.properties = properties;
+        this.authProperties = authProperties;
+        this.usageQuotaProvider = usageQuotaProvider;
+        this.rateLimiterProvider = rateLimiterProvider;
+    }
+
+    /**
+     * 兼容旧版 4 参数构造器。
+     */
     public UsageController(
             UsageRepository usageRepository,
             AiProviderProperties properties,
             AuthProperties authProperties,
             ObjectProvider<UsageQuota> usageQuotaProvider) {
-        this.usageRepository = usageRepository;
-        this.properties = properties;
-        this.authProperties = authProperties;
-        this.usageQuotaProvider = usageQuotaProvider;
+        this(usageRepository, properties, authProperties, usageQuotaProvider, null);
+    }
+
+    /**
+     * 返回当前用户的短时窗口限流状态与月度配额概览（用于聊天界面实时预警与倒计时）。
+     */
+    @GetMapping("/rate-limit-status")
+    public ResponseEntity<RateLimitStatusDto> getRateLimitStatus(ServerWebExchange exchange) {
+        String userId = UserIdentityFilter.resolveIdentity(exchange, null, authProperties);
+
+        RateLimiter limiter = rateLimiterProvider != null ? rateLimiterProvider.getIfAvailable() : null;
+        ChatRateLimiter.WindowQuotaDto windowStatus;
+        if (limiter != null) {
+            windowStatus = limiter.getQuotaStatus(userId);
+        } else {
+            int cap = 20;
+            int win = 60;
+            if (properties != null
+                    && properties.resolveMemory() != null
+                    && properties.resolveMemory().resolveRateLimit() != null) {
+                cap = properties.resolveMemory().resolveRateLimit().resolveCapacity();
+                win = properties.resolveMemory().resolveRateLimit().resolveRefillSeconds();
+            }
+            windowStatus = new ChatRateLimiter.WindowQuotaDto(cap, cap, win, 0, System.currentTimeMillis());
+        }
+
+        UsageQuota quota = usageQuotaProvider != null ? usageQuotaProvider.getIfAvailable() : null;
+        long monthlyRemaining;
+        long monthlyQuota;
+        double monthlyUsedPercent;
+
+        if (quota != null) {
+            RealtimeUsageDto rt = quota.getRealtimeUsage(userId, 80.0);
+            monthlyRemaining = rt.remainingTokens();
+            monthlyQuota = rt.quotaTokens();
+            monthlyUsedPercent = rt.usedPercent();
+        } else {
+            monthlyQuota = properties.resolveMemory().resolveUsageQuota().resolveMonthlyTokenQuota();
+            monthlyRemaining = monthlyQuota;
+            monthlyUsedPercent = 0.0;
+        }
+
+        RateLimitStatusDto dto = RateLimitStatusDto.of(
+                windowStatus.remaining(),
+                windowStatus.capacity(),
+                windowStatus.windowSeconds(),
+                windowStatus.resetAfterSeconds(),
+                windowStatus.resetAtMs(),
+                monthlyRemaining,
+                monthlyQuota,
+                monthlyUsedPercent);
+
+        return ResponseEntity.ok(dto);
     }
 
     /**

@@ -198,6 +198,7 @@ export async function POST(
     return NextResponse.json(
       {
         error: true,
+        code: "RATE_LIMITED",
         message: "请求过于频繁，请稍后再试 (429 Rate Limit Exceeded)",
       },
       {
@@ -303,6 +304,7 @@ export async function GET(
     return NextResponse.json(
       {
         error: true,
+        code: "RATE_LIMITED",
         message: "请求过于频繁，请稍后再试 (429 Rate Limit Exceeded)",
       },
       {
@@ -345,6 +347,7 @@ export async function PUT(
     return NextResponse.json(
       {
         error: true,
+        code: "RATE_LIMITED",
         message: "请求过于频繁，请稍后再试 (429 Rate Limit Exceeded)",
       },
       {

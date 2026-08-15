@@ -42,9 +42,13 @@ class UsageControllerTest {
         MemoryConfig memoryConfig = mock(MemoryConfig.class);
         UsageQuotaConfig quotaConfig = mock(UsageQuotaConfig.class);
 
+        AiProviderProperties.RateLimitConfig rateLimitConfig = mock(AiProviderProperties.RateLimitConfig.class);
         when(properties.resolveMemory()).thenReturn(memoryConfig);
         when(memoryConfig.resolveUsageQuota()).thenReturn(quotaConfig);
+        when(memoryConfig.resolveRateLimit()).thenReturn(rateLimitConfig);
         when(quotaConfig.resolveMonthlyTokenQuota()).thenReturn(1000000L);
+        when(rateLimitConfig.resolveCapacity()).thenReturn(20);
+        when(rateLimitConfig.resolveRefillSeconds()).thenReturn(60);
 
         authProperties = new AuthProperties("strict", "X-User-Id", Set.of("admin", "root"));
         @SuppressWarnings("unchecked")
@@ -162,6 +166,24 @@ class UsageControllerTest {
                 .value(dto -> {
                     Assertions.assertThat(dto.month()).isNotBlank();
                     Assertions.assertThat(dto.quotaTokens()).isEqualTo(1000000L);
+                });
+    }
+
+    @Test
+    void getRateLimitStatus_shouldReturn200_whenAuthenticated() {
+        webClient
+                .get()
+                .uri("/api/usage/rate-limit-status")
+                .header("X-User-Id", REGULAR_USER)
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(xyz.ppmblszdp.ai.dto.RateLimitStatusDto.class)
+                .value(dto -> {
+                    Assertions.assertThat(dto.capacity()).isGreaterThanOrEqualTo(0);
+                    Assertions.assertThat(dto.remainingRequests()).isGreaterThanOrEqualTo(0);
+                    Assertions.assertThat(dto.windowSeconds()).isGreaterThan(0);
+                    Assertions.assertThat(dto.monthlyQuotaTokens()).isEqualTo(1000000L);
                 });
     }
 }

@@ -40,6 +40,7 @@ import {
   type SelectedModel,
 } from "@/components/chat/model-selector";
 import { MultiAgentModal } from "@/components/chat/multi-agent-modal";
+import { RateLimitIndicator } from "@/components/chat/rate-limit-indicator";
 import { SearchDialog } from "@/components/chat/search-dialog";
 import { Sidebar } from "@/components/chat/sidebar";
 import { TokenBudgetBar } from "@/components/chat/token-budget-bar";
@@ -613,227 +614,230 @@ export default function Home() {
 
         {/* 底部悬浮发光输入框 */}
         <div className="sticky bottom-0 z-10 bg-linear-to-t from-zinc-50 via-zinc-50/90 to-transparent pb-4 pt-2 dark:from-zinc-950 dark:via-zinc-950/90 px-4 sm:px-6">
-          <form
-            onSubmit={handleSubmit}
-            className="mx-auto flex w-full max-w-3xl flex-col gap-2 rounded-2xl border border-zinc-200/80 bg-white/90 p-3 shadow-2xl shadow-indigo-500/10 backdrop-blur-xl transition-all duration-200 focus-within:border-indigo-500/60 focus-within:ring-2 focus-within:ring-indigo-500/20 dark:border-zinc-800/80 dark:bg-zinc-900/90 dark:shadow-none"
-          >
-            {/* 隐藏的原生文件上传 Input */}
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              accept="image/jpeg,image/png,image/webp,image/gif,text/*,.txt,.md,.json,.js,.ts,.tsx,.java,.py,.go,.rs"
-              multiple
-              className="hidden"
-            />
-
-            {/* 视觉快捷场景胶囊栏 */}
-            {attachments.some((att) => att.type === "image") && (
-              <div className="px-2 pt-1.5 pb-1 border-b border-zinc-100 dark:border-zinc-800/60 bg-zinc-50/40 dark:bg-zinc-900/40 rounded-t-xl">
-                <VisionScenarioPills
-                  onSelect={(prompt) => {
-                    setInput(prompt);
-                    textareaRef.current?.focus();
-                  }}
-                />
-              </div>
-            )}
-
-            {/* 待发送附件预览栏 */}
-            {attachments.length > 0 && (
-              <div className="flex flex-wrap gap-2 px-1 pt-1 pb-1.5 border-b border-zinc-100 dark:border-zinc-800/60">
-                {attachments.map((att) => (
-                  <div
-                    key={att.id}
-                    className="group relative flex items-center gap-2 rounded-xl border border-zinc-200/80 bg-zinc-50/80 p-1.5 dark:border-zinc-800/80 dark:bg-zinc-800/60 text-xs shadow-xs"
-                  >
-                    {att.type === "image" ? (
-                      <div className="relative size-9 overflow-hidden rounded-lg">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={att.url}
-                          alt={att.name}
-                          className="size-full object-cover"
-                        />
-                      </div>
-                    ) : (
-                      <FileText className="size-4 text-indigo-500 shrink-0" />
-                    )}
-                    <span className="max-w-[120px] truncate font-medium text-zinc-700 dark:text-zinc-300">
-                      {att.name}
-                    </span>
-                    {att.size && (
-                      <span className="text-[10px] text-zinc-400 font-mono">
-                        {(att.size / 1024).toFixed(0)}KB
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => removeAttachment(att.id)}
-                      className="flex size-4.5 items-center justify-center rounded-full bg-zinc-200/80 text-zinc-500 hover:bg-rose-500 hover:text-white dark:bg-zinc-700 dark:text-zinc-400 dark:hover:bg-rose-600 transition-colors"
-                      title="移除附件"
-                    >
-                      <X className="size-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* 文本输入区 */}
-            <div className="flex items-end gap-2 px-1">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onPaste={handlePaste}
-                placeholder={
-                  imageMode
-                    ? "输入图像生成提示词，例如：赛博朋克风格的雨夜未来城市街道..."
-                    : documentChatEnabled
-                      ? "向已挂载的专属文档提问（仅依据文档内容回答，附段落引用）..."
-                      : "发送消息给 AI Copilot... (Shift + Enter 换行，支持拖入/粘贴图片与代码文件)"
-                }
-                rows={1}
-                disabled={isStreaming}
-                className="max-h-50 min-h-[38px] flex-1 resize-none bg-transparent py-2 text-sm leading-relaxed text-zinc-900 placeholder:text-zinc-400 focus:outline-hidden disabled:opacity-50 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-2">
+            <RateLimitIndicator />
+            <form
+              onSubmit={handleSubmit}
+              className="flex w-full flex-col gap-2 rounded-2xl border border-zinc-200/80 bg-white/90 p-3 shadow-2xl shadow-indigo-500/10 backdrop-blur-xl transition-all duration-200 focus-within:border-indigo-500/60 focus-within:ring-2 focus-within:ring-indigo-500/20 dark:border-zinc-800/80 dark:bg-zinc-900/90 dark:shadow-none"
+            >
+              {/* 隐藏的原生文件上传 Input */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept="image/jpeg,image/png,image/webp,image/gif,text/*,.txt,.md,.json,.js,.ts,.tsx,.java,.py,.go,.rs"
+                multiple
+                className="hidden"
               />
 
-              {/* 语音录入与状态按钮 */}
-              <div className="flex shrink-0 items-center gap-1.5 pb-1">
-                <VoiceRecorderButton
-                  recording={recorder.recording}
-                  seconds={recorder.seconds}
-                  disabled={recorder.unsupported}
-                  onStart={() => void recorder.start()}
-                  onStop={() => void handleVoiceStop()}
+              {/* 视觉快捷场景胶囊栏 */}
+              {attachments.some((att) => att.type === "image") && (
+                <div className="px-2 pt-1.5 pb-1 border-b border-zinc-100 dark:border-zinc-800/60 bg-zinc-50/40 dark:bg-zinc-900/40 rounded-t-xl">
+                  <VisionScenarioPills
+                    onSelect={(prompt) => {
+                      setInput(prompt);
+                      textareaRef.current?.focus();
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* 待发送附件预览栏 */}
+              {attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 px-1 pt-1 pb-1.5 border-b border-zinc-100 dark:border-zinc-800/60">
+                  {attachments.map((att) => (
+                    <div
+                      key={att.id}
+                      className="group relative flex items-center gap-2 rounded-xl border border-zinc-200/80 bg-zinc-50/80 p-1.5 dark:border-zinc-800/80 dark:bg-zinc-800/60 text-xs shadow-xs"
+                    >
+                      {att.type === "image" ? (
+                        <div className="relative size-9 overflow-hidden rounded-lg">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={att.url}
+                            alt={att.name}
+                            className="size-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <FileText className="size-4 text-indigo-500 shrink-0" />
+                      )}
+                      <span className="max-w-[120px] truncate font-medium text-zinc-700 dark:text-zinc-300">
+                        {att.name}
+                      </span>
+                      {att.size && (
+                        <span className="text-[10px] text-zinc-400 font-mono">
+                          {(att.size / 1024).toFixed(0)}KB
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(att.id)}
+                        className="flex size-4.5 items-center justify-center rounded-full bg-zinc-200/80 text-zinc-500 hover:bg-rose-500 hover:text-white dark:bg-zinc-700 dark:text-zinc-400 dark:hover:bg-rose-600 transition-colors"
+                        title="移除附件"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* 文本输入区 */}
+              <div className="flex items-end gap-2 px-1">
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onPaste={handlePaste}
+                  placeholder={
+                    imageMode
+                      ? "输入图像生成提示词，例如：赛博朋克风格的雨夜未来城市街道..."
+                      : documentChatEnabled
+                        ? "向已挂载的专属文档提问（仅依据文档内容回答，附段落引用）..."
+                        : "发送消息给 AI Copilot... (Shift + Enter 换行，支持拖入/粘贴图片与代码文件)"
+                  }
+                  rows={1}
+                  disabled={isStreaming}
+                  className="max-h-50 min-h-[38px] flex-1 resize-none bg-transparent py-2 text-sm leading-relaxed text-zinc-900 placeholder:text-zinc-400 focus:outline-hidden disabled:opacity-50 dark:text-zinc-100 dark:placeholder:text-zinc-500"
                 />
 
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="size-8 rounded-xl text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-                  title="添加附件 (支持拖入图片与代码文件)"
-                >
-                  <Paperclip className="size-4" />
-                </Button>
+                {/* 语音录入与状态按钮 */}
+                <div className="flex shrink-0 items-center gap-1.5 pb-1">
+                  <VoiceRecorderButton
+                    recording={recorder.recording}
+                    seconds={recorder.seconds}
+                    disabled={recorder.unsupported}
+                    onStart={() => void recorder.start()}
+                    onStop={() => void handleVoiceStop()}
+                  />
 
-                {isStreaming ? (
                   <Button
                     type="button"
-                    variant="destructive"
+                    variant="ghost"
                     size="icon"
-                    onClick={stop}
-                    aria-label="停止生成"
-                    className="size-8 rounded-xl bg-rose-500 shadow-md shadow-rose-500/20 hover:bg-rose-600"
-                    title="停止生成"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="size-8 rounded-xl text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                    title="添加附件 (支持拖入图片与代码文件)"
                   >
-                    <Square className="size-3.5 fill-current" />
+                    <Paperclip className="size-4" />
                   </Button>
-                ) : (
-                  <Button
-                    type="submit"
-                    size="icon"
-                    aria-label="发送"
-                    disabled={
-                      isOverBudget ||
-                      (!input.trim() && attachments.length === 0)
-                    }
-                    className={cn(
-                      "size-8 rounded-xl text-white shadow-md transition-all",
-                      isOverBudget
-                        ? "bg-rose-500/80 cursor-not-allowed opacity-60 hover:bg-rose-500/80"
-                        : "bg-indigo-600 shadow-indigo-500/20 hover:bg-indigo-700 disabled:opacity-40 dark:bg-indigo-500 dark:hover:bg-indigo-600",
-                    )}
-                    title={
-                      isOverBudget
-                        ? "本月 Token 配额已耗尽，请前往成本中心调整"
-                        : "发送消息"
-                    }
-                  >
-                    <Send className="size-3.5" />
-                  </Button>
-                )}
-              </div>
-            </div>
 
-            {/* 输入框底部功能条 */}
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-100 px-1 pt-2 dark:border-zinc-800/60">
-              <div className="flex items-center gap-3">
-                {/* 图像生成模式开关 */}
-                <div className="flex items-center gap-1.5">
-                  <Switch
-                    id="image-mode"
-                    checked={imageMode}
-                    onCheckedChange={setImageMode}
-                    className="scale-75"
-                  />
-                  <label
-                    htmlFor="image-mode"
-                    className="cursor-pointer text-xs font-medium text-zinc-500 dark:text-zinc-400"
-                  >
-                    生图模式
-                  </label>
-                </div>
-
-                {/* Agent 工具开关 */}
-                <div className="flex items-center gap-1.5 border-l border-zinc-200 pl-3 dark:border-zinc-800">
-                  <Switch
-                    id="agent-mode"
-                    checked={agentEnabled}
-                    onCheckedChange={setAgentEnabled}
-                    className="scale-75"
-                  />
-                  <label
-                    htmlFor="agent-mode"
-                    className="cursor-pointer text-xs font-medium text-zinc-500 dark:text-zinc-400"
-                  >
-                    Agent 模式
-                  </label>
+                  {isStreaming ? (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      onClick={stop}
+                      aria-label="停止生成"
+                      className="size-8 rounded-xl bg-rose-500 shadow-md shadow-rose-500/20 hover:bg-rose-600"
+                      title="停止生成"
+                    >
+                      <Square className="size-3.5 fill-current" />
+                    </Button>
+                  ) : (
+                    <Button
+                      type="submit"
+                      size="icon"
+                      aria-label="发送"
+                      disabled={
+                        isOverBudget ||
+                        (!input.trim() && attachments.length === 0)
+                      }
+                      className={cn(
+                        "size-8 rounded-xl text-white shadow-md transition-all",
+                        isOverBudget
+                          ? "bg-rose-500/80 cursor-not-allowed opacity-60 hover:bg-rose-500/80"
+                          : "bg-indigo-600 shadow-indigo-500/20 hover:bg-indigo-700 disabled:opacity-40 dark:bg-indigo-500 dark:hover:bg-indigo-600",
+                      )}
+                      title={
+                        isOverBudget
+                          ? "本月 Token 配额已耗尽，请前往成本中心调整"
+                          : "发送消息"
+                      }
+                    >
+                      <Send className="size-3.5" />
+                    </Button>
+                  )}
                 </div>
               </div>
 
-              {/* 快捷清空草稿（二次确认） */}
-              {messages.length > 0 &&
-                !isStreaming &&
-                (confirmClear ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                      确认清空？
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        newSession();
-                        setConfirmClear(false);
-                      }}
-                      className="rounded bg-rose-500 px-2 py-0.5 text-[11px] text-white hover:bg-rose-600"
+              {/* 输入框底部功能条 */}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-100 px-1 pt-2 dark:border-zinc-800/60">
+                <div className="flex items-center gap-3">
+                  {/* 图像生成模式开关 */}
+                  <div className="flex items-center gap-1.5">
+                    <Switch
+                      id="image-mode"
+                      checked={imageMode}
+                      onCheckedChange={setImageMode}
+                      className="scale-75"
+                    />
+                    <label
+                      htmlFor="image-mode"
+                      className="cursor-pointer text-xs font-medium text-zinc-500 dark:text-zinc-400"
                     >
-                      确认清空
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmClear(false)}
-                      className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                    >
-                      取消
-                    </button>
+                      生图模式
+                    </label>
                   </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmClear(true)}
-                    className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-                  >
-                    <RotateCcw className="size-3" />
-                    <span>清空</span>
-                  </button>
-                ))}
-            </div>
-          </form>
+
+                  {/* Agent 工具开关 */}
+                  <div className="flex items-center gap-1.5 border-l border-zinc-200 pl-3 dark:border-zinc-800">
+                    <Switch
+                      id="agent-mode"
+                      checked={agentEnabled}
+                      onCheckedChange={setAgentEnabled}
+                      className="scale-75"
+                    />
+                    <label
+                      htmlFor="agent-mode"
+                      className="cursor-pointer text-xs font-medium text-zinc-500 dark:text-zinc-400"
+                    >
+                      Agent 模式
+                    </label>
+                  </div>
+                </div>
+
+                {/* 快捷清空草稿（二次确认） */}
+                {messages.length > 0 &&
+                  !isStreaming &&
+                  (confirmClear ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                        确认清空？
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          newSession();
+                          setConfirmClear(false);
+                        }}
+                        className="rounded bg-rose-500 px-2 py-0.5 text-[11px] text-white hover:bg-rose-600"
+                      >
+                        确认清空
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmClear(false)}
+                        className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmClear(true)}
+                      className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                    >
+                      <RotateCcw className="size-3" />
+                      <span>清空</span>
+                    </button>
+                  ))}
+              </div>
+            </form>
+          </div>
         </div>
       </div>
 

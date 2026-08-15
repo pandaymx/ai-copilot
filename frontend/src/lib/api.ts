@@ -660,6 +660,33 @@ export async function fetchRealtimeUsageApi(
   }
 }
 
+export interface RateLimitStatus {
+  remainingRequests: number;
+  capacity: number;
+  windowSeconds: number;
+  resetAfterSeconds: number;
+  resetAtMs: number;
+  monthlyRemainingTokens: number;
+  monthlyQuotaTokens: number;
+  monthlyUsedPercent: number;
+  isRateLimited: boolean;
+  isQuotaExhausted: boolean;
+}
+
+/** 获取当前用户的短时滑动窗口限流状态与月度配额概览。 */
+export async function fetchRateLimitStatusApi(
+  signal?: AbortSignal,
+): Promise<RateLimitStatus | null> {
+  try {
+    const res = await fetch("/api/usage/rate-limit-status", { signal });
+    if (!res.ok) return null;
+    return (await res.json()) as RateLimitStatus;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}
+
 // ====================== 会话结构化摘要与知识沉淀 API ======================
 
 export interface ConversationSummary {

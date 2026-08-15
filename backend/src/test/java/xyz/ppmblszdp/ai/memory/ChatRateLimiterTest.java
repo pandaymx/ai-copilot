@@ -1,7 +1,6 @@
 package xyz.ppmblszdp.ai.memory;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -16,12 +15,19 @@ import org.springframework.data.redis.core.script.RedisScript;
 class ChatRateLimiterTest {
 
     @Test
-    void testNoopRateLimiterAlwaysAcquires() {
+    void testNoopRateLimiterAlwaysAcquiresAndReturnsFullQuota() {
         ChatRateLimiter config = new ChatRateLimiter();
         ChatRateLimiter.RateLimiter limiter = config.noopRateLimiter();
 
         assertTrue(limiter.tryAcquire("user1"));
         assertTrue(limiter.tryAcquire("user1"));
+
+        ChatRateLimiter.WindowQuotaDto status = limiter.getQuotaStatus("user1");
+        assertNotNull(status);
+        assertEquals(20, status.capacity());
+        assertEquals(20, status.remaining());
+        assertEquals(60, status.windowSeconds());
+        assertEquals(0, status.resetAfterSeconds());
     }
 
     @Test
@@ -43,6 +49,29 @@ class ChatRateLimiterTest {
 
         assertTrue(limiter.tryAcquire("user1"), "First request within capacity should be allowed");
         assertFalse(limiter.tryAcquire("user1"), "Second request exceeding capacity should be blocked");
+    }
+
+    @Test
+    void testRedisRateLimiterGetQuotaStatus() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        long now = System.currentTimeMillis();
+        // 模拟已用 2 次，最旧时间戳为 10 秒前
+        when(redis.execute(
+                        ArgumentMatchers.<RedisScript<List<Object>>>any(),
+                        ArgumentMatchers.<List<String>>any(),
+                        any(),
+                        any()))
+                .thenReturn(List.of(2L, now - 10000L));
+
+        ChatRateLimiter.RedisRateLimiter limiter =
+                new ChatRateLimiter.RedisRateLimiter(redis, 5, Duration.ofSeconds(60));
+
+        ChatRateLimiter.WindowQuotaDto status = limiter.getQuotaStatus("user1");
+        assertNotNull(status);
+        assertEquals(5, status.capacity());
+        assertEquals(3, status.remaining());
+        assertEquals(60, status.windowSeconds());
+        assertTrue(status.resetAfterSeconds() > 0 && status.resetAfterSeconds() <= 51);
     }
 
     @Test
