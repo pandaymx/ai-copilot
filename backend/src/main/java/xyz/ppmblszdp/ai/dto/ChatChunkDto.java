@@ -75,7 +75,66 @@ public record ChatChunkDto(
         String intent,
         String intentLabel,
         List<DocumentCitationDto> citations,
-        StreamMetricsDto metrics) {
+        StreamMetricsDto metrics,
+        InteractionMetadataDto interaction) {
+
+    /** 兼容 26 参数旧构造函数 */
+    public ChatChunkDto(
+            String type,
+            String conversationId,
+            String content,
+            String reasoning,
+            UsageDto usage,
+            String code,
+            String message,
+            String provider,
+            String model,
+            Boolean isFallback,
+            String toolName,
+            String toolCallId,
+            String arguments,
+            String result,
+            Boolean isError,
+            String artifactId,
+            String language,
+            String artifactType,
+            String title,
+            String html,
+            String status,
+            String mimeType,
+            String intent,
+            String intentLabel,
+            List<DocumentCitationDto> citations,
+            StreamMetricsDto metrics) {
+        this(
+                type,
+                conversationId,
+                content,
+                reasoning,
+                usage,
+                code,
+                message,
+                provider,
+                model,
+                isFallback,
+                toolName,
+                toolCallId,
+                arguments,
+                result,
+                isError,
+                artifactId,
+                language,
+                artifactType,
+                title,
+                html,
+                status,
+                mimeType,
+                intent,
+                intentLabel,
+                citations,
+                metrics,
+                null);
+    }
 
     /** 兼容 25 参数旧构造函数 */
     public ChatChunkDto(
@@ -247,6 +306,9 @@ public record ChatChunkDto(
         }
     }
 
+    public record InteractionMetadataDto(
+            String state, String stateLabel, List<String> signals, List<String> strategies) {}
+
     public static ChatChunkDto conversation(String conversationId) {
         return new ChatChunkDto(
                 "conversation",
@@ -310,6 +372,17 @@ public record ChatChunkDto(
             Boolean isFallback,
             String intent,
             String intentLabel) {
+        return conversation(conversationId, provider, model, isFallback, intent, intentLabel, null);
+    }
+
+    public static ChatChunkDto conversation(
+            String conversationId,
+            String provider,
+            String model,
+            Boolean isFallback,
+            String intent,
+            String intentLabel,
+            InteractionMetadataDto interaction) {
         return new ChatChunkDto(
                 "conversation",
                 conversationId,
@@ -334,7 +407,10 @@ public record ChatChunkDto(
                 null,
                 null,
                 intent,
-                intentLabel);
+                intentLabel,
+                null,
+                null,
+                interaction);
     }
 
     public static ChatChunkDto content(String content) {

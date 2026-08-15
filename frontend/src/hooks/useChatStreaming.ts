@@ -143,6 +143,7 @@ export function useChatStreaming({
                 thinking: finalThinking || m.thinking,
                 usage: finalUsage ?? m.usage,
                 metrics: resolvedMetrics ?? m.metrics,
+                interaction: snap.interaction ?? m.interaction,
                 compressionMetadata:
                   snap.contextCompression ?? m.compressionMetadata,
                 citations:
@@ -166,6 +167,7 @@ export function useChatStreaming({
                     thinking: finalThinking || m.thinking,
                     usage: finalUsage ?? m.usage,
                     metrics: resolvedMetrics ?? m.metrics,
+                    interaction: snap.interaction ?? m.interaction,
                     compressionMetadata:
                       snap.contextCompression ?? m.compressionMetadata,
                     citations:

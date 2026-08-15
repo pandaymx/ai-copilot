@@ -54,6 +54,13 @@ export interface StreamMetrics {
   isEstimated?: boolean; // 是否为估算值
 }
 
+export interface InteractionMetadata {
+  state: string;
+  stateLabel?: string;
+  signals?: string[];
+  strategies?: string[];
+}
+
 export interface UseSpringAiStreamOptions {
   /** 后端流式接口地址，默认复用 Spring AI 的 SSE 端点。 */
   endpoint?: string;
@@ -74,6 +81,8 @@ export interface UseSpringAiStreamOptions {
   onConversationId?: (conversationId: string) => void;
   /** 在收到后端识别的意图与意图中文标签时回调 */
   onIntent?: (intent: string, intentLabel: string) => void;
+  /** 在收到后端识别的交互状态理解元数据时回调 */
+  onInteraction?: (interaction: InteractionMetadata) => void;
   /** 收到 Reasoning/Thinking 思考过程增量时的回调 */
   onReasoning?: (reasoningDelta: string) => void;
   /** 收到 Token 用量统计时的回调 */
@@ -179,6 +188,8 @@ export interface StreamData {
   reasoningDurationMs?: number;
   usage: UsageInfo | null;
   metrics?: StreamMetrics | null;
+  /** 交互状态理解元数据（状态、信号集合、响应策略集合）。 */
+  interaction?: InteractionMetadata | null;
   /** 工具调用列表，以 callId 为唯一 key（Map 结构用普通对象表达以保证快照不可变）。 */
   toolCalls: Record<string, ToolCallItem>;
   /** 可渲染产物列表，以 artifactId 为唯一 key。 */
@@ -197,6 +208,7 @@ export class StreamStore {
     thinking: "",
     usage: null,
     metrics: null,
+    interaction: null,
     toolCalls: {},
     artifacts: {},
     taskPlan: null,
@@ -231,6 +243,14 @@ export class StreamStore {
       reasoningDurationMs,
       metrics: metrics !== undefined ? metrics : this.data.metrics,
     };
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+
+  /** 更新交互状态理解元数据 */
+  updateInteraction(interaction: InteractionMetadata) {
+    this.data = { ...this.data, interaction };
     for (const listener of this.listeners) {
       listener();
     }
@@ -405,6 +425,7 @@ export function useSpringAiStream(
     parseChunk = defaultParseChunk,
     onConversationId,
     onIntent,
+    onInteraction,
     onReasoning,
     onUsage,
     onMetrics,
@@ -422,6 +443,7 @@ export function useSpringAiStream(
   // 否则 onFinish 等回调会读到调用 send 瞬间的过期状态（如 activeId=null）。
   const onConversationIdRef = useRef(onConversationId);
   const onIntentRef = useRef(onIntent);
+  const onInteractionRef = useRef(onInteraction);
   const onReasoningRef = useRef(onReasoning);
   const onUsageRef = useRef(onUsage);
   const onMetricsRef = useRef(onMetrics);
@@ -436,6 +458,7 @@ export function useSpringAiStream(
   useEffect(() => {
     onConversationIdRef.current = onConversationId;
     onIntentRef.current = onIntent;
+    onInteractionRef.current = onInteraction;
     onReasoningRef.current = onReasoning;
     onUsageRef.current = onUsage;
     onMetricsRef.current = onMetrics;
@@ -450,6 +473,7 @@ export function useSpringAiStream(
   }, [
     onConversationId,
     onIntent,
+    onInteraction,
     onReasoning,
     onUsage,
     onMetrics,
@@ -641,6 +665,12 @@ export function useSpringAiStream(
                   }
                   if (parsed.intent && parsed.intentLabel) {
                     onIntentRef.current?.(parsed.intent, parsed.intentLabel);
+                  }
+                  if (parsed.interaction) {
+                    streamStoreRef.current.updateInteraction(
+                      parsed.interaction,
+                    );
+                    onInteractionRef.current?.(parsed.interaction);
                   }
                   return;
                 }

@@ -51,6 +51,18 @@
 | `title` | string | artifact（可选） |
 | `html` | string | artifact |
 | `status` | string | artifact（可选：`drafting` / `streaming` / `final`） |
+| `interaction` | object | conversation（可选：交互状态与策略元数据） |
+
+### `interaction` 交互状态理解对象结构
+
+```json
+{
+  "state": "DIRECTIVE",
+  "stateLabel": "明确指令",
+  "signals": ["REQUESTS_CONCISION", "REQUESTS_DIRECT_ANSWER", "REQUESTS_CODE"],
+  "strategies": ["CONCISE", "DIRECT_ANSWER", "CODE_FIRST"]
+}
+```
 
 ### `usage` 对象结构
 

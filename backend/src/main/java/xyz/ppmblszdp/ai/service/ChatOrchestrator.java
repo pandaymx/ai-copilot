@@ -42,6 +42,10 @@ import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ChatResponseDto;
 import xyz.ppmblszdp.ai.factory.ChatOptionsFactory;
 import xyz.ppmblszdp.ai.intent.IntentResult;
+import xyz.ppmblszdp.ai.interaction.InteractionAnalysis;
+import xyz.ppmblszdp.ai.interaction.InteractionAnalyzer;
+import xyz.ppmblszdp.ai.interaction.InteractionPromptPolicy;
+import xyz.ppmblszdp.ai.interaction.InteractionState;
 import xyz.ppmblszdp.ai.memory.ChatRateLimiter.RateLimiter;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryAdvisorFactory;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryWriter;
@@ -97,6 +101,7 @@ public class ChatOrchestrator implements DisposableBean {
     private final AugmentedToolCallbackProvider augmentedToolCallbackProvider;
     private final ImageRouter imageRouter;
     private final IntentClassifier intentClassifier;
+    private final InteractionAnalyzer interactionAnalyzer;
     private final VisionService visionService;
     private final ObjectProvider<xyz.ppmblszdp.ai.agent.plan.ReActAgent> reActAgentProvider;
     private final ObjectProvider<xyz.ppmblszdp.ai.feedback.IntentFeedbackAccumulator> intentFeedbackAccumulatorProvider;
@@ -134,7 +139,8 @@ public class ChatOrchestrator implements DisposableBean {
             ObjectProvider<xyz.ppmblszdp.ai.feedback.IntentFeedbackAccumulator> intentFeedbackAccumulatorProvider,
             ObjectProvider<xyz.ppmblszdp.ai.context.ContextCompressor> contextCompressorProvider,
             ObjectProvider<DocumentChatService> documentChatServiceProvider,
-            ObjectProvider<ModelPerformanceTracker> performanceTrackerProvider) {
+            ObjectProvider<ModelPerformanceTracker> performanceTrackerProvider,
+            ObjectProvider<InteractionAnalyzer> interactionAnalyzerProvider) {
         this.registry = registry;
         this.contextAssembler = contextAssembler;
         this.sessionChatMemory = sessionChatMemory;
@@ -166,11 +172,76 @@ public class ChatOrchestrator implements DisposableBean {
                         : new AugmentedToolCallbackProvider();
         this.imageRouter = imageRouter;
         this.intentClassifier = intentClassifier;
+        this.interactionAnalyzer =
+                (interactionAnalyzerProvider != null && interactionAnalyzerProvider.getIfAvailable() != null)
+                        ? interactionAnalyzerProvider.getIfAvailable()
+                        : new InteractionAnalyzer();
         this.visionService = (visionService != null) ? visionService : new VisionService();
         this.reActAgentProvider = reActAgentProvider;
         this.intentFeedbackAccumulatorProvider = intentFeedbackAccumulatorProvider;
         this.contextCompressorProvider = contextCompressorProvider;
         this.documentChatServiceProvider = documentChatServiceProvider;
+    }
+
+    public ChatOrchestrator(
+            ProviderRegistry registry,
+            ContextAssembler contextAssembler,
+            ObjectProvider<ChatMemory> sessionChatMemory,
+            ObjectProvider<LongTermMemoryAdvisorFactory> longTermFactory,
+            ObjectProvider<LongTermMemoryWriter> longTermWriter,
+            ObjectProvider<LongTermMemoryProcessor> longTermProcessor,
+            ObjectProvider<RateLimiter> rateLimiter,
+            UsageRecorder usageRecorder,
+            ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor,
+            ObjectProvider<ClarificationAdvisor> clarificationAdvisor,
+            ObjectProvider<ReflectionAdvisor> reflectionAdvisor,
+            ObjectProvider<RagAdvisorFactory> ragAdvisorFactory,
+            ModelHealthTracker healthTracker,
+            SessionService sessionService,
+            AiProviderProperties properties,
+            ToolEventEmitter toolEventEmitter,
+            @Qualifier("agentToolCallbacks") ToolCallback[] toolCallbacks,
+            ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider,
+            ObjectProvider<ToolSearchAdvisorFactory> toolSearchFactory,
+            ObjectProvider<AugmentedToolCallbackProvider> augmentedToolProvider,
+            ImageRouter imageRouter,
+            IntentClassifier intentClassifier,
+            VisionService visionService,
+            ObjectProvider<xyz.ppmblszdp.ai.agent.plan.ReActAgent> reActAgentProvider,
+            ObjectProvider<xyz.ppmblszdp.ai.feedback.IntentFeedbackAccumulator> intentFeedbackAccumulatorProvider,
+            ObjectProvider<xyz.ppmblszdp.ai.context.ContextCompressor> contextCompressorProvider,
+            ObjectProvider<DocumentChatService> documentChatServiceProvider,
+            ObjectProvider<ModelPerformanceTracker> performanceTrackerProvider) {
+        this(
+                registry,
+                contextAssembler,
+                sessionChatMemory,
+                longTermFactory,
+                longTermWriter,
+                longTermProcessor,
+                rateLimiter,
+                usageRecorder,
+                safeGuardAdvisor,
+                clarificationAdvisor,
+                reflectionAdvisor,
+                ragAdvisorFactory,
+                healthTracker,
+                sessionService,
+                properties,
+                toolEventEmitter,
+                toolCallbacks,
+                mcpToolProvider,
+                toolSearchFactory,
+                augmentedToolProvider,
+                imageRouter,
+                intentClassifier,
+                visionService,
+                reActAgentProvider,
+                intentFeedbackAccumulatorProvider,
+                contextCompressorProvider,
+                documentChatServiceProvider,
+                performanceTrackerProvider,
+                null);
     }
 
     public ChatOrchestrator(
@@ -351,6 +422,7 @@ public class ChatOrchestrator implements DisposableBean {
                 useMemory(request));
 
         IntentResult intentResult = intentClassifier.classify(request, resolved);
+        InteractionAnalysis interactionAnalysis = interactionAnalyzer.analyze(request.message());
         boolean memoryPath = useMemory(request);
         ChatOptions options = buildChatOptions(resolved);
 
@@ -358,7 +430,7 @@ public class ChatOrchestrator implements DisposableBean {
             ChatMemory memory = sessionChatMemory.getIfAvailable();
             if (memory == null) {
                 log.warn("记忆路径已选但 ChatMemory 不可用，降级为单轮");
-                return callWithoutMemory(resolved, request, options, userId, intentResult);
+                return callWithoutMemory(resolved, request, options, userId, intentResult, interactionAnalysis);
             }
             ChatRequest req = ensureConversation(request);
             DocumentChatContext docContext = resolveDocumentChatContext(req, req.conversationId(), userId);
@@ -367,7 +439,7 @@ public class ChatOrchestrator implements DisposableBean {
                     MessageChatMemoryAdvisor.builder(memory).build();
             List<Media> mediaList = extractMedia(req);
             CallResponseSpec spec = client.prompt()
-                    .system(sp -> sp.text(resolveSystemPrompt(req, intentResult, docContext)))
+                    .system(sp -> sp.text(resolveSystemPrompt(req, intentResult, interactionAnalysis, docContext)))
                     .user(u -> {
                         u.text(req.message());
                         if (!mediaList.isEmpty()) {
@@ -462,6 +534,7 @@ public class ChatOrchestrator implements DisposableBean {
         }
 
         IntentResult intentResult = intentClassifier.classify(request, resolved);
+        InteractionAnalysis interactionAnalysis = interactionAnalyzer.analyze(request.message());
 
         // 意图告警自愈路由：若当前意图点踩率 > 30%，自动切换至默认模型
         xyz.ppmblszdp.ai.feedback.IntentFeedbackAccumulator intentAccumulator =
@@ -499,7 +572,13 @@ public class ChatOrchestrator implements DisposableBean {
             ChatMemory memory = sessionChatMemory.getIfAvailable();
             if (memory == null) {
                 return streamChunksWithoutMemory(
-                        effectiveResolved, request, options, new AtomicReference<>(), userId, intentResult);
+                        effectiveResolved,
+                        request,
+                        options,
+                        new AtomicReference<>(),
+                        userId,
+                        intentResult,
+                        interactionAnalysis);
             }
             long streamStartTime = System.currentTimeMillis();
             AtomicLong firstTokenTime = new AtomicLong(-1);
@@ -519,7 +598,7 @@ public class ChatOrchestrator implements DisposableBean {
 
             Many<ChatChunkDto> toolSink = agentPath ? toolEventEmitter.newSink() : null;
             ChatClientRequestSpec requestSpec = client.prompt()
-                    .system(sp -> sp.text(resolveSystemPrompt(req, intentResult, docContext)))
+                    .system(sp -> sp.text(resolveSystemPrompt(req, intentResult, interactionAnalysis, docContext)))
                     .user(u -> {
                         u.text(req.message());
                         if (!mediaList.isEmpty()) {
@@ -572,7 +651,8 @@ public class ChatOrchestrator implements DisposableBean {
                                     effectiveResolved.model().id(),
                                     false,
                                     intentResult != null ? intentResult.intent().name() : null,
-                                    intentResult != null ? intentResult.label() : null);
+                                    intentResult != null ? intentResult.label() : null,
+                                    buildInteractionDto(interactionAnalysis));
                             if (docContext != null
                                     && docContext.citations() != null
                                     && !docContext.citations().isEmpty()) {
@@ -601,6 +681,7 @@ public class ChatOrchestrator implements DisposableBean {
                                 effectiveResolved.provider().providerId(),
                                 effectiveResolved.model().id());
                         if (usageSettled.compareAndSet(false, true)) {
+                            touchSessionAsync(userId, req.conversationId(), null);
                             usageRecorder.settleUsage(
                                     userId,
                                     effectiveResolved,
@@ -622,7 +703,13 @@ public class ChatOrchestrator implements DisposableBean {
                                 ex);
                         if (!hasEmittedFirstChunk[0]) {
                             return streamChunksWithoutMemory(
-                                    effectiveResolved, req, options, lastUsage, userId, intentResult);
+                                    effectiveResolved,
+                                    req,
+                                    options,
+                                    lastUsage,
+                                    userId,
+                                    intentResult,
+                                    interactionAnalysis);
                         }
                         return Flux.just(ChatChunkDto.error("STREAM_ERROR", "输出中断：" + ex.getMessage()));
                     });
@@ -634,7 +721,13 @@ public class ChatOrchestrator implements DisposableBean {
         }
 
         return streamChunksWithoutMemory(
-                effectiveResolved, request, options, new AtomicReference<>(), userId, intentResult);
+                effectiveResolved,
+                request,
+                options,
+                new AtomicReference<>(),
+                userId,
+                intentResult,
+                interactionAnalysis);
     }
 
     private Mono<ChatResponseDto> callWithoutMemory(
@@ -643,6 +736,22 @@ public class ChatOrchestrator implements DisposableBean {
             ChatOptions options,
             String userId,
             IntentResult intentResult) {
+        return callWithoutMemory(
+                primaryResolved,
+                request,
+                options,
+                userId,
+                intentResult,
+                (request != null && request.message() != null) ? interactionAnalyzer.analyze(request.message()) : null);
+    }
+
+    private Mono<ChatResponseDto> callWithoutMemory(
+            ResolvedModel primaryResolved,
+            ChatRequest request,
+            ChatOptions options,
+            String userId,
+            IntentResult intentResult,
+            InteractionAnalysis interactionAnalysis) {
         List<Media> mediaList = extractMedia(request);
         DocumentChatContext docContext = resolveDocumentChatContext(request, request.conversationId(), userId);
         xyz.ppmblszdp.ai.context.ContextCompressor compressor =
@@ -650,7 +759,7 @@ public class ChatOrchestrator implements DisposableBean {
         xyz.ppmblszdp.ai.context.AssembleResult assembleResult = contextAssembler.assembleWithResult(
                 request.message(),
                 request.history(),
-                resolveSystemPrompt(request, intentResult, docContext),
+                resolveSystemPrompt(request, intentResult, interactionAnalysis, docContext),
                 null,
                 primaryResolved.model().maxContextTokens(),
                 mediaList,
@@ -699,6 +808,24 @@ public class ChatOrchestrator implements DisposableBean {
             AtomicReference<ChatChunkDto.UsageDto> sharedUsage,
             String userId,
             IntentResult intentResult) {
+        return streamChunksWithoutMemory(
+                primaryResolved,
+                request,
+                options,
+                sharedUsage,
+                userId,
+                intentResult,
+                (request != null && request.message() != null) ? interactionAnalyzer.analyze(request.message()) : null);
+    }
+
+    private Flux<ChatChunkDto> streamChunksWithoutMemory(
+            ResolvedModel primaryResolved,
+            ChatRequest request,
+            ChatOptions options,
+            AtomicReference<ChatChunkDto.UsageDto> sharedUsage,
+            String userId,
+            IntentResult intentResult,
+            InteractionAnalysis interactionAnalysis) {
         long streamStartTime = System.currentTimeMillis();
         AtomicLong firstTokenTime = new AtomicLong(-1);
         AtomicLong toolDuration = new AtomicLong(0);
@@ -710,7 +837,7 @@ public class ChatOrchestrator implements DisposableBean {
         xyz.ppmblszdp.ai.context.AssembleResult assembleResult = contextAssembler.assembleWithResult(
                 request.message(),
                 request.history(),
-                resolveSystemPrompt(request, intentResult, docContext),
+                resolveSystemPrompt(request, intentResult, interactionAnalysis, docContext),
                 null,
                 primaryResolved.model().maxContextTokens(),
                 mediaList,
@@ -747,7 +874,8 @@ public class ChatOrchestrator implements DisposableBean {
                 primaryResolved.model().id(),
                 false,
                 intentResult != null ? intentResult.intent().name() : null,
-                intentResult != null ? intentResult.label() : null);
+                intentResult != null ? intentResult.label() : null,
+                buildInteractionDto(interactionAnalysis));
 
         List<ChatChunkDto> headerChunks = new ArrayList<>();
         headerChunks.add(initChunk);
@@ -1040,17 +1168,35 @@ public class ChatOrchestrator implements DisposableBean {
         return null;
     }
 
-    private String resolveSystemPrompt(ChatRequest request, IntentResult intentResult, DocumentChatContext docContext) {
+    private ChatChunkDto.InteractionMetadataDto buildInteractionDto(InteractionAnalysis analysis) {
+        if (analysis == null || analysis.state() == InteractionState.NEUTRAL) {
+            return null;
+        }
+        return new ChatChunkDto.InteractionMetadataDto(
+                analysis.state().name(),
+                analysis.state().getLabel(),
+                analysis.signals().stream().map(s -> s.name()).toList(),
+                analysis.strategies().stream().map(s -> s.name()).toList());
+    }
+
+    private String resolveSystemPrompt(
+            ChatRequest request,
+            IntentResult intentResult,
+            InteractionAnalysis interactionAnalysis,
+            DocumentChatContext docContext) {
         if (docContext != null) {
             DocumentChatService docChatService =
                     documentChatServiceProvider != null ? documentChatServiceProvider.getIfAvailable() : null;
             if (docChatService != null) {
                 String baseStrict = docChatService.buildStrictSystemPrompt(request.systemPrompt());
-                if (docContext.hasContext()) {
-                    return baseStrict + "\n\n【📄 会话专属文档上下文】:\n" + docContext.formattedContext();
-                } else {
-                    return baseStrict + "\n\n【📄 会话专属文档上下文】:\n(当前会话文档中未检索到与用户问题相关的任何事实依据。请严格按照【自动拒答机制】直接拒答，切勿编造。)";
-                }
+                String docBlock = docContext.hasContext()
+                        ? "\n\n【📄 会话专属文档上下文】:\n" + docContext.formattedContext()
+                        : "\n\n【📄 会话专属文档上下文】:\n(当前会话文档中未检索到与用户问题相关的任何事实依据。请严格按照【自动拒答机制】直接拒答，切勿编造。)";
+                String promptWithDoc = baseStrict + docBlock;
+                String interactionPolicy = InteractionPromptPolicy.buildSystemPromptPolicy(interactionAnalysis);
+                return (interactionPolicy != null && !interactionPolicy.isBlank())
+                        ? promptWithDoc + "\n\n" + interactionPolicy
+                        : promptWithDoc;
             }
         }
 

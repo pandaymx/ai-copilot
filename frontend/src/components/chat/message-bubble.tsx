@@ -26,6 +26,7 @@ import { ImagePreviewModal } from "@/components/chat/image-preview-modal";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   type ArtifactItem,
+  type InteractionMetadata,
   type StreamMetrics,
   type StreamStore,
   type TaskPlanState,
@@ -83,6 +84,8 @@ export interface ChatMessage {
   citations?: DocumentCitationItem[];
   /** 实时流式性能指标（TTFT、Token 生成速率、总耗时、工具执行耗时） */
   metrics?: StreamMetrics;
+  /** 交互状态理解元数据（认知状态、原子信号、响应策略） */
+  interaction?: InteractionMetadata | null;
 }
 
 interface MessageBubbleProps {
