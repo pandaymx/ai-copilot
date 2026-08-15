@@ -1,59 +1,51 @@
 {
   "properties": [
     {
-      "name": "app.ai.first-class.*.models[].default",
-      "type": "java.lang.Boolean",
-      "description": "是否为所属供应商的默认模型"
-    },
-    {
-      "name": "app.ai.first-class.*.models[*].default",
-      "type": "java.lang.Boolean",
-      "description": "是否为所属供应商的默认模型"
-    },
-    {
-      "name": "app.ai.first-class.*.models.default",
-      "type": "java.lang.Boolean",
-      "description": "是否为所属供应商的默认模型"
-    },
-    {
-      "name": "app.ai.second-class[].models[].default",
-      "type": "java.lang.Boolean",
-      "description": "是否为所属供应商的默认模型"
-    },
-    {
-      "name": "app.ai.second-class[*].models[*].default",
-      "type": "java.lang.Boolean",
-      "description": "是否为所属供应商的默认模型"
-    },
-    {
-      "name": "app.ai.second-class.*.models[].default",
-      "type": "java.lang.Boolean",
-      "description": "是否为所属供应商的默认模型"
-    },
-    {
-      "name": "app.ai.second-class.*.models[*].default",
-      "type": "java.lang.Boolean",
-      "description": "是否为所属供应商的默认模型"
-    },
-    {
-      "name": "spring.codec.max-in-memory-size",
-      "type": "org.springframework.util.unit.DataSize",
-      "description": "WebFlux 编解码器内存上限"
-    },
-    {
-      "name": "management.tracing.sampling.probability",
-      "type": "java.lang.Float",
-      "description": "Micrometer Tracing 采样率"
-    },
-    {
-      "name": "management.otlp.tracing.endpoint",
+      "name": "app.ai.image.default-provider",
       "type": "java.lang.String",
-      "description": "OpenTelemetry OTLP Tracing 导出端点"
+      "description": "默认图像生成供应商 (如 openai, zhipu, stability, azure)",
+      "defaultValue": "openai"
     },
     {
-      "name": "management.otlp.tracing.export.timeout",
-      "type": "java.time.Duration",
-      "description": "OpenTelemetry OTLP Tracing 导出超时时间"
+      "name": "app.ai.image.default-model",
+      "type": "java.lang.String",
+      "description": "默认图像生成模型 (如 dall-e-3, cogview-3-plus)",
+      "defaultValue": "dall-e-3"
+    },
+    {
+      "name": "app.ai.image.width",
+      "type": "java.lang.Integer",
+      "description": "生成图像宽度 (像素)",
+      "defaultValue": 1024
+    },
+    {
+      "name": "app.ai.image.height",
+      "type": "java.lang.Integer",
+      "description": "生成图像高度 (像素)",
+      "defaultValue": 1024
+    },
+    {
+      "name": "app.ai.image.quality",
+      "type": "java.lang.String",
+      "description": "生成质量 (standard, hd)",
+      "defaultValue": "standard"
+    },
+    {
+      "name": "app.ai.image.style",
+      "type": "java.lang.String",
+      "description": "生成风格 (vivid, natural)",
+      "defaultValue": "vivid"
+    },
+    {
+      "name": "app.ai.image.response-format",
+      "type": "java.lang.String",
+      "description": "返回格式 (b64_json, url)",
+      "defaultValue": "b64_json"
+    },
+    {
+      "name": "app.ai.image.keywords",
+      "type": "java.util.List<java.lang.String>",
+      "description": "用于判断图像生成意图的关键词列表"
     }
   ]
 }

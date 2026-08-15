@@ -147,7 +147,6 @@ public class SafeVariableResolver {
         return !resolved.isBlank();
     }
 
-    @SuppressWarnings("unchecked")
     private static Object extractNested(Object root, String path) {
         if (root == null || path == null || path.isBlank()) return root;
 

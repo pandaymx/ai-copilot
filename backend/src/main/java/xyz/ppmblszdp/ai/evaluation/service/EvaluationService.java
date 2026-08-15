@@ -144,7 +144,7 @@ public class EvaluationService {
     public List<BenchmarkCase> listBenchmarks(String category) {
         return benchmarkRepository.values().stream()
                 .filter(b -> category == null || category.isBlank() || category.equalsIgnoreCase(b.category()))
-                .sorted(Comparator.comparing(BenchmarkCase::id))
+                .sorted(Comparator.comparing(b -> b.id()))
                 .toList();
     }
 
@@ -529,7 +529,7 @@ public class EvaluationService {
                 .filter(r -> "USER_FEEDBACK".equals(r.provider()))
                 .filter(r -> r.model() != null)
                 .collect(Collectors.groupingBy(
-                        EvaluationResultDto::model,
+                        r -> r.model(),
                         Collectors.averagingDouble(r -> r.humanScore() != null ? r.humanScore() : 0.0)));
     }
 
@@ -589,7 +589,7 @@ public class EvaluationService {
                             .average()
                             .orElse(0.0);
                     double mLatency = list.stream()
-                            .mapToLong(EvaluationResultDto::latencyMs)
+                            .mapToLong(r -> r.latencyMs())
                             .average()
                             .orElse(0.0);
 
@@ -623,13 +623,13 @@ public class EvaluationService {
                             Math.round(mLatency),
                             new EvaluationMetrics(round(mRel), round(mAcc), round(mComp), round(mFlu), round(mSafe)));
                 })
-                .sorted(Comparator.comparingDouble(ModelLeaderboardEntry::averageScore)
+                .sorted(Comparator.comparingDouble((ModelLeaderboardEntry m) -> m.averageScore())
                         .reversed())
                 .toList();
 
         // 3. 用例分类分布
         Map<String, Integer> categoryDist = benchmarkRepository.values().stream()
-                .collect(Collectors.groupingBy(BenchmarkCase::category, Collectors.summingInt(x -> 1)));
+                .collect(Collectors.groupingBy(b -> b.category(), Collectors.summingInt(x -> 1)));
 
         List<EvaluationResultDto> recentResults =
                 evaluationHistory.stream().limit(20).toList();

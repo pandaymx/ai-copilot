@@ -49,7 +49,7 @@ class KnowledgeGraphControllerTest {
         ResponseEntity<KnowledgeGraphDto> resp = controller.getSubgraph("Spring AI", null, 2, 50, null, null);
         assertThat(resp.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(resp.getBody()).isNotNull();
-        assertThat(resp.getBody().nodes().stream().map(KnowledgeEntity::name)).contains("Spring AI");
+        assertThat(resp.getBody().nodes().stream().map(n -> n.name())).contains("Spring AI");
     }
 
     @Test

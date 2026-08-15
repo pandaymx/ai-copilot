@@ -145,7 +145,7 @@ public class ConversationSummaryService {
         // 获取历史消息做附录
         List<SessionDto.MessageItem> history = sessionService
                 .getSessionDetail(conversationId, userId)
-                .map(SessionDto.SessionDetail::messages)
+                .map(s -> s.messages())
                 .orElse(List.of());
 
         String markdown = buildKnowledgeMarkdown(summary, finalTitle, history);

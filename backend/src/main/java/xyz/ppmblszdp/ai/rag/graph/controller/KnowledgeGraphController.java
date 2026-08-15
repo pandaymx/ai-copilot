@@ -3,8 +3,6 @@ package xyz.ppmblszdp.ai.rag.graph.controller;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -30,8 +28,6 @@ import xyz.ppmblszdp.ai.rag.graph.service.GraphRagService;
 @RequestMapping("/api/rag/graph")
 @ConditionalOnProperty(prefix = "app.ai.rag", name = "enabled", havingValue = "true")
 public class KnowledgeGraphController {
-
-    private static final Logger log = LoggerFactory.getLogger(KnowledgeGraphController.class);
 
     private final KnowledgeGraphRepository graphRepository;
     private final GraphRagService graphRagService;
@@ -73,12 +69,12 @@ public class KnowledgeGraphController {
         List<String> seedList = List.of();
         if (seeds != null && !seeds.isBlank()) {
             seedList = Arrays.stream(seeds.split("[,，;；]+"))
-                    .map(String::trim)
+                    .map(s -> s.trim())
                     .filter(s -> !s.isBlank())
                     .toList();
         } else if (query != null && !query.isBlank()) {
             seedList = Arrays.stream(query.split("[\\s,，。！？!?;；、]+"))
-                    .map(String::trim)
+                    .map(s -> s.trim())
                     .filter(s -> s.length() >= 2)
                     .toList();
         }

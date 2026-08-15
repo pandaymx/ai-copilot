@@ -1,14 +1,11 @@
 package xyz.ppmblszdp.ai.workflow;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -34,8 +31,6 @@ import xyz.ppmblszdp.ai.tool.HttpRequestTool;
 public class WorkflowEngine {
 
     private static final Logger log = LoggerFactory.getLogger(WorkflowEngine.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final ExecutorService VIRTUAL_THREAD_POOL = Executors.newVirtualThreadPerTaskExecutor();
 
     private final ProviderRegistry providerRegistry;
     private final CodeExecutionService codeExecutionService;
@@ -110,9 +105,9 @@ public class WorkflowEngine {
         Map<String, Object> safeInputs = inputs != null ? new HashMap<>(inputs) : new HashMap<>();
 
         Map<String, List<WorkflowEdge>> incomingEdgesMap =
-                workflow.edges().stream().collect(Collectors.groupingBy(WorkflowEdge::targetNodeId));
+                workflow.edges().stream().collect(Collectors.groupingBy(e -> e.targetNodeId()));
         Map<String, List<WorkflowEdge>> outgoingEdgesMap =
-                workflow.edges().stream().collect(Collectors.groupingBy(WorkflowEdge::sourceNodeId));
+                workflow.edges().stream().collect(Collectors.groupingBy(e -> e.sourceNodeId()));
 
         Map<String, Object> finalOutputs = new HashMap<>();
         String workflowError = null;
@@ -358,14 +353,16 @@ public class WorkflowEngine {
             Map<String, Object> nodeOutputs) {
 
         String toolName = String.valueOf(config.getOrDefault("toolName", "")).toLowerCase();
-        Map<String, Object> rawParams = (Map<String, Object>) config.getOrDefault("toolParams", Map.of());
+        Object rawParamsObj = config.getOrDefault("toolParams", Map.of());
+        Map<?, ?> rawParams = rawParamsObj instanceof Map<?, ?> m ? m : Map.of();
 
         Map<String, Object> resolvedParams = new HashMap<>();
         rawParams.forEach((k, v) -> {
+            String key = String.valueOf(k);
             if (v instanceof String str) {
-                resolvedParams.put(k, SafeVariableResolver.resolveTemplate(str, inputs, nodeOutputs));
+                resolvedParams.put(key, SafeVariableResolver.resolveTemplate(str, inputs, nodeOutputs));
             } else {
-                resolvedParams.put(k, v);
+                resolvedParams.put(key, v);
             }
         });
 
@@ -395,8 +392,7 @@ public class WorkflowEngine {
      * Kahn 算法拓扑排序与环路检测。
      */
     public List<WorkflowNode> topologicalSort(WorkflowDefinition workflow) {
-        Map<String, WorkflowNode> nodeMap =
-                workflow.nodes().stream().collect(Collectors.toMap(WorkflowNode::id, n -> n));
+        Map<String, WorkflowNode> nodeMap = workflow.nodes().stream().collect(Collectors.toMap(n -> n.id(), n -> n));
 
         Map<String, Integer> inDegree = new HashMap<>();
         Map<String, List<String>> adjList = new HashMap<>();

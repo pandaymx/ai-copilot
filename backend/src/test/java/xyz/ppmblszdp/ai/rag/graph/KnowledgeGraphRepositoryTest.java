@@ -70,11 +70,11 @@ class KnowledgeGraphRepositoryTest {
 
         // 1-Hop 从 NodeA 扩散: 应包含 NodeA, NodeB, NodeD 以及 (A->B, D->A)
         KnowledgeGraphDto hop1 = repository.extractSubgraph(List.of("NodeA"), "user-test", 1, 50);
-        assertThat(hop1.nodes().stream().map(KnowledgeEntity::name)).contains("NodeA", "NodeB", "NodeD");
+        assertThat(hop1.nodes().stream().map(n -> n.name())).contains("NodeA", "NodeB", "NodeD");
 
         // 2-Hop 从 NodeA 扩散: 应扩展到 NodeC
         KnowledgeGraphDto hop2 = repository.extractSubgraph(List.of("NodeA"), "user-test", 2, 50);
-        assertThat(hop2.nodes().stream().map(KnowledgeEntity::name)).contains("NodeA", "NodeB", "NodeC", "NodeD");
+        assertThat(hop2.nodes().stream().map(n -> n.name())).contains("NodeA", "NodeB", "NodeC", "NodeD");
     }
 
     @Test

@@ -118,7 +118,7 @@ class LongTermMemoryProcessorTest {
         processor.dedupAndUpsert("user-123", "用户偏好：主要使用 Java 21 进行后端开发", "技术偏好", 0.9);
 
         // 不应删除旧记录，也不应新增
-        verify(mockVectorStore, never()).delete(any(List.class));
+        verify(mockVectorStore, never()).delete(anyList());
         verify(mockVectorStore, never()).add(any());
     }
 

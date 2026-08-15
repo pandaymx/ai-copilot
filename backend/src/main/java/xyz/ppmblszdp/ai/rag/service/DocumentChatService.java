@@ -244,7 +244,8 @@ public class DocumentChatService {
         }
 
         List<DocChatDocResponse> result = new ArrayList<>(docMap.values());
-        result.sort(Comparator.comparing(DocChatDocResponse::ingestedAt).reversed());
+        result.sort((a, b) ->
+                (b.ingestedAt() != null ? b.ingestedAt() : "").compareTo(a.ingestedAt() != null ? a.ingestedAt() : ""));
         return result;
     }
 

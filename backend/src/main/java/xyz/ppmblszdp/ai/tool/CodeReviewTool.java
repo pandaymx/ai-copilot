@@ -1,8 +1,6 @@
 package xyz.ppmblszdp.ai.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -27,15 +25,12 @@ import xyz.ppmblszdp.ai.tool.dto.CodeReviewDto.CodeReviewReport;
 @Profile("!disable-tools")
 public class CodeReviewTool {
 
-    private static final Logger log = LoggerFactory.getLogger(CodeReviewTool.class);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final CodeReviewService codeReviewService;
-    private final ToolEventEmitter toolEventEmitter;
 
-    public CodeReviewTool(CodeReviewService codeReviewService, ToolEventEmitter toolEventEmitter) {
+    public CodeReviewTool(CodeReviewService codeReviewService) {
         this.codeReviewService = codeReviewService;
-        this.toolEventEmitter = toolEventEmitter;
     }
 
     @Tool(

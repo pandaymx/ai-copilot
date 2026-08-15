@@ -68,13 +68,16 @@ public class GitTool {
     public String gitClone(
             @ToolParam(description = "远程 Git 仓库 URL，只允许 http://, https://, git:// 协议") String repoUrl,
             @ToolParam(description = "本地仓库别名（仅允许字母数字和下划线点短横线，如 my-project）") String repoName,
-            @ToolParam(description = "可选，要克隆的分支名，默认 main/master") String branch,
+            @ToolParam(description = "可选，要克隆的分支名，默认跟随远程 HEAD") String branch,
             @ToolParam(description = "可选，是否拉取全量历史（true/false），默认 false（浅克隆）") Boolean fullHistory,
             ToolContext toolContext) {
 
         String argsJson =
                 toJson(Map.of("repoUrl", repoUrl == null ? "" : repoUrl, "repoName", repoName == null ? "" : repoName));
         return ToolEventEmitter.from(toolContext).executeWithEvent("git_clone", argsJson, toolContext, () -> {
+            if (repoUrl == null) {
+                return "{\"output\":\"仓库 URL 不能为空\"}";
+            }
             validateUrl(repoUrl);
             validateRepoName(repoName);
 
@@ -115,8 +118,8 @@ public class GitTool {
             Path repoDir = getExistingRepo(toolContext, repoName);
             int count = (maxCount != null && maxCount > 0) ? Math.min(maxCount, 50) : 10;
 
-            List<String> command = new ArrayList<>(List.of(
-                    "git", "log", "-n", String.valueOf(count), "--pretty=format:%h - %an (%ad): %s", "--date=short"));
+            List<String> command = new ArrayList<>(
+                    List.of("git", "log", "-n", String.valueOf(count), "--pretty=format:%h - %an, %ar : %s"));
             if (revision != null
                     && !revision.isBlank()
                     && SAFE_NAME_PATTERN.matcher(revision.trim()).matches()) {
@@ -231,7 +234,7 @@ public class GitTool {
         });
     }
 
-    @Tool(description = "列出 Git 仓库的所有本地分支与远程跟踪分支列表")
+    @Tool(description = "列出已克隆 Git 仓库的所有本地分支与远程跟踪分支列表（等同于 git branch -a 命令），用于查看分支全貌与切换参考")
     public String gitBranch(@ToolParam(description = "本地仓库别名") String repoName, ToolContext toolContext) {
 
         String argsJson = toJson(Map.of("repoName", repoName == null ? "" : repoName));

@@ -21,7 +21,6 @@ import xyz.ppmblszdp.ai.dto.ImageGenerationRequestDto;
 import xyz.ppmblszdp.ai.factory.ChatOptionsFactory;
 import xyz.ppmblszdp.ai.registry.ModelDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
-import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
 
 /**
@@ -36,15 +35,11 @@ public class ImageRouter {
 
     private final ObjectProvider<ImageGenerationService> imageGenerationServiceProvider;
     private final AiProviderProperties properties;
-    private final ProviderRegistry registry;
 
     public ImageRouter(
-            ObjectProvider<ImageGenerationService> imageGenerationServiceProvider,
-            AiProviderProperties properties,
-            ProviderRegistry registry) {
+            ObjectProvider<ImageGenerationService> imageGenerationServiceProvider, AiProviderProperties properties) {
         this.imageGenerationServiceProvider = imageGenerationServiceProvider;
         this.properties = properties;
-        this.registry = registry;
     }
 
     /** 图像意图判定与提炼出的提示词 DTO 记录。 */

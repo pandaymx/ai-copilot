@@ -148,7 +148,7 @@ public class KnowledgeGraphRepository {
         List<String> entitiesToRemove = entityStore.entrySet().stream()
                 .filter(e -> matchUser(e.getValue().userId(), userId)
                         && documentId.equalsIgnoreCase(e.getValue().documentId()))
-                .map(Map.Entry::getKey)
+                .map(e -> e.getKey())
                 .toList();
         for (String k : entitiesToRemove) {
             entityStore.remove(k);
@@ -158,7 +158,7 @@ public class KnowledgeGraphRepository {
         List<String> relationsToRemove = relationStore.entrySet().stream()
                 .filter(e -> matchUser(e.getValue().userId(), userId)
                         && documentId.equalsIgnoreCase(e.getValue().documentId()))
-                .map(Map.Entry::getKey)
+                .map(e -> e.getKey())
                 .toList();
         for (String k : relationsToRemove) {
             relationStore.remove(k);
@@ -310,12 +310,12 @@ public class KnowledgeGraphRepository {
 
     private GraphStatsDto computeStats(List<KnowledgeEntity> nodes, List<KnowledgeRelation> edges) {
         Map<String, Integer> nodeTypes =
-                nodes.stream().collect(Collectors.groupingBy(KnowledgeEntity::type, Collectors.summingInt(x -> 1)));
-        Map<String, Integer> relTypes = edges.stream()
-                .collect(Collectors.groupingBy(KnowledgeRelation::relation, Collectors.summingInt(x -> 1)));
+                nodes.stream().collect(Collectors.groupingBy(n -> n.type(), Collectors.summingInt(x -> 1)));
+        Map<String, Integer> relTypes =
+                edges.stream().collect(Collectors.groupingBy(r -> r.relation(), Collectors.summingInt(x -> 1)));
 
         long docCount = nodes.stream()
-                .map(KnowledgeEntity::documentId)
+                .map(n -> n.documentId())
                 .filter(java.util.Objects::nonNull)
                 .distinct()
                 .count();

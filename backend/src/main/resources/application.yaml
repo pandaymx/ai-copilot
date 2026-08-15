@@ -84,10 +84,6 @@ spring:
         observations:
           log-prompt: false
           log-completion: false
-        tool-search-advisor:
-          enabled: ${SPRING_AI_TOOL_SEARCH_ADVISOR_ENABLED:${TOOL_SEARCH_ADVISOR_ENABLED:false}}
-          tool-index-type: ${SPRING_AI_TOOL_INDEX_TYPE:${TOOL_INDEX_TYPE:regex}}
-          min-tools-threshold: ${SPRING_AI_MIN_TOOLS_THRESHOLD:${MIN_TOOLS_THRESHOLD:30}}
       observations:
         log-prompt: false
         log-completion: false
@@ -110,46 +106,26 @@ spring:
         request-timeout: ${MCP_CLIENT_REQUEST_TIMEOUT:30s}
         # 多个 server 出现同名工具时，由 DefaultMcpToolNamePrefixGenerator 自动加
         # <serverName>_ 前缀避免冲突，无需额外编码。
-        # ---- SSE（HTTP）连接：spring.ai.mcp.client.sse.connections.<name> ----
-        sse:
-          connections:
-            # 官方参考 SSE server 示例（默认关闭）
-            # websearch:
-            #   url: ${MCP_SSE_WEBSEARCH_URL:http://localhost:8081}
-            #   enabled: ${MCP_SSE_WEBSEARCH_ENABLED:false}
-            # server1:
-            #   url: http://localhost:9000
-            #   enabled: true
-        # ---- stdio 连接：spring.ai.mcp.client.stdio.servers[]（严格数组） ----
-        stdio:
-          servers:
-            # filesystem：本地文件系统读写（npx 拉起 @modelcontextprotocol/server-filesystem）
-            # - name: filesystem
-            #   command: npx
-            #   args:
-            #     - "-y"
-            #     - "@modelcontextprotocol/server-filesystem"
-            #     - "/path/to/allowed/dir"
-            #   enabled: false
-            # github：仓库操作（需 GITHUB_PERSONAL_ACCESS_TOKEN 环境变量透传给子进程）
-            # - name: github
-            #   command: npx
-            #   args:
-            #     - "-y"
-            #     - "@modelcontextprotocol/server-github"
-            #   env:
-            #     GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:your_github_token_here}
-            #   enabled: false
-            # slack：工作区消息（需 SLACK_BOT_TOKEN / SLACK_TEAM_ID）
-            # - name: slack
-            #   command: npx
-            #   args:
-            #     - "-y"
-            #     - "@modelcontextprotocol/server-slack"
-            #   env:
-            #     SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:your_slack_bot_token_here}
-            #     SLACK_TEAM_ID: ${SLACK_TEAM_ID:your_slack_team_id_here}
-            #   enabled: false
+        # ---- 如需开启远程 MCP Server，解开对应配置并填写连接参数 ----
+        # sse:
+        #   connections:
+        #     websearch:
+        #       url: ${MCP_SSE_WEBSEARCH_URL:http://localhost:8081}
+        # stdio:
+        #   connections:
+        #     filesystem:
+        #       command: npx
+        #       args:
+        #         - "-y"
+        #         - "@modelcontextprotocol/server-filesystem"
+        #         - "/path/to/allowed/dir"
+        #     github:
+        #       command: npx
+        #       args:
+        #         - "-y"
+        #         - "@modelcontextprotocol/server-github"
+        #       env:
+        #         GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:your_github_token_here}
 
     vectorstore:
       pgvector:

@@ -61,9 +61,9 @@ public class IntentFeedbackAccumulator {
         window.addLast(delta > 0 ? 1 : -1);
 
         if (delta > 0) {
-            totalUp.merge(key, 1L, Long::sum);
+            totalUp.merge(key, 1L, (oldVal, newVal) -> oldVal + newVal);
         } else {
-            totalDown.merge(key, 1L, Long::sum);
+            totalDown.merge(key, 1L, (oldVal, newVal) -> oldVal + newVal);
         }
 
         // 告警日志（达到阈值时输出一次）

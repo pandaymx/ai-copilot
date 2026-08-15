@@ -155,7 +155,7 @@ public class RagController {
         long total = items.size();
         Map<String, Long> sourceTypeCounts = items.stream()
                 .map(o -> ((RagDocumentMeta) o))
-                .collect(Collectors.groupingBy(RagDocumentMeta::sourceType, Collectors.counting()));
+                .collect(Collectors.groupingBy(m -> m.sourceType(), Collectors.counting()));
         RagListResponse response = new RagListResponse(
                 items.stream().map(o -> (RagDocumentMeta) o).collect(Collectors.toList()), total, sourceTypeCounts);
         return ResponseEntity.ok(response);

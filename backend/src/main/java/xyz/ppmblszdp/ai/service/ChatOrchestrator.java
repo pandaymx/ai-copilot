@@ -496,8 +496,8 @@ public class ChatOrchestrator implements DisposableBean {
                                     effectiveResolved.provider().providerId(),
                                     effectiveResolved.model().id(),
                                     false,
-                                    intentResult.intent().name(),
-                                    intentResult.label());
+                                    intentResult != null ? intentResult.intent().name() : null,
+                                    intentResult != null ? intentResult.label() : null);
                             if (docContext != null
                                     && docContext.citations() != null
                                     && !docContext.citations().isEmpty()) {
@@ -904,10 +904,6 @@ public class ChatOrchestrator implements DisposableBean {
             return docChatService.retrieveStrictContext(request.message(), conversationId, request.docIds(), userId, 6);
         }
         return null;
-    }
-
-    private String resolveSystemPrompt(ChatRequest request, IntentResult intentResult) {
-        return resolveSystemPrompt(request, intentResult, null);
     }
 
     private String resolveSystemPrompt(ChatRequest request, IntentResult intentResult, DocumentChatContext docContext) {

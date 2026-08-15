@@ -1,7 +1,5 @@
 package xyz.ppmblszdp.ai.agent;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -24,8 +22,6 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class SubAgentTool {
-
-    private static final Logger log = LoggerFactory.getLogger(SubAgentTool.class);
 
     private static final String ANALYSIS_SYSTEM_PROMPT =
             "你是一个专注于数据分析、统计与推理的 AI 助手。" + "请认真完成用户给出的分析任务，输出简洁、结构化的分析结论。" + "不要进行闲聊，直接切入任务核心。";

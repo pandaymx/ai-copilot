@@ -314,12 +314,11 @@ public class FeedbackService {
     }
 
     private GlobalStats buildGlobalStats(List<DayBucket> trend, List<IntentHealthEntry> intentHealth) {
-        long totalUp = trend.stream().mapToLong(DayBucket::thumbsUp).sum();
-        long totalDown = trend.stream().mapToLong(DayBucket::thumbsDown).sum();
+        long totalUp = trend.stream().mapToLong(b -> b.thumbsUp()).sum();
+        long totalDown = trend.stream().mapToLong(b -> b.thumbsDown()).sum();
         long total = totalUp + totalDown;
         double overallRate = total > 0 ? Math.round((double) totalUp / total * 1000.0) / 10.0 : 0.0;
-        long alertingCount =
-                intentHealth.stream().filter(IntentHealthEntry::alerting).count();
+        long alertingCount = intentHealth.stream().filter(e -> e.alerting()).count();
         return new GlobalStats(total, totalUp, totalDown, overallRate, alertingCount);
     }
 

@@ -65,7 +65,7 @@ public class RagExtractionService {
                 return new StructuredKnowledge(
                         request.query(), "未找到相关文档内容", Collections.emptyList(), Collections.emptyList());
             }
-            contextText = docs.stream().map(Document::getText).collect(Collectors.joining("\n---\n"));
+            contextText = docs.stream().map(d -> d.getText()).collect(Collectors.joining("\n---\n"));
         } else {
             throw new IllegalArgumentException("query 和 rawText 不能同时为空");
         }

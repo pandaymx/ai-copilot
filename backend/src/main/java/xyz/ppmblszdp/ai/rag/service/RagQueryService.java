@@ -153,7 +153,7 @@ public class RagQueryService {
         }
 
         List<RagDocumentMeta> items = new ArrayList<>(bySource.values());
-        items.sort(Comparator.comparing(RagDocumentMeta::ingestedAt).reversed());
+        items.sort(Comparator.comparing((RagDocumentMeta m) -> m.ingestedAt()).reversed());
         int cap = (limit > 0) ? Math.min(limit, LIST_FETCH_LIMIT) : LIST_FETCH_LIMIT;
         if (items.size() > cap) {
             items = items.subList(0, cap);
@@ -175,9 +175,7 @@ public class RagQueryService {
                 ragVectorStore instanceof SafeVectorStore ? ((SafeVectorStore) ragVectorStore).isAvailable() : true);
         stats.put("collectionName", properties.resolveCollectionName());
         stats.put("documentCount", (long) all.size());
-        stats.put(
-                "vectorCount",
-                all.stream().mapToLong(RagDocumentMeta::chunkCount).sum());
+        stats.put("vectorCount", all.stream().mapToLong(m -> m.chunkCount()).sum());
         return stats;
     }
 

@@ -243,7 +243,6 @@ public class CodeReviewService {
             + "在 findings 后追加 suggestedTests：列出 2-5 个可由自动化测试覆盖的关键验证点（如边界条件、异常路径、安全校验）。\n"
             + "只输出 JSON，不要使用 markdown 代码围栏（```json），不要任何额外解释文字。";
 
-    @SuppressWarnings("unchecked")
     private List<CodeReviewFinding> runLlmReview(String code, ReviewRequest req, String target) {
         try {
             ResolvedModel resolved = providerRegistry.resolve(null, null);
@@ -288,7 +287,8 @@ public class CodeReviewService {
         }
         try {
             String json = extractJsonBlock(response);
-            Map<String, Object> root = objectMapper.readValue(json, Map.class);
+            Map<String, Object> root = objectMapper.readValue(
+                    json, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
             Object f = root.get("findings");
             if (f instanceof List<?> list) {
                 List<CodeReviewFinding> out = new ArrayList<>();

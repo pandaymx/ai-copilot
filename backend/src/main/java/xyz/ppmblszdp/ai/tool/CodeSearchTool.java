@@ -167,8 +167,8 @@ public class CodeSearchTool {
                         scored = keywordScoreFallback(chunks, query);
                     }
 
-                    scored.sort(
-                            Comparator.comparingDouble(ScoredCodeChunk::score).reversed());
+                    scored.sort(Comparator.comparingDouble((ScoredCodeChunk s) -> s.score())
+                            .reversed());
                     List<ScoredCodeChunk> topResults =
                             scored.stream().limit(limit).toList();
 

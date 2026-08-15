@@ -116,13 +116,11 @@ public class UsageController {
         List<UsageModelDetailSummary> byModel = usageRepository.sumByModelsForMonth(monthKey);
         List<UsageDailySummary> dailyTrend = usageRepository.sumDailyTrendForMonth(monthKey);
 
-        long totalTokens =
-                byUser.stream().mapToLong(UsageUserSummary::totalTokens).sum();
+        long totalTokens = byUser.stream().mapToLong(u -> u.totalTokens()).sum();
         BigDecimal totalCost = byUser.stream()
                 .map(u -> u.totalCost() != null ? u.totalCost() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        long totalRequests =
-                byUser.stream().mapToLong(UsageUserSummary::requestCount).sum();
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
+        long totalRequests = byUser.stream().mapToLong(u -> u.requestCount()).sum();
         long activeUsers = byUser.size();
         long activeModels = byModel.size();
 

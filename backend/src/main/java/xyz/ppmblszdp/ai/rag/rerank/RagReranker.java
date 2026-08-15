@@ -1,7 +1,6 @@
 package xyz.ppmblszdp.ai.rag.rerank;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import org.springframework.ai.document.Document;
@@ -54,8 +53,8 @@ public interface RagReranker {
                 scored.add(new DocumentScore(new Document(doc.getId(), doc.getText(), meta), finalScore));
             }
 
-            scored.sort(Comparator.comparingDouble(DocumentScore::score).reversed());
-            return scored.stream().map(DocumentScore::doc).limit(k).toList();
+            scored.sort((a, b) -> Double.compare(b.score(), a.score()));
+            return scored.stream().map(s -> s.doc()).limit(k).toList();
         }
 
         private double computeTextMatchScore(String query, String text) {
