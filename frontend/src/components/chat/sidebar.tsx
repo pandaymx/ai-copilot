@@ -51,6 +51,7 @@ interface SidebarProps {
   collapsed: boolean;
   loadingSessions?: boolean;
   isOfflineFallback?: boolean;
+  activePersona?: import("@/lib/api").Persona | null;
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
@@ -58,6 +59,7 @@ interface SidebarProps {
   onInherit?: (sessionId: string) => void;
   onToggleCollapsed: () => void;
   onOpenSearch?: () => void;
+  onOpenPersonaMarket?: () => void;
 }
 
 function formatRelative(ts: number): string {
@@ -109,6 +111,7 @@ export function Sidebar({
   collapsed,
   loadingSessions,
   isOfflineFallback,
+  activePersona,
   onSelect,
   onNew,
   onDelete,
@@ -116,6 +119,7 @@ export function Sidebar({
   onInherit,
   onToggleCollapsed,
   onOpenSearch,
+  onOpenPersonaMarket,
 }: SidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -197,6 +201,29 @@ export function Sidebar({
           <div className="px-0.5 pt-1">
             <TokenBudgetBar />
           </div>
+
+          {/* 🎭 智能体角色市场入口 */}
+          {onOpenPersonaMarket && (
+            <div className="px-0.5 pt-0.5">
+              <button
+                type="button"
+                onClick={onOpenPersonaMarket}
+                className="w-full group flex items-center justify-between rounded-xl border border-violet-200/70 bg-violet-50/50 px-3 py-2 text-xs font-semibold text-violet-700 shadow-xs transition-all duration-200 hover:border-violet-500/50 hover:bg-violet-100/70 hover:shadow-md hover:shadow-violet-500/10 dark:border-violet-800/60 dark:bg-violet-950/30 dark:text-violet-300 dark:hover:border-violet-700 dark:hover:bg-violet-900/50"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-base select-none">
+                    {activePersona ? activePersona.avatar : "🎭"}
+                  </span>
+                  <span className="truncate">
+                    {activePersona ? activePersona.name : "智能体角色市场"}
+                  </span>
+                </div>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-200/70 dark:bg-violet-800/60 text-violet-800 dark:text-violet-200 shrink-0">
+                  {activePersona ? "已激活" : "人设"}
+                </span>
+              </button>
+            </div>
+          )}
 
           {/* 知识库管理入口（任务 7.4） */}
           <div className="px-0.5 pt-0.5">

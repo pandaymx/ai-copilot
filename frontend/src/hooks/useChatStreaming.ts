@@ -42,6 +42,7 @@ export interface UseChatStreamingOptions {
   documentChatEnabled: boolean;
   docChatDocuments: DocChatDocItem[];
   selectedDocIds: string[];
+  personaId?: string;
 }
 
 export interface UseChatStreamingResult {
@@ -80,6 +81,7 @@ export function useChatStreaming({
   documentChatEnabled,
   docChatDocuments,
   selectedDocIds,
+  personaId,
 }: UseChatStreamingOptions): UseChatStreamingResult {
   const liveIdRef = useRef<string | null>(null);
   const liveUserTextRef = useRef<string>("");
@@ -320,6 +322,7 @@ export function useChatStreaming({
         agentEnabled,
         documentChatEnabled: documentChatEnabled || docChatDocuments.length > 0,
         docIds: selectedDocIds.length > 0 ? selectedDocIds : undefined,
+        personaId: personaId || undefined,
       });
     },
     [
@@ -334,6 +337,7 @@ export function useChatStreaming({
       documentChatEnabled,
       docChatDocuments.length,
       selectedDocIds,
+      personaId,
       activeId,
       currentSupportsVision,
       imageMode,

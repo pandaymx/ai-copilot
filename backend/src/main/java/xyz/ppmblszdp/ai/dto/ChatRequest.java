@@ -37,7 +37,42 @@ public record ChatRequest(
         String clarificationMode,
         Boolean reactEnabled,
         Boolean documentChatEnabled,
-        List<String> docIds) {
+        List<String> docIds,
+        String personaId) {
+
+    /** 兼容 14 参数构造函数 */
+    public ChatRequest(
+            String message,
+            List<ChatMessageDto> history,
+            String provider,
+            String model,
+            String systemPrompt,
+            String conversationId,
+            String userId,
+            List<MediaDto> media,
+            Boolean agentEnabled,
+            List<String> mediaUrls,
+            String clarificationMode,
+            Boolean reactEnabled,
+            Boolean documentChatEnabled,
+            List<String> docIds) {
+        this(
+                message,
+                history,
+                provider,
+                model,
+                systemPrompt,
+                conversationId,
+                userId,
+                media,
+                agentEnabled,
+                mediaUrls,
+                clarificationMode,
+                reactEnabled,
+                documentChatEnabled,
+                docIds,
+                null);
+    }
 
     /** 兼容 12 参数构造函数 */
     public ChatRequest(

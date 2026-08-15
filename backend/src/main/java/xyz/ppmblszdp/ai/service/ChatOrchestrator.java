@@ -109,6 +109,7 @@ public class ChatOrchestrator implements DisposableBean {
     private final ObjectProvider<xyz.ppmblszdp.ai.context.ContextCompressor> contextCompressorProvider;
     private final ObjectProvider<DocumentChatService> documentChatServiceProvider;
     private final ObjectProvider<xyz.ppmblszdp.ai.customtool.service.CustomToolService> customToolServiceProvider;
+    private final ObjectProvider<xyz.ppmblszdp.ai.persona.service.PersonaStoreService> personaStoreServiceProvider;
 
     private final ConcurrentLinkedQueue<Disposable> fireAndForgetSubscriptions = new ConcurrentLinkedQueue<>();
 
@@ -143,7 +144,8 @@ public class ChatOrchestrator implements DisposableBean {
             ObjectProvider<DocumentChatService> documentChatServiceProvider,
             ObjectProvider<ModelPerformanceTracker> performanceTrackerProvider,
             ObjectProvider<InteractionAnalyzer> interactionAnalyzerProvider,
-            ObjectProvider<xyz.ppmblszdp.ai.customtool.service.CustomToolService> customToolServiceProvider) {
+            ObjectProvider<xyz.ppmblszdp.ai.customtool.service.CustomToolService> customToolServiceProvider,
+            ObjectProvider<xyz.ppmblszdp.ai.persona.service.PersonaStoreService> personaStoreServiceProvider) {
         this.registry = registry;
         this.contextAssembler = contextAssembler;
         this.sessionChatMemory = sessionChatMemory;
@@ -185,6 +187,7 @@ public class ChatOrchestrator implements DisposableBean {
         this.contextCompressorProvider = contextCompressorProvider;
         this.documentChatServiceProvider = documentChatServiceProvider;
         this.customToolServiceProvider = customToolServiceProvider;
+        this.personaStoreServiceProvider = personaStoreServiceProvider;
     }
 
     public ChatOrchestrator(
@@ -245,6 +248,7 @@ public class ChatOrchestrator implements DisposableBean {
                 contextCompressorProvider,
                 documentChatServiceProvider,
                 performanceTrackerProvider,
+                null,
                 null,
                 null);
     }
@@ -1214,15 +1218,33 @@ public class ChatOrchestrator implements DisposableBean {
             IntentResult intentResult,
             InteractionAnalysis interactionAnalysis,
             DocumentChatContext docContext) {
+        String personaBlock = "";
+        if (request != null
+                && request.personaId() != null
+                && !request.personaId().isBlank()) {
+            xyz.ppmblszdp.ai.persona.service.PersonaStoreService personaStore =
+                    personaStoreServiceProvider != null ? personaStoreServiceProvider.getIfAvailable() : null;
+            if (personaStore != null) {
+                xyz.ppmblszdp.ai.persona.dto.PersonaDto persona = personaStore.getPersona(request.personaId(), null);
+                if (persona != null
+                        && persona.systemPrompt() != null
+                        && !persona.systemPrompt().isBlank()) {
+                    personaBlock = "【🎭 当前智能体角色设定: " + persona.name() + " (" + persona.category() + ")】\n"
+                            + persona.systemPrompt() + "\n\n";
+                }
+            }
+        }
+
         if (docContext != null) {
             DocumentChatService docChatService =
                     documentChatServiceProvider != null ? documentChatServiceProvider.getIfAvailable() : null;
             if (docChatService != null) {
-                String baseStrict = docChatService.buildStrictSystemPrompt(request.systemPrompt());
+                String baseStrict =
+                        docChatService.buildStrictSystemPrompt(request != null ? request.systemPrompt() : null);
                 String docBlock = docContext.hasContext()
                         ? "\n\n【📄 会话专属文档上下文】:\n" + docContext.formattedContext()
                         : "\n\n【📄 会话专属文档上下文】:\n(当前会话文档中未检索到与用户问题相关的任何事实依据。请严格按照【自动拒答机制】直接拒答，切勿编造。)";
-                String promptWithDoc = baseStrict + docBlock;
+                String promptWithDoc = personaBlock + baseStrict + docBlock;
                 String interactionPolicy = InteractionPromptPolicy.buildSystemPromptPolicy(interactionAnalysis);
                 return (interactionPolicy != null && !interactionPolicy.isBlank())
                         ? promptWithDoc + "\n\n" + interactionPolicy
@@ -1230,15 +1252,18 @@ public class ChatOrchestrator implements DisposableBean {
             }
         }
 
-        String base = (request.systemPrompt() != null && !request.systemPrompt().isBlank())
+        String base = (request != null
+                        && request.systemPrompt() != null
+                        && !request.systemPrompt().isBlank())
                 ? request.systemPrompt()
                 : contextAssembler.defaultSystemPrompt();
+        String combined = personaBlock + base;
         if (intentResult != null
                 && intentResult.systemPromptTemplate() != null
                 && !intentResult.systemPromptTemplate().isBlank()) {
-            return base + "\n\n" + intentResult.systemPromptTemplate();
+            return combined + "\n\n" + intentResult.systemPromptTemplate();
         }
-        return base;
+        return combined;
     }
 
     private void recordLongTermMemoryAsync(

@@ -40,6 +40,7 @@ import {
   type SelectedModel,
 } from "@/components/chat/model-selector";
 import { MultiAgentModal } from "@/components/chat/multi-agent-modal";
+import { PersonaMarketModal } from "@/components/chat/persona-market-modal";
 import { RateLimitIndicator } from "@/components/chat/rate-limit-indicator";
 import { SearchDialog } from "@/components/chat/search-dialog";
 import { Sidebar } from "@/components/chat/sidebar";
@@ -53,7 +54,7 @@ import { useTokenBudget } from "@/context/token-budget-context";
 import { useChatInput } from "@/hooks/useChatInput";
 import { useChatSession } from "@/hooks/useChatSession";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
-import type { DocumentCitationItem } from "@/lib/api";
+import type { DocumentCitationItem, Persona } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const MODEL_STORAGE_KEY = "ai-copilot-selected-model";
@@ -183,6 +184,10 @@ export default function Home() {
     setDraft(input, currentModelObj);
   }, [input, currentModelObj, setDraft]);
 
+  // 智能体角色市场 (Persona Store) 弹窗与激活状态
+  const [personaMarketOpen, setPersonaMarketOpen] = useState(false);
+  const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
+
   // 3. 流式 SSE 编排与发送 Hook
   const {
     isStreaming,
@@ -211,6 +216,7 @@ export default function Home() {
     documentChatEnabled,
     docChatDocuments,
     selectedDocIds,
+    personaId: selectedPersona?.id,
   });
 
   // 多模型并排对比竞技场弹窗状态
@@ -283,6 +289,7 @@ export default function Home() {
         collapsed={collapsed}
         loadingSessions={loadingSessions}
         isOfflineFallback={isOfflineFallback}
+        activePersona={selectedPersona}
         onSelect={selectSession}
         onNew={newSession}
         onDelete={(id) => setDeleteTarget(id)}
@@ -293,6 +300,7 @@ export default function Home() {
         }}
         onToggleCollapsed={() => setCollapsed((c) => !c)}
         onOpenSearch={() => setSearchOpen(true)}
+        onOpenPersonaMarket={() => setPersonaMarketOpen(true)}
       />
 
       {/* 移动端遮罩 */}
@@ -350,6 +358,25 @@ export default function Home() {
               onChange={setModel}
               onCatalogChange={setCatalog}
             />
+
+            {/* 🎭 智能体角色快速切换入口 */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPersonaMarketOpen(true)}
+              className={cn(
+                "h-8 gap-1.5 rounded-lg px-2 text-xs transition-colors cursor-pointer",
+                selectedPersona
+                  ? "bg-violet-100 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 font-medium"
+                  : "text-zinc-500 hover:text-violet-600 dark:text-zinc-400 dark:hover:text-violet-400",
+              )}
+              title="打开智能体角色市场 (Persona Store)"
+            >
+              <span>{selectedPersona ? selectedPersona.avatar : "🎭"}</span>
+              <span className="hidden sm:inline">
+                {selectedPersona ? selectedPersona.name : "角色市场"}
+              </span>
+            </Button>
 
             {/* 紧凑型实时 Token 预算进度条 */}
             <TokenBudgetBar compact className="hidden sm:inline-flex" />
@@ -629,6 +656,46 @@ export default function Home() {
                 multiple
                 className="hidden"
               />
+
+              {/* 激活的智能体人设提示 Banner */}
+              {selectedPersona && (
+                <div className="flex items-center justify-between px-3 py-1.5 rounded-t-xl bg-violet-50/90 dark:bg-violet-950/40 border-b border-violet-200/80 dark:border-violet-800/60 text-xs animate-in fade-in">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-base select-none">
+                      {selectedPersona.avatar}
+                    </span>
+                    <span className="font-bold text-violet-900 dark:text-violet-100 truncate">
+                      {selectedPersona.name}
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-violet-200/70 dark:bg-violet-800/60 text-violet-800 dark:text-violet-200 font-mono">
+                      {selectedPersona.category}
+                    </span>
+                    <span className="hidden sm:inline text-[11px] text-violet-600 dark:text-violet-300 truncate">
+                      — {selectedPersona.description}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setPersonaMarketOpen(true)}
+                      className="text-[11px] text-violet-700 dark:text-violet-300 hover:underline font-medium"
+                    >
+                      更换
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPersona(null);
+                        toast.info("已退出角色人设，恢复默认 Copilot 模式");
+                      }}
+                      className="p-1 text-violet-500 hover:text-rose-500 rounded-md transition-colors"
+                      title="重置角色"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* 视觉快捷场景胶囊栏 */}
               {attachments.some((att) => att.type === "image") && (
@@ -937,6 +1004,27 @@ export default function Home() {
           };
           setMessages((prev) => [...prev, newAssistantMsg]);
           toast.success("已采纳多 Agent 综合汇总交付报告！");
+        }}
+      />
+
+      {/* 🎭 智能体角色市场 (Persona Store) 弹窗 */}
+      <PersonaMarketModal
+        isOpen={personaMarketOpen}
+        onClose={() => setPersonaMarketOpen(false)}
+        selectedPersona={selectedPersona}
+        onSelectPersona={(persona) => {
+          setSelectedPersona(persona);
+          if (persona) {
+            toast.success(
+              `已激活智能体角色: ${persona.avatar} ${persona.name}`,
+            );
+            if (persona.preferredProvider && persona.preferredModel) {
+              setModel({
+                provider: persona.preferredProvider,
+                model: persona.preferredModel,
+              });
+            }
+          }
         }}
       />
     </div>

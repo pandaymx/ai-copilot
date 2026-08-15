@@ -1949,3 +1949,170 @@ export async function fetchKnowledgeSyncLogsApi(
     return [];
   }
 }
+
+// ====================== 智能体角色市场 (Persona Store) API ======================
+
+export interface Persona {
+  id: string;
+  name: string;
+  description: string;
+  avatar: string;
+  category: string;
+  systemPrompt: string;
+  temperature?: number;
+  toolWhitelist?: string[];
+  preferredProvider?: string;
+  preferredModel?: string;
+  tags?: string[];
+  isBuiltin: boolean;
+  creatorUserId?: string;
+  createdAtMs?: number;
+  updatedAtMs?: number;
+}
+
+export interface CreatePersonaPayload {
+  name: string;
+  description: string;
+  avatar?: string;
+  category?: string;
+  systemPrompt: string;
+  temperature?: number;
+  toolWhitelist?: string[];
+  preferredProvider?: string;
+  preferredModel?: string;
+  tags?: string[];
+}
+
+export interface UpdatePersonaPayload {
+  name?: string;
+  description?: string;
+  avatar?: string;
+  category?: string;
+  systemPrompt?: string;
+  temperature?: number;
+  toolWhitelist?: string[];
+  preferredProvider?: string;
+  preferredModel?: string;
+  tags?: string[];
+}
+
+export interface PersonaMatchResponse {
+  recommendedPersona: Persona;
+  confidence: number;
+  reason: string;
+}
+
+/** 获取角色列表（支持分类和关键词过滤） */
+export async function fetchPersonasApi(
+  category?: string,
+  keyword?: string,
+  signal?: AbortSignal,
+): Promise<Persona[]> {
+  try {
+    const params = new URLSearchParams();
+    if (category && category !== "ALL") params.set("category", category);
+    if (keyword) params.set("keyword", keyword);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    const res = await fetch(`/api/personas${query}`, { signal });
+    if (!res.ok) return [];
+    return (await res.json()) as Persona[];
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return [];
+    return [];
+  }
+}
+
+/** 获取角色详情 */
+export async function fetchPersonaByIdApi(
+  id: string,
+  signal?: AbortSignal,
+): Promise<Persona | null> {
+  try {
+    const res = await fetch(`/api/personas/${encodeURIComponent(id)}`, {
+      signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as Persona;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}
+
+/** 创建自定义角色 */
+export async function createPersonaApi(
+  payload: CreatePersonaPayload,
+  signal?: AbortSignal,
+): Promise<Persona | null> {
+  try {
+    const res = await fetch("/api/personas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as Persona;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}
+
+/** 更新自定义角色 */
+export async function updatePersonaApi(
+  id: string,
+  payload: UpdatePersonaPayload,
+  signal?: AbortSignal,
+): Promise<Persona | null> {
+  try {
+    const res = await fetch(`/api/personas/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as Persona;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}
+
+/** 删除自定义角色 */
+export async function deletePersonaApi(
+  id: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/personas/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      signal,
+    });
+    return res.ok;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return false;
+    return false;
+  }
+}
+
+/** 智能推荐匹配人设 */
+export async function matchPersonaApi(
+  goal: string,
+  signal?: AbortSignal,
+): Promise<PersonaMatchResponse | null> {
+  try {
+    const res = await fetch("/api/personas/match", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal }),
+      signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as PersonaMatchResponse;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}
