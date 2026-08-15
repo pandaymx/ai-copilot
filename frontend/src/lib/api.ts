@@ -1758,3 +1758,167 @@ export async function resolveConflictApi(
     return null;
   }
 }
+
+// ==========================================
+// 9. 知识库自动同步（Auto Knowledge Sync）相关类型与 API
+// ==========================================
+
+export interface KnowledgeSource {
+  id: string;
+  name: string;
+  sourceType:
+    | "GITHUB"
+    | "WEBSITE"
+    | "SITEMAP"
+    | "NOTION"
+    | "CONFLUENCE"
+    | string;
+  config: Record<string, unknown>;
+  cronExpression: string;
+  enabled: boolean;
+  status: "IDLE" | "SYNCING" | "SUCCESS" | "FAILED" | string;
+  lastSyncAtMs?: number;
+  lastSyncStatus?: string;
+  documentCount: number;
+  lastSyncDurationMs: number;
+}
+
+export interface KnowledgeSyncResult {
+  sourceId: string;
+  sourceName: string;
+  totalRemoteDocs: number;
+  addedCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  deletedCount: number;
+  durationMs: number;
+  success: boolean;
+  message: string;
+}
+
+export interface CreateSourcePayload {
+  name: string;
+  sourceType: string;
+  config: Record<string, unknown>;
+  cronExpression?: string;
+  enabled?: boolean;
+}
+
+export interface UpdateSourcePayload {
+  name?: string;
+  config?: Record<string, unknown>;
+  cronExpression?: string;
+  enabled?: boolean;
+}
+
+/** 查询所有知识源列表 */
+export async function fetchKnowledgeSourcesApi(
+  signal?: AbortSignal,
+): Promise<KnowledgeSource[]> {
+  try {
+    const res = await fetch("/api/rag/sync/sources", { signal });
+    if (!res.ok) return [];
+    return (await res.json()) as KnowledgeSource[];
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return [];
+    return [];
+  }
+}
+
+/** 创建新知识源 */
+export async function createKnowledgeSourceApi(
+  payload: CreateSourcePayload,
+  signal?: AbortSignal,
+): Promise<KnowledgeSource | null> {
+  try {
+    const res = await fetch("/api/rag/sync/sources", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as KnowledgeSource;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}
+
+/** 更新知识源配置 */
+export async function updateKnowledgeSourceApi(
+  id: string,
+  payload: UpdateSourcePayload,
+  signal?: AbortSignal,
+): Promise<KnowledgeSource | null> {
+  try {
+    const res = await fetch(`/api/rag/sync/sources/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as KnowledgeSource;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}
+
+/** 删除知识源 */
+export async function deleteKnowledgeSourceApi(
+  id: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/rag/sync/sources/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      signal,
+    });
+    return res.ok;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return false;
+    return false;
+  }
+}
+
+/** 手动触发知识源增量同步 */
+export async function triggerKnowledgeSyncApi(
+  id: string,
+  force = false,
+  signal?: AbortSignal,
+): Promise<KnowledgeSyncResult | null> {
+  try {
+    const res = await fetch(
+      `/api/rag/sync/sources/${encodeURIComponent(id)}/sync?force=${force}`,
+      {
+        method: "POST",
+        signal,
+      },
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as KnowledgeSyncResult;
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return null;
+    return null;
+  }
+}
+
+/** 获取知识源同步历史日志 */
+export async function fetchKnowledgeSyncLogsApi(
+  id: string,
+  signal?: AbortSignal,
+): Promise<KnowledgeSyncResult[]> {
+  try {
+    const res = await fetch(
+      `/api/rag/sync/sources/${encodeURIComponent(id)}/logs`,
+      { signal },
+    );
+    if (!res.ok) return [];
+    return (await res.json()) as KnowledgeSyncResult[];
+  } catch (err: unknown) {
+    if ((err as Error)?.name === "AbortError") return [];
+    return [];
+  }
+}

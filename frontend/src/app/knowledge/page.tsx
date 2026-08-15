@@ -9,6 +9,7 @@ import {
   DeleteDialog,
   KnowledgeList,
 } from "@/components/knowledge/knowledge-list";
+import { KnowledgeSourceManager } from "@/components/knowledge/knowledge-source-manager";
 import { KnowledgeStatus } from "@/components/knowledge/knowledge-status";
 import { KnowledgeUpload } from "@/components/knowledge/knowledge-upload";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -146,9 +147,9 @@ export default function KnowledgePage() {
     [fetchDocuments, showToast],
   );
 
-  const [activeTab, setActiveTab] = useState<"docs" | "graph" | "embedding">(
-    "docs",
-  );
+  const [activeTab, setActiveTab] = useState<
+    "docs" | "sync" | "graph" | "embedding"
+  >("docs");
 
   return (
     <div className="relative min-h-dvh bg-ambient-mesh bg-zinc-50 dark:bg-zinc-950">
@@ -178,11 +179,23 @@ export default function KnowledgePage() {
               </button>
               <button
                 type="button"
+                onClick={() => setActiveTab("sync")}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition-all",
+                  activeTab === "sync"
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100",
+                )}
+              >
+                <span>🔄 自动同步数据源</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setActiveTab("graph")}
                 className={cn(
                   "flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition-all",
                   activeTab === "graph"
-                    ? "bg-indigo-600 text-white shadow-xs"
+                    ? "bg-emerald-600 text-white shadow-xs"
                     : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100",
                 )}
               >
@@ -241,6 +254,10 @@ export default function KnowledgePage() {
               </div>
             </div>
           </>
+        ) : activeTab === "sync" ? (
+          <div className="space-y-4">
+            <KnowledgeSourceManager />
+          </div>
         ) : activeTab === "graph" ? (
           <div className="space-y-4">
             <KnowledgeGraphViewer />
