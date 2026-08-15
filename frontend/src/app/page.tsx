@@ -109,6 +109,7 @@ export default function Home() {
     loadingSessions,
     isOfflineFallback,
     mutateSessions,
+    setStreaming,
     selectSession,
     deleteSession,
     renameSession,
@@ -182,6 +183,12 @@ export default function Home() {
     docChatDocuments,
     selectedDocIds,
   });
+
+  // 将流式状态桥接进会话持久化 Hook：流式传输期间跳过 localStorage 全量写入，
+  // 配合 useChatSession 内部的 500ms 防抖，避免每帧 SSE 更新阻塞主线程。
+  useEffect(() => {
+    setStreaming(isStreaming);
+  }, [isStreaming, setStreaming]);
 
   const bottomRef = useRef<HTMLDivElement>(null);
 

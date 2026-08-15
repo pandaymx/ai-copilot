@@ -31,6 +31,7 @@ export interface UseChatSessionResult {
   loadingSessions: boolean;
   isOfflineFallback: boolean;
   mutateSessions: KeyedMutator<ChatSession[] | null>;
+  setStreaming: (value: boolean) => void;
   selectSession: (
     id: string,
     targetMessageId?: string | number,
@@ -45,8 +46,13 @@ export interface UseChatSessionResult {
 export function useChatSession(
   options?: UseChatSessionOptions,
 ): UseChatSessionResult {
-  const isStreaming = Boolean(options?.isStreaming);
+  const [externalStreaming, setExternalStreaming] = useState(false);
+  const isStreaming = Boolean(options?.isStreaming) || externalStreaming;
   const onSelectSessionCallback = options?.onSelectSessionCallback;
+
+  const setStreaming = useCallback((value: boolean) => {
+    setExternalStreaming(value);
+  }, []);
 
   const {
     data: dbSessions,
@@ -267,6 +273,7 @@ export function useChatSession(
     loadingSessions,
     isOfflineFallback,
     mutateSessions,
+    setStreaming,
     selectSession,
     deleteSession,
     renameSession,
