@@ -71,6 +71,18 @@ dependencyManagement {
     dependencies {
         // postgresql 42.7.11 -> 42.7.12（CVE-2026-54291 SCRAM 降级攻击）
         dependency("org.postgresql:postgresql:42.7.12")
+        // jackson-databind 2.x：2.21.4 -> 2.21.5（CVE-2026-54515 / 59889 / GHSA-mhm7-754m-9p8w）
+        dependency("com.fasterxml.jackson.core:jackson-databind:2.21.5")
+        // jackson-databind 3.x（经 Spring AI 引入）：3.1.4 -> 3.1.5（CVE-2026-59889）
+        dependency("tools.jackson.core:jackson-databind:3.1.5")
+        // httpclient5 5.6.1 -> 5.6.3（CVE-2026-64607）
+        dependency("org.apache.httpcomponents.client5:httpclient5:5.6.3")
+        // httpcore5 5.4.2 -> 5.4.3（CVE-2026-54399）
+        dependency("org.apache.httpcomponents.core5:httpcore5:5.4.3")
+        // httpcore5-h2 5.4.2 -> 5.4.3（CVE-2026-54428）
+        dependency("org.apache.httpcomponents.core5:httpcore5-h2:5.4.3")
+        // log4j-api 2.25.4 -> 2.25.5（CVE-2026-49844）
+        dependency("org.apache.logging.log4j:log4j-api:2.25.5")
     }
 }
 
