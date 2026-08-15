@@ -2,6 +2,7 @@
 
 import {
   AlertCircle,
+  BookOpen,
   Check,
   Code2,
   Copy,
@@ -383,13 +384,29 @@ function MermaidBlock({
 export const Markdown = memo(function Markdown({
   content,
   isStreaming,
+  onCitationClick,
 }: {
   content: string;
   isStreaming?: boolean;
+  onCitationClick?: (citationId: string) => void;
 }) {
-  // 流式输出时，进行语法防抖与自动闭合补全
+  // 流式输出时，进行语法防抖与自动闭合补全，并将引用标识符转换为内部锚点链接
   const processedContent = useMemo(() => {
-    return isStreaming ? preprocessStreamingMarkdown(content) : content;
+    let text = isStreaming ? preprocessStreamingMarkdown(content) : content;
+    if (text) {
+      // 匹配 [引用 1: 文档名 (第X页/段落Y)] 或 [引用 1] 或 [[cite:1]]
+      text = text.replace(
+        /\[引用\s*(\d+)(?::\s*([^\]\n]+))?\]/g,
+        (_m, id, label) => {
+          const title = label ? `引用 ${id}: ${label.trim()}` : `引用 ${id}`;
+          return `[📄 ${title}](#cite-${id})`;
+        },
+      );
+      text = text.replace(/\[\[cite:(\d+)\]\]/g, (_m, id) => {
+        return `[📄 引用 ${id}](#cite-${id})`;
+      });
+    }
+    return text;
   }, [content, isStreaming]);
 
   const remarkPlugins = useMemo(() => [remarkGfm, remarkMath], []);
@@ -398,6 +415,41 @@ export const Markdown = memo(function Markdown({
   const components = useMemo(
     () => ({
       pre: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+      a: ({
+        href,
+        children,
+        ...props
+      }: React.ComponentPropsWithoutRef<"a">) => {
+        if (href?.startsWith("#cite-")) {
+          const citeId = href.replace("#cite-", "");
+          return (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onCitationClick?.(citeId);
+              }}
+              className="inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded-md bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 font-mono text-[11px] font-medium border border-indigo-500/20 transition-all cursor-pointer shadow-2xs hover:scale-105"
+              title="点击查看文档原文引用对照"
+            >
+              <BookOpen className="size-3 text-indigo-500 shrink-0" />
+              <span className="truncate max-w-[200px]">{children}</span>
+            </button>
+          );
+        }
+        return (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-indigo-600 underline hover:text-indigo-700 dark:text-indigo-400"
+            {...props}
+          >
+            {children}
+          </a>
+        );
+      },
       code: ({
         className,
         children,
@@ -450,7 +502,7 @@ export const Markdown = memo(function Markdown({
         </div>
       ),
     }),
-    [isStreaming],
+    [isStreaming, onCitationClick],
   );
 
   return (

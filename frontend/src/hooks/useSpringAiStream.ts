@@ -8,7 +8,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { CompressionMetadata } from "@/lib/api";
+import type { CompressionMetadata, DocumentCitationItem } from "@/lib/api";
 
 export interface SpringAiStreamMessage {
   role: "user" | "assistant" | "system";
@@ -77,6 +77,8 @@ export interface UseSpringAiStreamOptions {
   onToolResult?: (item: ToolCallItem) => void;
   /** 收到 context_compression 帧（上下文智能压缩元数据）时的回调 */
   onContextCompression?: (metadata: CompressionMetadata) => void;
+  /** 收到文档对话精准引用时的回调 */
+  onCitations?: (citations: DocumentCitationItem[]) => void;
   /** 流完整结束后回调（成功完成或异常均触发），参数为最终累计文本、思考过程与 Token 用量。 */
   onFinish?: (
     finalContent: string,
@@ -181,6 +183,8 @@ export interface StreamData {
   taskPlan?: TaskPlanState | null;
   /** 智能上下文压缩元数据（若触发了历史消息摘要压缩）。 */
   contextCompression?: CompressionMetadata | null;
+  /** 文档对话精准引用列表（若开启了文档对话模式）。 */
+  citations?: DocumentCitationItem[];
 }
 
 export class StreamStore {
@@ -192,6 +196,7 @@ export class StreamStore {
     artifacts: {},
     taskPlan: null,
     contextCompression: null,
+    citations: [],
   };
   private listeners = new Set<() => void>();
 
@@ -213,6 +218,14 @@ export class StreamStore {
     reasoningDurationMs?: number,
   ) {
     this.data = { ...this.data, content, thinking, usage, reasoningDurationMs };
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+
+  /** 更新文档对话精准引用列表 */
+  updateCitations(citations: DocumentCitationItem[]) {
+    this.data = { ...this.data, citations };
     for (const listener of this.listeners) {
       listener();
     }
@@ -299,6 +312,8 @@ export class StreamStore {
       toolCalls: {},
       artifacts: {},
       taskPlan: null,
+      contextCompression: null,
+      citations: [],
     };
     for (const listener of this.listeners) {
       listener();
@@ -378,6 +393,7 @@ export function useSpringAiStream(
     onToolCall,
     onToolResult,
     onContextCompression,
+    onCitations,
     onFinish,
   } = options;
 
@@ -393,6 +409,7 @@ export function useSpringAiStream(
   const onToolCallRef = useRef(onToolCall);
   const onToolResultRef = useRef(onToolResult);
   const onContextCompressionRef = useRef(onContextCompression);
+  const onCitationsRef = useRef(onCitations);
   const onFinishRef = useRef(onFinish);
   useEffect(() => {
     onConversationIdRef.current = onConversationId;
@@ -405,6 +422,7 @@ export function useSpringAiStream(
     onToolCallRef.current = onToolCall;
     onToolResultRef.current = onToolResult;
     onContextCompressionRef.current = onContextCompression;
+    onCitationsRef.current = onCitations;
     onFinishRef.current = onFinish;
   }, [
     onConversationId,
@@ -417,6 +435,7 @@ export function useSpringAiStream(
     onToolCall,
     onToolResult,
     onContextCompression,
+    onCitations,
     onFinish,
   ]);
 
@@ -571,6 +590,22 @@ export function useSpringAiStream(
                   }
                   if (parsed.intent && parsed.intentLabel) {
                     onIntentRef.current?.(parsed.intent, parsed.intentLabel);
+                  }
+                  return;
+                }
+                if (
+                  parsed?.type === "citations" ||
+                  (Array.isArray(parsed?.citations) &&
+                    parsed.citations.length > 0)
+                ) {
+                  const citationsList = Array.isArray(parsed?.citations)
+                    ? parsed.citations
+                    : Array.isArray(parsed?.data)
+                      ? parsed.data
+                      : [];
+                  if (citationsList.length > 0) {
+                    streamStoreRef.current.updateCitations(citationsList);
+                    onCitationsRef.current?.(citationsList);
                   }
                   return;
                 }

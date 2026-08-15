@@ -21,7 +21,9 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
+import { CitationViewerDrawer } from "@/components/chat/citation-viewer-drawer";
 import { ConversationSummaryModal } from "@/components/chat/conversation-summary-modal";
+import { DocumentChatBar } from "@/components/chat/document-chat-bar";
 import { ExportDialog } from "@/components/chat/export-dialog";
 import {
   type AttachmentItem,
@@ -45,7 +47,10 @@ import { Switch } from "@/components/ui/switch";
 import { useSpringAiStream } from "@/hooks/useSpringAiStream";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import {
+  type DocChatDocItem,
+  type DocumentCitationItem,
   deleteSessionApi,
+  fetchDocChatDocumentsApi,
   fetchSessionDetailApi,
   fetchSessionsApi,
   renameSessionApi,
@@ -173,6 +178,13 @@ export default function Home() {
         ),
       );
     },
+    onCitations: (citations) => {
+      const liveId = liveIdRef.current;
+      if (!liveId) return;
+      setMessages((prev) =>
+        prev.map((m) => (m.id === liveId ? { ...m, citations } : m)),
+      );
+    },
     onFinish: (finalContent, finalThinking, finalUsage) => {
       const liveId = liveIdRef.current;
       if (!liveId || !activeId) return;
@@ -191,6 +203,10 @@ export default function Home() {
                 usage: finalUsage ?? m.usage,
                 compressionMetadata:
                   snap.contextCompression ?? m.compressionMetadata,
+                citations:
+                  snap.citations && snap.citations.length > 0
+                    ? snap.citations
+                    : m.citations,
               }
             : m,
         ),
@@ -209,6 +225,10 @@ export default function Home() {
                     usage: finalUsage ?? m.usage,
                     compressionMetadata:
                       snap.contextCompression ?? m.compressionMetadata,
+                    citations:
+                      snap.citations && snap.citations.length > 0
+                        ? snap.citations
+                        : m.citations,
                   }
                 : m,
             );
@@ -246,6 +266,41 @@ export default function Home() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+
+  // 文档对话模式（Chat with Document）状态
+  const [documentChatEnabled, setDocumentChatEnabled] = useState(false);
+  const [docChatDocuments, setDocChatDocuments] = useState<DocChatDocItem[]>(
+    [],
+  );
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+  const [citationDrawer, setCitationDrawer] = useState<{
+    open: boolean;
+    citations: DocumentCitationItem[];
+    activeCitationId?: string;
+  }>({
+    open: false,
+    citations: [],
+  });
+
+  const refreshDocChatDocs = useCallback(async () => {
+    if (!activeId) {
+      setDocChatDocuments([]);
+      return;
+    }
+    try {
+      const docs = await fetchDocChatDocumentsApi(activeId);
+      setDocChatDocuments(docs);
+      if (docs && docs.length > 0) {
+        setDocumentChatEnabled(true);
+      }
+    } catch {
+      setDocChatDocuments([]);
+    }
+  }, [activeId]);
+
+  useEffect(() => {
+    void refreshDocChatDocs();
+  }, [refreshDocChatDocs]);
 
   // 全局 ⌘K / Ctrl+K 快捷键唤起全盘全文检索
   useEffect(() => {
@@ -756,6 +811,8 @@ export default function Home() {
         history: historyPayload,
         media: mediaPayload.length > 0 ? mediaPayload : undefined,
         agentEnabled,
+        documentChatEnabled: documentChatEnabled || docChatDocuments.length > 0,
+        docIds: selectedDocIds.length > 0 ? selectedDocIds : undefined,
       });
     },
     [
@@ -767,6 +824,9 @@ export default function Home() {
       model.provider,
       send,
       agentEnabled,
+      documentChatEnabled,
+      docChatDocuments.length,
+      selectedDocIds,
       activeId,
       currentSupportsVision,
       imageMode,
@@ -1014,6 +1074,19 @@ export default function Home() {
           className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-smooth scrollbar-hidden"
           aria-live="polite"
         >
+          {/* 文档对话模式专属顶部挂载管理栏 */}
+          <div className="mx-auto w-full max-w-3xl px-4 pt-3 pb-1">
+            <DocumentChatBar
+              enabled={documentChatEnabled}
+              onToggleEnabled={setDocumentChatEnabled}
+              conversationId={activeId || undefined}
+              documents={docChatDocuments}
+              selectedDocIds={selectedDocIds}
+              onSelectDocIds={setSelectedDocIds}
+              onDocumentsChange={refreshDocChatDocs}
+            />
+          </div>
+
           {messages.length === 0 ? (
             <EmptyState onPickPrompt={handlePickPrompt} />
           ) : (
@@ -1027,6 +1100,13 @@ export default function Home() {
                       message={m}
                       streamStore={streamStore}
                       conversationId={activeId || undefined}
+                      onCitationClick={(cite) =>
+                        setCitationDrawer({
+                          open: true,
+                          citations: m.citations || [cite],
+                          activeCitationId: cite.citationId,
+                        })
+                      }
                     />
                   );
                 }
@@ -1039,6 +1119,13 @@ export default function Home() {
                     conversationId={activeId || undefined}
                     onRegenerate={
                       isLastAssistant ? handleRegenerate : undefined
+                    }
+                    onCitationClick={(cite) =>
+                      setCitationDrawer({
+                        open: true,
+                        citations: m.citations || [cite],
+                        activeCitationId: cite.citationId,
+                      })
                     }
                   />
                 );
@@ -1229,15 +1316,28 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 导出对话弹窗 */}
+      {/* 对话历史全量导出弹窗 */}
       <ExportDialog
         open={showExport}
+        onClose={() => setShowExport(false)}
         messages={messages}
         title={
           sessions.find((s) => s.id === activeId)?.title ?? "AI-Copilot-对话"
         }
-        onClose={() => setShowExport(false)}
       />
+
+      {/* 原文引用对照抽屉 (Citation Drawer) */}
+      <CitationViewerDrawer
+        open={citationDrawer.open}
+        onClose={() => setCitationDrawer((prev) => ({ ...prev, open: false }))}
+        citations={citationDrawer.citations}
+        activeCitationId={citationDrawer.activeCitationId}
+        onSelectCitation={(id) =>
+          setCitationDrawer((prev) => ({ ...prev, activeCitationId: id }))
+        }
+        conversationId={activeId || undefined}
+      />
+
       {/* 历史消息全文检索弹窗 */}
       <SearchDialog
         open={searchOpen}

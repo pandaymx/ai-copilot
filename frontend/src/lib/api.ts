@@ -312,6 +312,115 @@ export async function ragStatusApi(
   }
 }
 
+// ====================== 文档对话 (Chat with Document) API ======================
+
+export interface DocumentCitationItem {
+  citationId: string;
+  docId: string;
+  fileName: string;
+  pageNumber?: string;
+  paragraphIndex?: string;
+  snippet?: string;
+  similarityScore?: number;
+}
+
+export interface DocChatDocItem {
+  docId: string;
+  conversationId: string;
+  fileName: string;
+  sourceType: string;
+  chunkCount: number;
+  ingestedAt: string;
+}
+
+export interface DocChunkItem {
+  chunkId: string;
+  docId: string;
+  fileName: string;
+  pageNumber: string;
+  paragraphIndex: string;
+  content: string;
+}
+
+export interface DocChatIngestPayload {
+  conversationId: string;
+  sourceType: string;
+  fileName?: string;
+  rawText?: string;
+  targetUrl?: string;
+  fileStoragePath?: string;
+}
+
+/** 上传/挂载文档至指定会话（会话级向量索引） */
+export async function ingestDocChatDocumentApi(
+  payload: DocChatIngestPayload,
+): Promise<DocChatDocItem | null> {
+  try {
+    const res = await fetch("/api/rag/doc-chat/ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as DocChatDocItem;
+  } catch {
+    return null;
+  }
+}
+
+/** 获取指定会话挂载的所有文档 */
+export async function fetchDocChatDocumentsApi(
+  conversationId: string,
+): Promise<DocChatDocItem[]> {
+  if (!conversationId) return [];
+  try {
+    const res = await fetch(
+      `/api/rag/doc-chat/documents?conversationId=${encodeURIComponent(conversationId)}`,
+    );
+    if (!res.ok) return [];
+    return (await res.json()) as DocChatDocItem[];
+  } catch {
+    return [];
+  }
+}
+
+/** 从会话中移除/删除挂载的文档 */
+export async function deleteDocChatDocumentApi(
+  docId: string,
+  conversationId: string,
+): Promise<{ success: boolean; docId: string } | null> {
+  try {
+    const res = await fetch(
+      `/api/rag/doc-chat/documents/${encodeURIComponent(docId)}?conversationId=${encodeURIComponent(conversationId)}`,
+      {
+        method: "DELETE",
+      },
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as { success: boolean; docId: string };
+  } catch {
+    return null;
+  }
+}
+
+/** 获取文档切片列表（供原文对照抽屉高亮与渲染） */
+export async function fetchDocChatChunksApi(
+  docId: string,
+  conversationId?: string,
+): Promise<DocChunkItem[]> {
+  if (!docId) return [];
+  try {
+    const url = conversationId
+      ? `/api/rag/doc-chat/chunks/${encodeURIComponent(docId)}?conversationId=${encodeURIComponent(conversationId)}`
+      : `/api/rag/doc-chat/chunks/${encodeURIComponent(docId)}`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    return (await res.json()) as DocChunkItem[];
+  } catch {
+    return [];
+  }
+}
+
 // ====================== 长期记忆管理 API ======================
 
 export interface MemoryItem {

@@ -24,6 +24,7 @@ import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import reactor.core.Disposable;
@@ -45,6 +46,8 @@ import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryAdvisorFactory
 import xyz.ppmblszdp.ai.memory.LongTermMemoryConfig.LongTermMemoryWriter;
 import xyz.ppmblszdp.ai.memory.LongTermMemoryProcessor;
 import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig.RagAdvisorFactory;
+import xyz.ppmblszdp.ai.rag.service.DocumentChatService;
+import xyz.ppmblszdp.ai.rag.service.DocumentChatService.DocumentChatContext;
 import xyz.ppmblszdp.ai.reflection.ReflectionAdvisor;
 import xyz.ppmblszdp.ai.registry.ModelHealthTracker;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
@@ -95,9 +98,11 @@ public class ChatOrchestrator implements DisposableBean {
     private final ObjectProvider<xyz.ppmblszdp.ai.agent.plan.ReActAgent> reActAgentProvider;
     private final ObjectProvider<xyz.ppmblszdp.ai.feedback.IntentFeedbackAccumulator> intentFeedbackAccumulatorProvider;
     private final ObjectProvider<xyz.ppmblszdp.ai.context.ContextCompressor> contextCompressorProvider;
+    private final ObjectProvider<DocumentChatService> documentChatServiceProvider;
 
     private final ConcurrentLinkedQueue<Disposable> fireAndForgetSubscriptions = new ConcurrentLinkedQueue<>();
 
+    @Autowired
     public ChatOrchestrator(
             ProviderRegistry registry,
             ContextAssembler contextAssembler,
@@ -124,7 +129,8 @@ public class ChatOrchestrator implements DisposableBean {
             VisionService visionService,
             ObjectProvider<xyz.ppmblszdp.ai.agent.plan.ReActAgent> reActAgentProvider,
             ObjectProvider<xyz.ppmblszdp.ai.feedback.IntentFeedbackAccumulator> intentFeedbackAccumulatorProvider,
-            ObjectProvider<xyz.ppmblszdp.ai.context.ContextCompressor> contextCompressorProvider) {
+            ObjectProvider<xyz.ppmblszdp.ai.context.ContextCompressor> contextCompressorProvider,
+            ObjectProvider<DocumentChatService> documentChatServiceProvider) {
         this.registry = registry;
         this.contextAssembler = contextAssembler;
         this.sessionChatMemory = sessionChatMemory;
@@ -156,6 +162,65 @@ public class ChatOrchestrator implements DisposableBean {
         this.reActAgentProvider = reActAgentProvider;
         this.intentFeedbackAccumulatorProvider = intentFeedbackAccumulatorProvider;
         this.contextCompressorProvider = contextCompressorProvider;
+        this.documentChatServiceProvider = documentChatServiceProvider;
+    }
+
+    /** 兼容 26 参数旧构造函数 */
+    public ChatOrchestrator(
+            ProviderRegistry registry,
+            ContextAssembler contextAssembler,
+            ObjectProvider<ChatMemory> sessionChatMemory,
+            ObjectProvider<LongTermMemoryAdvisorFactory> longTermFactory,
+            ObjectProvider<LongTermMemoryWriter> longTermWriter,
+            ObjectProvider<LongTermMemoryProcessor> longTermProcessor,
+            ObjectProvider<RateLimiter> rateLimiter,
+            UsageRecorder usageRecorder,
+            ObjectProvider<SafeGuardAdvisor> safeGuardAdvisor,
+            ObjectProvider<ClarificationAdvisor> clarificationAdvisor,
+            ObjectProvider<ReflectionAdvisor> reflectionAdvisor,
+            ObjectProvider<RagAdvisorFactory> ragAdvisorFactory,
+            ModelHealthTracker healthTracker,
+            SessionService sessionService,
+            AiProviderProperties properties,
+            ToolEventEmitter toolEventEmitter,
+            @Qualifier("agentToolCallbacks") ToolCallback[] toolCallbacks,
+            ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider,
+            ObjectProvider<ToolSearchAdvisorFactory> toolSearchFactory,
+            ObjectProvider<AugmentedToolCallbackProvider> augmentedToolProvider,
+            ImageRouter imageRouter,
+            IntentClassifier intentClassifier,
+            VisionService visionService,
+            ObjectProvider<xyz.ppmblszdp.ai.agent.plan.ReActAgent> reActAgentProvider,
+            ObjectProvider<xyz.ppmblszdp.ai.feedback.IntentFeedbackAccumulator> intentFeedbackAccumulatorProvider,
+            ObjectProvider<xyz.ppmblszdp.ai.context.ContextCompressor> contextCompressorProvider) {
+        this(
+                registry,
+                contextAssembler,
+                sessionChatMemory,
+                longTermFactory,
+                longTermWriter,
+                longTermProcessor,
+                rateLimiter,
+                usageRecorder,
+                safeGuardAdvisor,
+                clarificationAdvisor,
+                reflectionAdvisor,
+                ragAdvisorFactory,
+                healthTracker,
+                sessionService,
+                properties,
+                toolEventEmitter,
+                toolCallbacks,
+                mcpToolProvider,
+                toolSearchFactory,
+                augmentedToolProvider,
+                imageRouter,
+                intentClassifier,
+                visionService,
+                reActAgentProvider,
+                intentFeedbackAccumulatorProvider,
+                contextCompressorProvider,
+                null);
     }
 
     @Override
@@ -229,12 +294,13 @@ public class ChatOrchestrator implements DisposableBean {
                 return callWithoutMemory(resolved, request, options, userId, intentResult);
             }
             ChatRequest req = ensureConversation(request);
+            DocumentChatContext docContext = resolveDocumentChatContext(req, req.conversationId(), userId);
             ChatClient client = resolved.chatClient();
             MessageChatMemoryAdvisor memoryAdvisor =
                     MessageChatMemoryAdvisor.builder(memory).build();
             List<Media> mediaList = extractMedia(req);
             CallResponseSpec spec = client.prompt()
-                    .system(sp -> sp.text(resolveSystemPrompt(req, intentResult)))
+                    .system(sp -> sp.text(resolveSystemPrompt(req, intentResult, docContext)))
                     .user(u -> {
                         u.text(req.message());
                         if (!mediaList.isEmpty()) {
@@ -247,7 +313,11 @@ public class ChatOrchestrator implements DisposableBean {
                     .advisors(a -> applySafeGuardAdvisor(a))
                     .advisors(a -> applyClarificationAdvisor(a, req, false))
                     .advisors(a -> applyReflectionAdvisor(a))
-                    .advisors(a -> applyRagAdvisor(a, userId))
+                    .advisors(a -> {
+                        if (docContext == null) {
+                            applyRagAdvisor(a, userId);
+                        }
+                    })
                     .options(options.mutate())
                     .call();
             return Mono.fromCallable(() -> spec.chatResponse())
@@ -365,6 +435,7 @@ public class ChatOrchestrator implements DisposableBean {
                         effectiveResolved, request, options, new AtomicReference<>(), userId, intentResult);
             }
             ChatRequest req = ensureConversation(request);
+            DocumentChatContext docContext = resolveDocumentChatContext(req, req.conversationId(), userId);
             ChatClient client = effectiveResolved.chatClient();
             MessageChatMemoryAdvisor memoryAdvisor =
                     MessageChatMemoryAdvisor.builder(memory).build();
@@ -377,7 +448,7 @@ public class ChatOrchestrator implements DisposableBean {
 
             Many<ChatChunkDto> toolSink = agentPath ? toolEventEmitter.newSink() : null;
             ChatClientRequestSpec requestSpec = client.prompt()
-                    .system(sp -> sp.text(resolveSystemPrompt(req, intentResult)))
+                    .system(sp -> sp.text(resolveSystemPrompt(req, intentResult, docContext)))
                     .user(u -> {
                         u.text(req.message());
                         if (!mediaList.isEmpty()) {
@@ -390,7 +461,11 @@ public class ChatOrchestrator implements DisposableBean {
                     .advisors(a -> applySafeGuardAdvisor(a))
                     .advisors(a -> applyClarificationAdvisor(a, req, agentPath))
                     .advisors(a -> applyReflectionAdvisor(a))
-                    .advisors(a -> applyRagAdvisor(a, userId))
+                    .advisors(a -> {
+                        if (docContext == null) {
+                            applyRagAdvisor(a, userId);
+                        }
+                    })
                     .options(options.mutate());
             if (agentPath) {
                 ToolCallback[] agentTools = prepareAgentTools(req.conversationId());
@@ -423,6 +498,13 @@ public class ChatOrchestrator implements DisposableBean {
                                     false,
                                     intentResult.intent().name(),
                                     intentResult.label());
+                            if (docContext != null
+                                    && docContext.citations() != null
+                                    && !docContext.citations().isEmpty()) {
+                                return Flux.concat(
+                                        Flux.just(initChunk, ChatChunkDto.citations(docContext.citations())),
+                                        chunkFlux);
+                            }
                             return Flux.concat(Flux.just(initChunk), chunkFlux);
                         }
                         return chunkFlux;
@@ -485,12 +567,13 @@ public class ChatOrchestrator implements DisposableBean {
             String userId,
             IntentResult intentResult) {
         List<Media> mediaList = extractMedia(request);
+        DocumentChatContext docContext = resolveDocumentChatContext(request, request.conversationId(), userId);
         xyz.ppmblszdp.ai.context.ContextCompressor compressor =
                 contextCompressorProvider != null ? contextCompressorProvider.getIfAvailable() : null;
         xyz.ppmblszdp.ai.context.AssembleResult assembleResult = contextAssembler.assembleWithResult(
                 request.message(),
                 request.history(),
-                resolveSystemPrompt(request, intentResult),
+                resolveSystemPrompt(request, intentResult, docContext),
                 null,
                 primaryResolved.model().maxContextTokens(),
                 mediaList,
@@ -540,12 +623,13 @@ public class ChatOrchestrator implements DisposableBean {
             String userId,
             IntentResult intentResult) {
         List<Media> mediaList = extractMedia(request);
+        DocumentChatContext docContext = resolveDocumentChatContext(request, request.conversationId(), userId);
         xyz.ppmblszdp.ai.context.ContextCompressor compressor =
                 contextCompressorProvider != null ? contextCompressorProvider.getIfAvailable() : null;
         xyz.ppmblszdp.ai.context.AssembleResult assembleResult = contextAssembler.assembleWithResult(
                 request.message(),
                 request.history(),
-                resolveSystemPrompt(request, intentResult),
+                resolveSystemPrompt(request, intentResult, docContext),
                 null,
                 primaryResolved.model().maxContextTokens(),
                 mediaList,
@@ -584,6 +668,11 @@ public class ChatOrchestrator implements DisposableBean {
 
         List<ChatChunkDto> headerChunks = new ArrayList<>();
         headerChunks.add(initChunk);
+        if (docContext != null
+                && docContext.citations() != null
+                && !docContext.citations().isEmpty()) {
+            headerChunks.add(ChatChunkDto.citations(docContext.citations()));
+        }
         if (assembleResult.hasCompression()) {
             var meta = assembleResult.compressionMetadata();
             String snippet = meta.summarySnippet() != null
@@ -796,7 +885,45 @@ public class ChatOrchestrator implements DisposableBean {
         return visionService.extractMedia(request.media(), request.mediaUrls());
     }
 
+    private DocumentChatContext resolveDocumentChatContext(ChatRequest request, String conversationId, String userId) {
+        if (documentChatServiceProvider == null || request == null) return null;
+        DocumentChatService docChatService = documentChatServiceProvider.getIfAvailable();
+        if (docChatService == null) return null;
+
+        boolean shouldQuery = request.isDocumentChat();
+        if (!shouldQuery && conversationId != null && !conversationId.isBlank()) {
+            try {
+                var attached = docChatService.getSessionDocuments(conversationId, userId);
+                shouldQuery = (attached != null && !attached.isEmpty());
+            } catch (Exception ignored) {
+                // ignore
+            }
+        }
+
+        if (shouldQuery && conversationId != null && !conversationId.isBlank()) {
+            return docChatService.retrieveStrictContext(request.message(), conversationId, request.docIds(), userId, 6);
+        }
+        return null;
+    }
+
     private String resolveSystemPrompt(ChatRequest request, IntentResult intentResult) {
+        return resolveSystemPrompt(request, intentResult, null);
+    }
+
+    private String resolveSystemPrompt(ChatRequest request, IntentResult intentResult, DocumentChatContext docContext) {
+        if (docContext != null) {
+            DocumentChatService docChatService =
+                    documentChatServiceProvider != null ? documentChatServiceProvider.getIfAvailable() : null;
+            if (docChatService != null) {
+                String baseStrict = docChatService.buildStrictSystemPrompt(request.systemPrompt());
+                if (docContext.hasContext()) {
+                    return baseStrict + "\n\n【📄 会话专属文档上下文】:\n" + docContext.formattedContext();
+                } else {
+                    return baseStrict + "\n\n【📄 会话专属文档上下文】:\n(当前会话文档中未检索到与用户问题相关的任何事实依据。请严格按照【自动拒答机制】直接拒答，切勿编造。)";
+                }
+            }
+        }
+
         String base = (request.systemPrompt() != null && !request.systemPrompt().isBlank())
                 ? request.systemPrompt()
                 : contextAssembler.defaultSystemPrompt();

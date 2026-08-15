@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BookOpen,
   Bot,
   Check,
   Copy,
@@ -8,6 +9,8 @@ import {
   Loader2,
   Maximize2,
   RotateCcw,
+  ShieldAlert,
+  ShieldCheck,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
@@ -25,7 +28,7 @@ import {
   type ToolCallItem,
   useStreamData,
 } from "@/hooks/useSpringAiStream";
-import type { CompressionMetadata } from "@/lib/api";
+import type { CompressionMetadata, DocumentCitationItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { tts } from "@/lib/voice";
 import { CompressionMarker } from "./compression-marker";
@@ -70,6 +73,8 @@ export interface ChatMessage {
   taskPlan?: TaskPlanState | null;
   /** 智能上下文压缩元数据（若触发了历史消息摘要压缩） */
   compressionMetadata?: CompressionMetadata | null;
+  /** 文档对话精准引用列表（若开启了文档对话模式） */
+  citations?: DocumentCitationItem[];
 }
 
 interface MessageBubbleProps {
@@ -77,6 +82,7 @@ interface MessageBubbleProps {
   streaming?: boolean;
   conversationId?: string;
   onRegenerate?: () => void;
+  onCitationClick?: (citation: DocumentCitationItem) => void;
 }
 
 function MessageBubbleBase({
@@ -84,6 +90,7 @@ function MessageBubbleBase({
   streaming,
   conversationId,
   onRegenerate,
+  onCitationClick,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
@@ -329,14 +336,67 @@ function MessageBubbleBase({
                   {message.content}
                 </p>
               ) : message.content ? (
-                <ChatMessageErrorBoundary>
-                  <Markdown content={message.content} isStreaming={streaming} />
-                </ChatMessageErrorBoundary>
+                <div className="space-y-3">
+                  {/* 文档限定范围自动拒答提示条 */}
+                  {(message.content.includes("抱歉，根据当前提供的会话文档") ||
+                    message.content.includes("抱歉，在您挂载的文档中未找到") ||
+                    message.content.includes("未检索到相关内容")) && (
+                    <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-50/70 px-3 py-2 text-xs font-medium text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-300">
+                      <ShieldAlert className="size-4 text-amber-500 shrink-0" />
+                      <span>
+                        文档限定模式：由于挂载文档中未包含相关事实，已自动拦截文档外无关内容。
+                      </span>
+                    </div>
+                  )}
+                  <ChatMessageErrorBoundary>
+                    <Markdown
+                      content={message.content}
+                      isStreaming={streaming}
+                      onCitationClick={(citeId) => {
+                        const target = (message.citations || []).find(
+                          (c) => c.citationId === citeId,
+                        );
+                        if (target) {
+                          onCitationClick?.(target);
+                        } else if (message.citations?.[0]) {
+                          onCitationClick?.(message.citations[0]);
+                        }
+                      }}
+                    />
+                  </ChatMessageErrorBoundary>
+                </div>
               ) : streaming ? (
                 <BreathingCursor />
               ) : null}
             </div>
           )
+        )}
+
+        {/* 文档对话引用底栏 Panel */}
+        {!isUser && message.citations && message.citations.length > 0 && (
+          <div className="flex w-full flex-wrap items-center gap-1.5 rounded-xl border border-indigo-500/20 bg-indigo-50/40 p-2.5 dark:border-indigo-500/30 dark:bg-indigo-950/20">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 mr-1">
+              <ShieldCheck className="size-3.5 text-indigo-500" />
+              <span>引用依据 ({message.citations.length}):</span>
+            </div>
+            {message.citations.map((cite) => (
+              <button
+                key={cite.citationId}
+                type="button"
+                onClick={() => onCitationClick?.(cite)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200/80 bg-white/90 px-2 py-0.5 text-xs font-medium text-zinc-700 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 dark:border-indigo-900/60 dark:bg-zinc-900/90 dark:text-zinc-300 dark:hover:bg-indigo-950/50 dark:hover:text-indigo-300 transition-all shadow-2xs cursor-pointer"
+              >
+                <BookOpen className="size-3 text-indigo-500" />
+                <span>[{cite.citationId}]</span>
+                <span className="max-w-[120px] truncate">{cite.fileName}</span>
+                {cite.pageNumber && (
+                  <span className="font-mono text-[10px] text-zinc-400">
+                    p.{cite.pageNumber}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         )}
 
         {/* AI 消息底栏 Action Bar (Hover 显示) */}
@@ -451,12 +511,14 @@ interface LiveMessageBubbleProps {
   message: ChatMessage;
   streamStore: StreamStore;
   conversationId?: string;
+  onCitationClick?: (citation: DocumentCitationItem) => void;
 }
 
 export function LiveMessageBubble({
   message,
   streamStore,
   conversationId,
+  onCitationClick,
 }: LiveMessageBubbleProps) {
   const {
     content,
@@ -467,13 +529,22 @@ export function LiveMessageBubble({
     artifacts,
     taskPlan,
     contextCompression,
+    citations,
   } = useStreamData(streamStore);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll into view on streaming content update
   useEffect(() => {
     containerRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [content, thinking, toolCalls, artifacts, taskPlan, contextCompression]);
+  }, [
+    content,
+    thinking,
+    toolCalls,
+    artifacts,
+    taskPlan,
+    contextCompression,
+    citations,
+  ]);
 
   const liveMessage: ChatMessage = {
     ...message,
@@ -486,6 +557,8 @@ export function LiveMessageBubble({
     artifacts: Object.values(artifacts),
     taskPlan: taskPlan ?? message.taskPlan,
     compressionMetadata: contextCompression ?? message.compressionMetadata,
+    citations:
+      citations && citations.length > 0 ? citations : message.citations,
   };
 
   return (
@@ -494,6 +567,7 @@ export function LiveMessageBubble({
         message={liveMessage}
         streaming={true}
         conversationId={conversationId}
+        onCitationClick={onCitationClick}
       />
     </div>
   );

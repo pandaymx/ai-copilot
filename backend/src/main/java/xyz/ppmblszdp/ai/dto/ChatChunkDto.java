@@ -1,6 +1,8 @@
 package xyz.ppmblszdp.ai.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import java.util.List;
+import xyz.ppmblszdp.ai.rag.dto.DocumentCitationDto;
 
 /**
  * 结构化 SSE 传输帧 DTO。
@@ -17,6 +19,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *   <li>{@code tool_call}    - 工具调用意图（单帧快照）</li>
  *   <li>{@code tool_result}  - 工具调用结果（单帧快照）</li>
  *   <li>{@code artifact}     - 可渲染产物（html/svg 等，可流式）</li>
+ *   <li>{@code citations}    - 文档对话精准引用列表（单帧快照）</li>
  *   <li>{@code usage}        - Token 用量</li>
  *   <li>{@code error}        - 错误</li>
  *   <li>{@code done}         - 流结束</li>
@@ -43,6 +46,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * @param title          产物标题（可选，仅 artifact 类型有）
  * @param html           产物内容，status=streaming 时为增量片段，status=final 时为完整内容（仅 artifact 类型有）
  * @param status         产物状态：drafting | streaming | final（可选，仅 artifact 类型有）
+ * @param citations      精准引用列表（仅 citations 类型有）
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ChatChunkDto(
@@ -69,7 +73,63 @@ public record ChatChunkDto(
         String status,
         String mimeType,
         String intent,
-        String intentLabel) {
+        String intentLabel,
+        List<DocumentCitationDto> citations) {
+
+    /** 兼容 24 参数旧构造函数 */
+    public ChatChunkDto(
+            String type,
+            String conversationId,
+            String content,
+            String reasoning,
+            UsageDto usage,
+            String code,
+            String message,
+            String provider,
+            String model,
+            Boolean isFallback,
+            String toolName,
+            String toolCallId,
+            String arguments,
+            String result,
+            Boolean isError,
+            String artifactId,
+            String language,
+            String artifactType,
+            String title,
+            String html,
+            String status,
+            String mimeType,
+            String intent,
+            String intentLabel) {
+        this(
+                type,
+                conversationId,
+                content,
+                reasoning,
+                usage,
+                code,
+                message,
+                provider,
+                model,
+                isFallback,
+                toolName,
+                toolCallId,
+                arguments,
+                result,
+                isError,
+                artifactId,
+                language,
+                artifactType,
+                title,
+                html,
+                status,
+                mimeType,
+                intent,
+                intentLabel,
+                null);
+    }
+
     public ChatChunkDto(
             String type,
             String conversationId,
@@ -86,6 +146,7 @@ public record ChatChunkDto(
                 usage,
                 code,
                 message,
+                null,
                 null,
                 null,
                 null,
@@ -496,5 +557,37 @@ public record ChatChunkDto(
                 null,
                 null,
                 null);
+    }
+
+    /**
+     * 文档对话精准引用列表帧：推送 citations 列表。
+     */
+    public static ChatChunkDto citations(List<DocumentCitationDto> citations) {
+        return new ChatChunkDto(
+                "citations",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                citations);
     }
 }

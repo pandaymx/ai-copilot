@@ -35,7 +35,40 @@ public record ChatRequest(
         Boolean agentEnabled,
         List<String> mediaUrls,
         String clarificationMode,
-        Boolean reactEnabled) {
+        Boolean reactEnabled,
+        Boolean documentChatEnabled,
+        List<String> docIds) {
+
+    /** 兼容 12 参数构造函数 */
+    public ChatRequest(
+            String message,
+            List<ChatMessageDto> history,
+            String provider,
+            String model,
+            String systemPrompt,
+            String conversationId,
+            String userId,
+            List<MediaDto> media,
+            Boolean agentEnabled,
+            List<String> mediaUrls,
+            String clarificationMode,
+            Boolean reactEnabled) {
+        this(
+                message,
+                history,
+                provider,
+                model,
+                systemPrompt,
+                conversationId,
+                userId,
+                media,
+                agentEnabled,
+                mediaUrls,
+                clarificationMode,
+                reactEnabled,
+                false,
+                List.of());
+    }
 
     /** 兼容 11 参数构造函数 */
     public ChatRequest(
@@ -62,7 +95,9 @@ public record ChatRequest(
                 agentEnabled,
                 mediaUrls,
                 clarificationMode,
-                false);
+                false,
+                false,
+                List.of());
     }
 
     /** 兼容 10 参数构造函数 */
@@ -145,6 +180,14 @@ public record ChatRequest(
         return conversationId != null && !conversationId.isBlank();
     }
 
+    public List<String> docIds() {
+        return docIds == null ? List.of() : docIds;
+    }
+
+    public boolean isDocumentChat() {
+        return Boolean.TRUE.equals(documentChatEnabled) || !docIds().isEmpty();
+    }
+
     /** 返回一个带指定 conversationId 的副本（record 不可变，用于后端生成后回填）。 */
     public ChatRequest withConversationId(String id) {
         return new ChatRequest(
@@ -158,7 +201,10 @@ public record ChatRequest(
                 media,
                 agentEnabled,
                 mediaUrls,
-                clarificationMode);
+                clarificationMode,
+                reactEnabled,
+                documentChatEnabled,
+                docIds);
     }
 
     /**
