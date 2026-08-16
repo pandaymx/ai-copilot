@@ -27,6 +27,9 @@ public class UserIdentityFilter implements WebFilter {
     public static final String ATTR_HEADER_PRESENT = "userId.from.header";
     public static final String ATTR_HEADER_VALUE = "userId.header.value";
 
+    public static final String ATTR_USER_ROLE = "user.role";
+    public static final String ATTR_USER_NAME = "user.username";
+
     /**
      * 缺真实身份（无 X-User-Id 头且非 strict）时的默认身份。
      * 集中定义以确保入库（RagController.ingest）与检索（RagAdvisorConfig /search）口径一致。
@@ -34,13 +37,41 @@ public class UserIdentityFilter implements WebFilter {
     public static final String DEFAULT_USER_ID = "system";
 
     private final AuthProperties authProperties;
+    private final xyz.ppmblszdp.ai.security.JwtProvider jwtProvider;
 
     public UserIdentityFilter(AuthProperties authProperties) {
+        this(
+                authProperties,
+                new xyz.ppmblszdp.ai.security.JwtProvider(
+                        "default-secret-for-tests-only-must-be-long-enough-32bytes", 900, 604800));
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public UserIdentityFilter(AuthProperties authProperties, xyz.ppmblszdp.ai.security.JwtProvider jwtProvider) {
         this.authProperties = authProperties;
+        this.jwtProvider = jwtProvider != null
+                ? jwtProvider
+                : new xyz.ppmblszdp.ai.security.JwtProvider(
+                        "default-secret-for-tests-only-must-be-long-enough-32bytes", 900, 604800);
     }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
+        // 1. 优先从 Authorization: Bearer <token> 解析 JWT 令牌
+        String authHeader = exchange.getRequest().getHeaders().getFirst("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring(7).trim();
+            var claims = jwtProvider.validateAndParse(token);
+            if (claims != null) {
+                exchange.getAttributes().put(ATTR_HEADER_PRESENT, true);
+                exchange.getAttributes().put(ATTR_HEADER_VALUE, claims.userId());
+                exchange.getAttributes().put(ATTR_USER_ROLE, claims.role());
+                exchange.getAttributes().put(ATTR_USER_NAME, claims.username());
+                return chain.filter(exchange);
+            }
+        }
+
+        // 2. 回退到自定义 Header (如 X-User-Id)
         String val = exchange.getRequest().getHeaders().getFirst(authProperties.headerName());
         boolean present = val != null && !val.isBlank();
         exchange.getAttributes().put(ATTR_HEADER_PRESENT, present);

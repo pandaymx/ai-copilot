@@ -11,20 +11,27 @@ import {
   Edit2,
   GitFork,
   KeyRound,
+  LogIn,
+  LogOut,
   MessageSquare,
   PanelLeftClose,
   Plus,
   Search,
   Sparkles,
   Trash2,
-  User,
+  Users,
   Workflow,
   Wrench,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  clearAuthSession,
+  getStoredUser,
+  type UserProfile,
+} from "@/lib/auth-api";
 import { cn } from "@/lib/utils";
 import type { ChatMessage } from "./message-bubble";
 import { TokenBudgetBar } from "./token-budget-bar";
@@ -125,6 +132,11 @@ export function Sidebar({
 }: SidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    setCurrentUser(getStoredUser());
+  }, []);
 
   const groups = groupSessions(sessions);
 
@@ -475,25 +487,70 @@ export function Sidebar({
         </nav>
 
         {/* 底部：用户个人中心与系统状态 */}
-        <div className="border-t border-zinc-200/60 p-3 dark:border-zinc-800/60">
-          <div className="flex items-center justify-between rounded-xl bg-white/60 p-2 shadow-2xs backdrop-blur dark:bg-zinc-900/60">
-            <div className="flex items-center gap-2 min-w-0">
-              <Avatar size="sm" className="ring-2 ring-indigo-500/30">
-                <AvatarFallback className="bg-gradient-to-tr from-indigo-500 to-purple-600 text-white text-xs font-semibold">
-                  <User className="size-3.5" />
-                </AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-semibold text-zinc-800 dark:text-zinc-200">
-                  Developer Copilot
-                </p>
-                <div className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-                  <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>Spring AI 在线</span>
+        <div className="border-t border-zinc-200/60 p-3 dark:border-zinc-800/60 space-y-2">
+          {currentUser ? (
+            <div className="flex items-center justify-between rounded-xl bg-white/60 p-2 shadow-2xs backdrop-blur dark:bg-zinc-900/60 border border-zinc-200/50 dark:border-zinc-800/50">
+              <div className="flex items-center gap-2 min-w-0">
+                <Avatar size="sm" className="ring-2 ring-indigo-500/30">
+                  <AvatarFallback className="bg-gradient-to-tr from-indigo-500 to-purple-600 text-white text-xs font-semibold">
+                    {currentUser.username.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <p className="truncate text-xs font-semibold text-zinc-800 dark:text-zinc-200">
+                      {currentUser.username}
+                    </p>
+                    <span
+                      className={cn(
+                        "px-1.5 py-0.2 rounded text-[9px] font-bold uppercase",
+                        currentUser.role === "ADMIN"
+                          ? "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300"
+                          : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
+                      )}
+                    >
+                      {currentUser.role}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                    <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>已连接</span>
+                  </div>
                 </div>
               </div>
+
+              <div className="flex items-center gap-1">
+                {currentUser.role === "ADMIN" && (
+                  <Link
+                    href="/admin/users"
+                    className="p-1 rounded-lg text-zinc-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                    title="RBAC 用户管理"
+                  >
+                    <Users className="size-3.5" />
+                  </Link>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearAuthSession();
+                    setCurrentUser(null);
+                  }}
+                  className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                  title="退出登录"
+                >
+                  <LogOut className="size-3.5" />
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <Link
+              href="/login"
+              className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-xl bg-indigo-50/80 hover:bg-indigo-100/80 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 border border-indigo-200/60 dark:border-indigo-800/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 transition-colors shadow-2xs"
+            >
+              <LogIn className="size-3.5" />
+              <span>登录 / 注册统一身份</span>
+            </Link>
+          )}
         </div>
       </div>
     </aside>
