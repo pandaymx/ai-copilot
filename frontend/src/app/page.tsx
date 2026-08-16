@@ -1128,6 +1128,7 @@ export default function Home() {
         open={showExport}
         onClose={() => setShowExport(false)}
         messages={messages}
+        sessionId={activeId ?? "current-session"}
         title={
           sessions.find((s) => s.id === activeId)?.title ?? "AI-Copilot-对话"
         }
