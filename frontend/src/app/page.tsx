@@ -42,6 +42,10 @@ import {
 } from "@/components/chat/model-selector";
 import { MultiAgentModal } from "@/components/chat/multi-agent-modal";
 import { PersonaMarketModal } from "@/components/chat/persona-market-modal";
+import {
+  type PromptOptimizeResult,
+  PromptOptimizerCard,
+} from "@/components/chat/prompt-optimizer-card";
 import { RateLimitIndicator } from "@/components/chat/rate-limit-indicator";
 import { SearchDialog } from "@/components/chat/search-dialog";
 import { Sidebar } from "@/components/chat/sidebar";
@@ -98,6 +102,12 @@ export default function Home() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+
+  // Prompt 优化卡状态（无状态分析，仅本地展示）
+  const [optimizeResult, setOptimizeResult] =
+    useState<PromptOptimizeResult | null>(null);
+  const [optimizeLoading, setOptimizeLoading] = useState(false);
+  const [optimizeError, setOptimizeError] = useState<string | null>(null);
 
   // 原文引用抽屉状态
   const [citationDrawer, setCitationDrawer] = useState<{
@@ -315,6 +325,32 @@ export default function Home() {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
+    }
+  };
+
+  // 调用后端 /api/prompt/optimize，分析并优化当前输入框文本。
+  const handleOptimize = async () => {
+    const prompt = input.trim();
+    if (prompt.length < 3 || optimizeLoading) return;
+    setOptimizeLoading(true);
+    setOptimizeError(null);
+    setOptimizeResult(null);
+    try {
+      const resp = await fetch("/api/prompt/optimize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      if (!resp.ok) {
+        setOptimizeError(`服务返回 ${resp.status}`);
+        return;
+      }
+      const data = (await resp.json()) as PromptOptimizeResult;
+      setOptimizeResult(data);
+    } catch (err) {
+      setOptimizeError(err instanceof Error ? err.message : "网络异常");
+    } finally {
+      setOptimizeLoading(false);
     }
   };
 
@@ -859,6 +895,29 @@ export default function Home() {
                     <Paperclip className="size-4" />
                   </Button>
 
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => void handleOptimize()}
+                    disabled={
+                      optimizeLoading || input.trim().length < 3 || isStreaming
+                    }
+                    className={cn(
+                      "size-8 rounded-xl hover:bg-indigo-100 hover:text-indigo-600 dark:hover:bg-indigo-500/15 dark:hover:text-indigo-300",
+                      optimizeResult
+                        ? "text-indigo-500 dark:text-indigo-400"
+                        : "text-zinc-400",
+                    )}
+                    title={
+                      input.trim().length < 3
+                        ? "输入至少 3 个字符后即可优化"
+                        : "优化当前 Prompt"
+                    }
+                  >
+                    <Sparkles className="size-4" />
+                  </Button>
+
                   {isStreaming ? (
                     <Button
                       type="button"
@@ -899,6 +958,36 @@ export default function Home() {
                   )}
                 </div>
               </div>
+
+              {/* Prompt 优化卡：仅在已分析、加载中或出错时展示 */}
+              {(optimizeLoading || optimizeError || optimizeResult) &&
+                !isViewer && (
+                  <div className="px-1 pt-2">
+                    <PromptOptimizerCard
+                      result={optimizeResult}
+                      originalPrompt={input}
+                      loading={optimizeLoading}
+                      error={optimizeError}
+                      onApply={(optimized) => {
+                        setInput(optimized);
+                        setOptimizeResult(null);
+                        setOptimizeError(null);
+                        requestAnimationFrame(() => {
+                          textareaRef.current?.focus();
+                          const el = textareaRef.current;
+                          if (el) {
+                            el.selectionStart = el.selectionEnd =
+                              el.value.length;
+                          }
+                        });
+                      }}
+                      onClose={() => {
+                        setOptimizeResult(null);
+                        setOptimizeError(null);
+                      }}
+                    />
+                  </div>
+                )}
 
               {/* 输入框底部功能条 */}
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-100 px-1 pt-2 dark:border-zinc-800/60">
