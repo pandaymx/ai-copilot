@@ -1,96 +1,219 @@
-# AI-Copilot
+# 🤖 AI-Copilot
 
-AI-Copilot 是一个结合 Java (Spring AI) 与 TypeScript (Next.js) 的高性能 AI 助手平台。
+AI-Copilot 是一个面向个人与团队的全栈 AI 助手平台。它以 Spring AI 为后端能力层、
+Next.js 为交互界面，提供多模型对话、流式生成、知识库检索、长期记忆、工作流与模型评测。
 
-## 🚀 快速启动 (Quick Start)
+## ✨ 功能概览
 
-项目在根目录提供了免 Root 的极简编排工具，支持**本地混合开发**与**全 Docker 容器化部署**两种模式。
+- **多模型对话**：统一接入 DeepSeek、OpenAI、Google Gemini、Anthropic 和 Ollama；
+  也可通过 OpenAI / Anthropic 兼容协议扩展其他供应商。
+- **智能对话体验**：SSE 流式输出、会话管理、上下文继承与摘要、代码审查、翻译、
+  图片生成、语音输入与语音合成。
+- **知识库与 RAG**：上传或抓取多种文档，支持向量检索、全文混合检索、重排、文档对话、
+  知识图谱、嵌入健康检查和定时知识源同步。
+- **记忆与用量**：PostgreSQL/pgvector 长期记忆、Redis 热缓存与限流、用量统计和配额管理。
+- **AI 工作台**：自定义工具、MCP 客户端、Agent 工具调用、多 Agent 编排、可视化工作流、
+  模型对比与评测基准。
+- **生产运维**：Caddy TLS 网关与基础认证、Prometheus、Tempo、OpenTelemetry Collector 和
+  Grafana 仪表盘。
 
----
+## 🧰 技术栈
 
-### 模式一：本地混合开发模式 (宿主机原生运行 + 容器化基础设施)
+| 层级 | 技术 |
+| --- | --- |
+| 前端 | Next.js 16、React 19、TypeScript、Tailwind CSS 4、Base UI、Biome |
+| 后端 | Java 25、Spring Boot 4.1、Spring AI 2.0、WebFlux、Gradle |
+| 数据与基础设施 | PostgreSQL 18 + pgvector、Redis 8、Ollama、Docker Compose |
+| 可观测性 | Actuator、Prometheus、OpenTelemetry、Tempo、Grafana |
 
-基础设施 (PostgreSQL + Redis + Ollama) 运行在容器中，后端与前端在宿主机原生运行。
+## 🚀 快速开始
 
-#### 📋 宿主机前置依赖 (Prerequisites)
-- **Java (JDK 25)**: 后端基于 Spring Boot 4.1 + Java 25，需确保 `java` 在 `PATH` 中。
-  - *推荐使用 SDKMAN 安装*: `sdk install java 25-open`
-- **Bun (1.3.14)**: 前端推荐使用 Bun 包管理器。
-  - *安装方式*: `curl -fsSL https://bun.sh/install | bash`
-  - *PATH 声明*: 请确保 `~/.bun/bin` 已加入环境变量（`start.sh` 会自动检测并优先包含 `~/.bun/bin`）。
+### 1️⃣ 配置环境变量
+
+从示例创建本地配置，按使用的模型填写至少一个真实 API Key。不要提交 `.env`。
+
+```bash
+cp .env.example .env
+```
+
+如果本地以宿主机方式运行，请在 `.env` 添加下面两项。`dev` 模式允许本地请求使用请求体中的
+用户标识；生产环境必须保持 `strict` 并由可信网关注入 `X-User-Id`。
+
+```dotenv
+AUTH_MODE=dev
+DEEPSEEK_API_KEY=your_real_key
+```
+
+也可以不使用云端模型，改用 Ollama。首次启动基础设施后拉取默认模型：
+
+```bash
+docker compose exec ollama ollama pull llama3
+```
+
+> 默认供应商为 DeepSeek。若未配置其密钥，可在 `.env` 设置
+> `AI_DEFAULT_PROVIDER=ollama` 与 `AI_DEFAULT_MODEL=llama3`。
+
+### 2️⃣ 选择启动模式
+
+#### 💻 本地混合开发
+
+PostgreSQL、Redis 和 Ollama 在容器中运行；后端和前端在宿主机运行。
+
+前置要求：Docker Compose（或兼容的 Podman Compose）、JDK 25、Bun 1.3.14（Node/npm 可作为
+前端启动回退）。
 
 ```bash
 ./start.sh
-# 或使用 Task: task dev
+# 或 task dev
 ```
 
----
+启动后访问 <http://localhost:3000>，后端健康检查为
+<http://localhost:8084/actuator/health>。
 
-### 模式二：全 Docker 容器化部署 (零依赖/一键开箱即用)
+#### 🐳 全 Docker 部署
 
-前端、后端与基础设施全量打包为 Docker 镜像并在容器中独立运行。**镜像内已自动预置 JDK 25 与运行环境，宿主机无需安装任何 JDK 25 或 Bun/Node 工具链**：
+无需在宿主机安装 JDK 或 Bun。此命令会构建并启动 compose 中的所有服务，包括 Caddy 网关和
+监控栈；因此需先按下面的生产部署说明设置必填环境变量。
 
 ```bash
-./start.sh docker
-# 或使用 Task: task docker:up
-```
-
----
-
-### 🌐 生产部署 (Caddy 反向代理 + 自动 TLS)
-
-容器化部署之上，可叠加一个 **Caddy 网关容器**作为统一入口，提供生产级 HTTPS：
-
-- **自动 TLS**：Caddy 内置 ACME (Let's Encrypt) 客户端，自动签发证书并在到期前 ~30 天自动续期，**无需 certbot 容器**。
-- **反向代理**：`Caddy(443) → frontend(3000) → backend(8084)`，证书续期全程无人工干预。
-- **身份边界**：整站 `basic_auth`，认证通过后将受信任头 `X-User-Id` 注入上游，后端 (`app.auth.mode=strict`) 据此做多租户隔离。
-
-#### 前置条件
-1. 将 `CADDY_DOMAIN` 的 **A 记录指向本机公网 IP**。
-2. 服务器 **80/443 端口公网可达**（采用 HTTP 挑战，无需 Cloudflare Token）。
-
-#### 部署步骤
-```bash
-# 1. 准备环境变量（含 Caddy 域名与 basic_auth 哈希）
-cp .env.example .env
-# 生成 basic_auth 哈希并填入 .env 的 CADDY_BASIC_AUTH_HASH
-docker run --rm caddy:2-alpine caddy hash-password '你的密码'
-# 编辑 .env：设置 CADDY_DOMAIN 与 CADDY_BASIC_AUTH_HASH
-
-# 2. 启动全部服务（含 caddy 网关）
 ./start.sh docker
 # 或 task docker:up
 ```
 
-#### 说明
-- 证书与 ACME 状态持久化于 `caddy-data` 卷，容器重启不丢证书、不触发 Let's Encrypt 限频。
-- `frontend` / `backend` 仍保留 `127.0.0.1` 回环绑定，便于本地直连调试，与 Caddy 通过服务名访问互不冲突。
-- `Caddyfile` 已内置配置；如需通配/隐藏源站等高级场景，可改用 DNS 挑战（需补充对应 DNS 插件与环境变量）。
-
----
-
-### 🛠️ 实用指令集
+### 🛠️ 常用命令
 
 ```bash
-# 仅启动基础设施 (PostgreSQL + Redis + Ollama)
+# 仅启动 PostgreSQL、Redis 与 Ollama
 ./start.sh infra
-# 或 task infra
 
-# 检查所有服务与端口健康就绪状态
+# 查看 compose 服务及核心端口状态
 ./start.sh status
-# 或 task status
 
-# 停止并清理所有容器
+# 停止并删除 compose 容器（命名卷会保留）
 ./start.sh stop
-# 或 task stop
+
+# 前端开发、检查、构建与单元测试
+cd frontend
+bun dev
+bun run lint
+bun run build
+bun test
+
+# 后端启动、测试与格式检查
+cd backend
+./gradlew bootRun
+./gradlew test
+./gradlew spotlessCheck
 ```
 
----
+## 🌐 服务与端口
 
-## 🏗️ 项目架构
+所有容器端口（Caddy 除外）仅绑定到 `127.0.0.1`，避免直接暴露内部服务。
 
-- **`backend/`**: Java 25 + Spring Boot 4.1 + Spring AI 后端 (包含多阶段 `Dockerfile`)
-- **`frontend/`**: Next.js 16 + React 19 + TailwindCSS 前端 (包含 Standalone 极简 `Dockerfile`)
-- **`compose.yaml`**: 根目录全服务容器编排定义
-- **`start.sh`**: 根目录免 Root 自动化拉起与控制脚本 (包含环境预检与工具链 PATH 自动注入)
-- **`Taskfile.yml`**: Task 工具链任务定义
+| 服务 | 地址/端口 | 用途 |
+| --- | --- | --- |
+| Frontend | <http://localhost:3000> | Web UI 与后端 API 代理 |
+| Backend | <http://localhost:8084> | Spring Boot API；健康检查 `/actuator/health` |
+| PostgreSQL | `127.0.0.1:5432` | 会话、知识库、pgvector 记忆 |
+| Redis | `127.0.0.1:6379` | 限流、缓存和用量计数 |
+| Ollama | `127.0.0.1:11435` | 本地模型运行时 |
+| Grafana | <http://localhost:3100> | 指标与链路可视化 |
+| Prometheus | <http://localhost:9090> | 指标采集与查询 |
+| Tempo | `127.0.0.1:3200` | Trace 查询 API |
+
+## 🏗️ 架构
+
+```text
+Browser
+  │
+  ▼
+Next.js 16 (3000) ── API proxy / SSE ──► Spring Boot WebFlux (8084)
+                                            │
+             ┌──────────────────────────────┼──────────────────────────────┐
+             ▼                              ▼                              ▼
+   ProviderRegistry / Spring AI     PostgreSQL + pgvector                 Redis
+   DeepSeek · OpenAI · Gemini       chat memory · RAG · memory     cache · rate limit
+   Anthropic · Ollama · compatible
+                                            │
+                                            ▼
+                                  OTEL Collector → Tempo
+                                  Prometheus → Grafana
+```
+
+前端的 `/api/*` Route Handler 代理到后端，并保持 SSE 流、CORS 和按 IP 的滑动窗口限流。
+后端通过 `ProviderRegistry` 注册可用模型；未配置真实密钥的云端供应商会被跳过，默认供应商
+不可用时会回退到已注册的模型（例如 Ollama）。
+
+## ⚙️ 配置说明
+
+根目录 `.env.example` 列出了部署所需的变量，常用项如下：
+
+| 变量 | 说明 |
+| --- | --- |
+| `DEEPSEEK_API_KEY`、`OPENAI_API_KEY`、`GEMINI_API_KEY`、`ANTHROPIC_API_KEY` | 云模型密钥；占位值不会注册对应供应商 |
+| `AI_DEFAULT_PROVIDER`、`AI_DEFAULT_MODEL` | 未在请求中指定时使用的默认模型 |
+| `POSTGRES_*`、`OLLAMA_HOST_PORT` | 基础设施连接信息和 Ollama 对外端口 |
+| `AI_MEMORY_RATELIMIT_*` | 后端令牌桶限流开关、容量与窗口 |
+| `CORS_ALLOWED_ORIGINS` | 允许访问后端的 Origin 列表 |
+| `AUTH_MODE` | `dev` 仅用于本地开发；`strict` 为生产默认值 |
+| `CADDY_DOMAIN`、`CADDY_BASIC_AUTH_HASH` | Caddy HTTPS 网关和基础认证配置 |
+
+后端还支持在 `backend/.env` 配置更完整的模型、RAG、记忆和二等公民供应商参数；详细的多供应商
+配置示例见 [backend/README.md](backend/README.md)。
+
+## 🔐 生产部署
+
+生产部署使用 Caddy 作为唯一公网入口，自动申请/续期 TLS 证书，并在验证 Basic Auth 后把可信的
+`X-User-Id` 传给前端和后端，用于多租户数据隔离。
+
+1. 将域名的 A 记录指向服务器，并确保公网可访问 80 和 443 端口。
+2. 创建 `.env`，设置 `CADDY_DOMAIN` 和至少一个真实模型密钥。
+3. 生成密码哈希，并将输出写入 `CADDY_BASIC_AUTH_HASH`：
+
+   ```bash
+   docker run --rm caddy:2-alpine caddy hash-password 'your-password'
+   ```
+
+4. 设置 Grafana 管理员密码 `GRAFANA_ADMIN_PASSWORD`，然后启动：
+
+   ```bash
+   ./start.sh docker
+   ```
+
+`caddy-data` 命名卷保存证书和 ACME 状态。生产环境不要设置
+`PROXY_TRUST_X_USER_ID=true`，也不要将后端的 `AUTH_MODE` 改为 `dev`。
+
+## 📁 项目结构
+
+```text
+.
+├── backend/       Spring Boot、Spring AI、RAG、记忆、工具与 API
+├── frontend/      Next.js UI、API 代理、PWA 与 E2E/组件测试
+├── monitor/       Prometheus、Tempo、OpenTelemetry 和 Grafana 配置
+├── compose.yaml   全服务 Docker Compose 编排
+├── Caddyfile      HTTPS、Basic Auth 与反向代理配置
+├── start.sh       本地混合开发与 Docker 启动脚本
+└── Taskfile.yml   Task 快捷命令
+```
+
+## ✅ 质量检查
+
+提交前请运行与改动范围对应的检查：
+
+```bash
+(cd frontend && bun run lint && bun run build)
+(cd backend && ./gradlew spotlessCheck && ./gradlew test)
+```
+
+提交信息遵循 Conventional Commits，例如：
+
+```text
+docs(root): refresh project readme
+```
+
+## 📚 相关文档
+
+- [后端多模型供应商配置](backend/README.md)
+- [前端开发说明](frontend/README.md)
+- [SSE 协议](backend/docs/sse-protocol.md)
+- [安全扫描记录](docs/security-scan-findings.md)
