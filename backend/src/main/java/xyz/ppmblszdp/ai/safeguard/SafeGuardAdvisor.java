@@ -67,7 +67,7 @@ public class SafeGuardAdvisor implements CallAdvisor, StreamAdvisor {
         ActionPolicy reqPolicy = properties.getRequestPolicy();
 
         // 1. 前置 Request 检查
-        SafeGuardCheckResult reqCheck = engine.inspectRequest(userText, reqPolicy);
+        SafeGuardCheckResult reqCheck = engine.inspectRequest(userText, reqPolicy, properties.isSemanticEnabled());
         if (reqCheck.isTriggered()) {
             if (reqPolicy == ActionPolicy.BLOCK) {
                 log.warn(
@@ -115,7 +115,7 @@ public class SafeGuardAdvisor implements CallAdvisor, StreamAdvisor {
         ActionPolicy reqPolicy = properties.getRequestPolicy();
 
         // 1. 前置 Request 检查
-        SafeGuardCheckResult reqCheck = engine.inspectRequest(userText, reqPolicy);
+        SafeGuardCheckResult reqCheck = engine.inspectRequest(userText, reqPolicy, properties.isSemanticEnabled());
         ChatClientRequest finalRequest = request;
         if (reqCheck.isTriggered()) {
             if (reqPolicy == ActionPolicy.BLOCK) {

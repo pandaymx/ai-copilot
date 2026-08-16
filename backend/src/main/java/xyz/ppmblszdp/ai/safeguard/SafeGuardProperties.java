@@ -16,6 +16,11 @@ public class SafeGuardProperties {
     private boolean enabled = true;
 
     /**
+     * 是否开启语义级 Prompt 注入与越狱检测
+     */
+    private boolean semanticEnabled = false;
+
+    /**
      * 前置 Request 处置策略 (默认 BLOCK)
      */
     private ActionPolicy requestPolicy = ActionPolicy.BLOCK;
@@ -47,6 +52,14 @@ public class SafeGuardProperties {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public boolean isSemanticEnabled() {
+        return semanticEnabled;
+    }
+
+    public void setSemanticEnabled(boolean semanticEnabled) {
+        this.semanticEnabled = semanticEnabled;
     }
 
     public ActionPolicy getRequestPolicy() {

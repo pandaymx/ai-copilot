@@ -45,10 +45,22 @@ public class SafeGuardEngine {
 
     private final SensitiveWordMatcher sensitiveWordMatcher;
     private final String maskReplacement;
+    private final SemanticInjectionDetector semanticDetector;
+    private final OutputQualityGate outputQualityGate;
 
-    public SafeGuardEngine(SensitiveWordMatcher sensitiveWordMatcher, String maskReplacement) {
+    public SafeGuardEngine(
+            SensitiveWordMatcher sensitiveWordMatcher,
+            String maskReplacement,
+            SemanticInjectionDetector semanticDetector,
+            OutputQualityGate outputQualityGate) {
         this.sensitiveWordMatcher = sensitiveWordMatcher;
         this.maskReplacement = maskReplacement != null ? maskReplacement : "***";
+        this.semanticDetector = semanticDetector != null ? semanticDetector : new SemanticInjectionDetector();
+        this.outputQualityGate = outputQualityGate != null ? outputQualityGate : new OutputQualityGate();
+    }
+
+    public SafeGuardEngine(SensitiveWordMatcher sensitiveWordMatcher, String maskReplacement) {
+        this(sensitiveWordMatcher, maskReplacement, new SemanticInjectionDetector(), new OutputQualityGate());
     }
 
     public SafeGuardEngine(List<String> sensitiveWords, String maskReplacement) {
@@ -63,11 +75,18 @@ public class SafeGuardEngine {
      * @return 检查结果
      */
     public SafeGuardCheckResult inspectRequest(String text, ActionPolicy policy) {
+        return inspectRequest(text, policy, false);
+    }
+
+    /**
+     * 前置 Request 检查（支持语义级增强检测）
+     */
+    public SafeGuardCheckResult inspectRequest(String text, ActionPolicy policy, boolean semanticEnabled) {
         if (text == null || text.isBlank()) {
             return SafeGuardCheckResult.clean(text);
         }
 
-        // 1. Prompt 注入攻击检测
+        // 1. 正则 Prompt 注入攻击检测
         for (Pattern p : PROMPT_INJECTION_PATTERNS) {
             if (p.matcher(text).find()) {
                 log.warn("🚨 [SafeGuard-Request] 触发 Prompt 注入攻击拦截 Rule={}", p.pattern());
@@ -78,7 +97,19 @@ public class SafeGuardEngine {
             }
         }
 
-        // 2. 敏感词及隐私检测
+        // 2. 语义级 Prompt 越狱与高级攻击分类检测
+        if (semanticEnabled && semanticDetector != null) {
+            var verdict = semanticDetector.classify(text);
+            if (verdict.isInjected()) {
+                log.warn("🚨 [SafeGuard-Request] 语义级对抗攻击拦截: 类别={}, 详情={}", verdict.category(), verdict.explanation());
+                if (policy == ActionPolicy.BLOCK) {
+                    return SafeGuardCheckResult.triggered(
+                            SafeGuardCheckResult.TriggerType.PROMPT_INJECTION, "SEMANTIC_" + verdict.category(), text);
+                }
+            }
+        }
+
+        // 3. 敏感词及隐私检测
         return executeSanitization(text, policy, "Request");
     }
 
@@ -92,6 +123,18 @@ public class SafeGuardEngine {
     public SafeGuardCheckResult inspectResponse(String text, ActionPolicy policy) {
         if (text == null || text.isBlank()) {
             return SafeGuardCheckResult.clean(text);
+        }
+
+        // 1. 输出内容质量与毒性门控审查
+        if (outputQualityGate != null) {
+            var verdict = outputQualityGate.inspect(text);
+            if (!verdict.isSafe()) {
+                log.warn("🚨 [SafeGuard-Response] 触发输出质量门控拦截: 类别={}, 详情={}", verdict.riskCategory(), verdict.detail());
+                if (policy == ActionPolicy.BLOCK) {
+                    return SafeGuardCheckResult.triggered(
+                            SafeGuardCheckResult.TriggerType.SENSITIVE_WORD, "QUALITY_" + verdict.riskCategory(), text);
+                }
+            }
         }
 
         return executeSanitization(text, policy, "Response");

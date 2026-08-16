@@ -20,6 +20,7 @@ import {
   Plus,
   Search,
   Server,
+  ShieldAlert,
   Sparkles,
   Trash2,
   Users,
@@ -365,6 +366,17 @@ export function Sidebar({
               <Bookmark className="size-4 text-amber-500 transition-transform duration-200 group-hover:scale-110" />
               <span>我的收藏夹</span>
             </button>
+          </div>
+
+          {/* AI 红队安全对抗演练入口 */}
+          <div className="px-0.5 pt-0.5">
+            <Link
+              href="/settings/redteam"
+              className="group flex items-center gap-2 rounded-xl border border-zinc-200/70 bg-white/70 px-3 py-2.5 text-xs font-semibold text-zinc-700 shadow-xs transition-all duration-200 hover:border-rose-500/40 hover:bg-white hover:text-rose-600 hover:shadow-md hover:shadow-rose-500/10 dark:border-zinc-800/70 dark:bg-zinc-900/50 dark:text-zinc-200 dark:hover:border-rose-500/50 dark:hover:bg-zinc-900 dark:hover:text-rose-400"
+            >
+              <ShieldAlert className="size-4 text-rose-500 transition-transform duration-200 group-hover:scale-110" />
+              <span>红队安全对抗</span>
+            </Link>
           </div>
         </div>
 
