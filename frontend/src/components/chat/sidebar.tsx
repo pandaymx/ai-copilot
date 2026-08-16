@@ -2,6 +2,7 @@
 
 import {
   Award,
+  BarChart3,
   BookTemplate,
   Brain,
   Calendar,
@@ -337,6 +338,17 @@ export function Sidebar({
             >
               <Webhook className="size-4 text-purple-500 transition-transform duration-200 group-hover:scale-110" />
               <span>Webhook 订阅</span>
+            </Link>
+          </div>
+
+          {/* 对话洞察仪表盘入口 */}
+          <div className="px-0.5 pt-0.5">
+            <Link
+              href="/insights"
+              className="group flex items-center gap-2 rounded-xl border border-zinc-200/70 bg-white/70 px-3 py-2.5 text-xs font-semibold text-zinc-700 shadow-xs transition-all duration-200 hover:border-amber-500/40 hover:bg-white hover:text-amber-600 hover:shadow-md hover:shadow-amber-500/10 dark:border-zinc-800/70 dark:bg-zinc-900/50 dark:text-zinc-200 dark:hover:border-amber-500/50 dark:hover:bg-zinc-900 dark:hover:text-amber-400"
+            >
+              <BarChart3 className="size-4 text-amber-500 transition-transform duration-200 group-hover:scale-110" />
+              <span>对话洞察分析</span>
             </Link>
           </div>
         </div>
