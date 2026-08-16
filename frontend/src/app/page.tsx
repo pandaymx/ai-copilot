@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   BarChart2,
+  BookTemplate,
   Download,
   FileText,
   GitFork,
@@ -46,6 +47,7 @@ import {
   type PromptOptimizeResult,
   PromptOptimizerCard,
 } from "@/components/chat/prompt-optimizer-card";
+import { PromptTemplateDialog } from "@/components/chat/prompt-template-dialog";
 import { RateLimitIndicator } from "@/components/chat/rate-limit-indicator";
 import { SearchDialog } from "@/components/chat/search-dialog";
 import { Sidebar } from "@/components/chat/sidebar";
@@ -274,6 +276,10 @@ export default function Home() {
   // 多 Agent 协同研讨工作台弹窗状态
   const [multiAgentModalOpen, setMultiAgentModalOpen] = useState(false);
   const [multiAgentGoal, setMultiAgentGoal] = useState("");
+
+  // Prompt 模板选择弹窗状态
+  const [promptTemplateDialogOpen, setPromptTemplateDialogOpen] =
+    useState(false);
 
   // 将流式状态桥接进会话持久化 Hook：流式传输期间跳过 localStorage 全量写入，
   // 配合 useChatSession 内部的 500ms 防抖，避免每帧 SSE 更新阻塞主线程。
@@ -920,6 +926,17 @@ export default function Home() {
                     <Sparkles className="size-4" />
                   </Button>
 
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setPromptTemplateDialogOpen(true)}
+                    className="size-8 rounded-xl text-zinc-400 hover:bg-indigo-100 hover:text-indigo-600 dark:hover:bg-indigo-500/15 dark:hover:text-indigo-400"
+                    title="选择并插入 Prompt 模板 (模版库)"
+                  >
+                    <BookTemplate className="size-4" />
+                  </Button>
+
                   {isStreaming ? (
                     <Button
                       type="button"
@@ -1186,6 +1203,17 @@ export default function Home() {
               });
             }
           }
+        }}
+      />
+
+      {/* 📖 Prompt 模板选择与变量填充弹窗 */}
+      <PromptTemplateDialog
+        open={promptTemplateDialogOpen}
+        onClose={() => setPromptTemplateDialogOpen(false)}
+        onSelectPrompt={(renderedPrompt) => {
+          setInput(renderedPrompt);
+          textareaRef.current?.focus();
+          toast.success("已将 Prompt 模板插入到输入框！");
         }}
       />
     </div>
