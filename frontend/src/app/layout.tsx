@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import { Toaster } from "sonner";
 import "./globals.css";
+import { CommandPalette } from "@/components/command-palette";
 import { PwaRegister } from "@/components/pwa-register";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TokenBudgetProvider } from "@/context/token-budget-context";
@@ -81,6 +82,7 @@ export default async function RootLayout({
           >
             <TokenBudgetProvider>
               {children}
+              <CommandPalette />
               <PwaRegister />
               <Toaster position="top-right" richColors />
             </TokenBudgetProvider>
