@@ -13,6 +13,8 @@ import { createRoot } from "react-dom/client";
 import { KnowledgeGraphViewer } from "@/components/knowledge/knowledge-graph-viewer";
 import type * as api from "@/lib/api";
 
+const originalFetch = globalThis.fetch;
+
 describe("KnowledgeGraphViewer Component", () => {
   let container: HTMLDivElement;
   let root: ReturnType<typeof createRoot>;
@@ -100,6 +102,7 @@ describe("KnowledgeGraphViewer Component", () => {
   });
 
   afterEach(() => {
+    globalThis.fetch = originalFetch;
     act(() => {
       root.unmount();
     });

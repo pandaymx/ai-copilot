@@ -7,7 +7,7 @@ if (typeof document === "undefined") {
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import WorkflowsPage from "@/app/workflows/page";
@@ -18,10 +18,16 @@ import {
   type WorkflowEvent,
 } from "@/lib/workflow-api";
 
+const originalFetch = globalThis.fetch;
+
 describe("Workflow API Client Tests", () => {
   beforeEach(() => {
     // @ts-expect-error
     global.fetch = mock();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
   });
 
   it("should fetch workflows list", async () => {
@@ -76,6 +82,10 @@ describe("Workflow API Client Tests", () => {
 });
 
 describe("WorkflowsPage Component Tests", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
   it("should render workflow studio layout and nodes", async () => {
     const mockWorkflows: WorkflowDefinition[] = [
       {

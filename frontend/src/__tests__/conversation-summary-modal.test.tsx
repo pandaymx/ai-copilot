@@ -12,6 +12,8 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { ConversationSummaryModal } from "@/components/chat/conversation-summary-modal";
 
+const originalFetch = globalThis.fetch;
+
 const mockSummary = {
   conversationId: "sess-1",
   title: "React 19 Hooks 深度解析",
@@ -61,6 +63,7 @@ describe("ConversationSummaryModal", () => {
   });
 
   afterEach(() => {
+    globalThis.fetch = originalFetch;
     if (root) {
       act(() => {
         root?.unmount();

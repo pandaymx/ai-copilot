@@ -13,6 +13,8 @@ import { createRoot } from "react-dom/client";
 import { EmbeddingManagementView } from "@/components/knowledge/embedding-management-view";
 import type * as api from "@/lib/api";
 
+const originalFetch = globalThis.fetch;
+
 describe("EmbeddingManagementView Component", () => {
   let container: HTMLDivElement;
   let root: ReturnType<typeof createRoot>;
@@ -117,6 +119,7 @@ describe("EmbeddingManagementView Component", () => {
   });
 
   afterEach(() => {
+    globalThis.fetch = originalFetch;
     act(() => {
       root.unmount();
     });

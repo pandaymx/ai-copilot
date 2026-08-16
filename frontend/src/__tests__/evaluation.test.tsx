@@ -12,6 +12,8 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import EvaluationPage from "@/app/evaluation/page";
 
+const originalFetch = globalThis.fetch;
+
 const mockSummary = {
   totalEvaluations: 12,
   totalAbTests: 4,
@@ -86,6 +88,7 @@ describe("EvaluationPage", () => {
   });
 
   afterEach(() => {
+    globalThis.fetch = originalFetch;
     if (root) {
       act(() => {
         root?.unmount();
