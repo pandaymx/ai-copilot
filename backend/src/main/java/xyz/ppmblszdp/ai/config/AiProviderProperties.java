@@ -279,7 +279,41 @@ public record AiProviderProperties(
             @Name("max-worker-depth") @Nullable Integer maxWorkerDepth,
             @Name("code-sandbox") @Nullable CodeSandboxConfig codeSandbox,
             @Name("code-review") @Nullable CodeReviewConfig codeReview,
-            @Name("calendar-task-enabled") @Nullable Boolean calendarTaskEnabled) {
+            @Name("calendar-task-enabled") @Nullable Boolean calendarTaskEnabled,
+            @Name("web-search-enabled") @Nullable Boolean webSearchEnabled,
+            @Name("web-search") @Nullable WebSearchConfig webSearch) {
+
+        public AgentConfig(
+                @Nullable Boolean enabled,
+                @Nullable Integer maxToolCalls,
+                @Nullable Integer timeoutSeconds,
+                @Nullable Boolean augmentMcpTools,
+                @Nullable ToolSearchAdvisorPropertiesConfig toolSearchAdvisor,
+                @Nullable Boolean orchestratorEnabled,
+                @Nullable String workerProvider,
+                @Nullable String workerModel,
+                @Nullable Integer workerMaxTokens,
+                @Nullable Integer maxWorkerDepth,
+                @Nullable CodeSandboxConfig codeSandbox,
+                @Nullable CodeReviewConfig codeReview,
+                @Nullable Boolean calendarTaskEnabled) {
+            this(
+                    enabled,
+                    maxToolCalls,
+                    timeoutSeconds,
+                    augmentMcpTools,
+                    toolSearchAdvisor,
+                    orchestratorEnabled,
+                    workerProvider,
+                    workerModel,
+                    workerMaxTokens,
+                    maxWorkerDepth,
+                    codeSandbox,
+                    codeReview,
+                    calendarTaskEnabled,
+                    false,
+                    WebSearchConfig.defaults());
+        }
 
         public static AgentConfig defaults() {
             return new AgentConfig(
@@ -295,7 +329,9 @@ public record AiProviderProperties(
                     1,
                     CodeSandboxConfig.defaults(),
                     CodeReviewConfig.defaults(),
-                    false);
+                    false,
+                    false,
+                    WebSearchConfig.defaults());
         }
 
         /** 代码审查工具是否开启（默认 true）。 */
@@ -337,6 +373,15 @@ public record AiProviderProperties(
             return calendarTaskEnabled != null && calendarTaskEnabled;
         }
 
+        /** 网络搜索工具（WebSearchTool）是否开启，默认关闭。 */
+        public boolean isWebSearchEnabled() {
+            return webSearchEnabled != null && webSearchEnabled;
+        }
+
+        public WebSearchConfig resolveWebSearch() {
+            return webSearch != null ? webSearch : WebSearchConfig.defaults();
+        }
+
         /** Worker 使用的供应商；null 表示复用主模型供应商。 */
         @Nullable
         public String resolveWorkerProvider() {
@@ -369,6 +414,26 @@ public record AiProviderProperties(
 
         public boolean isEnabled() {
             return enabled == null || enabled;
+        }
+    }
+
+    /** 网络搜索工具配置（绑定 {@code app.ai.agent.web-search.*}）。 */
+    public record WebSearchConfig(
+            @Name("provider") @Nullable String provider,
+            @Name("api-key") @Nullable String apiKey,
+            @Name("base-url") @Nullable String baseUrl,
+            @Name("timeout-seconds") @Nullable Integer timeoutSeconds) {
+
+        public static WebSearchConfig defaults() {
+            return new WebSearchConfig("tavily", null, null, 15);
+        }
+
+        public String resolveProvider() {
+            return (provider != null && !provider.isBlank()) ? provider.trim().toLowerCase() : "tavily";
+        }
+
+        public int resolveTimeoutSeconds() {
+            return (timeoutSeconds != null && timeoutSeconds > 0) ? timeoutSeconds : 15;
         }
     }
 

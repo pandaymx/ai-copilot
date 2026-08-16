@@ -207,6 +207,14 @@ app:
       # calendar-task-enabled=true 时向 Agent 工具集注入 CalendarTool / TaskTool，
       # Agent 可直接创建/查询/修改/删除日历事件与任务（数据按 user_id 隔离）。
       calendar-task-enabled: ${CALENDAR_TASK_ENABLED:false}
+      # ---- Web 搜索工具 ----
+      # web-search-enabled=true 时向 Agent 工具集注入 WebSearchTool，
+      # Agent 可通过搜索引擎获取最新信息（支持 tavily / serpapi / bing 策略切换）。
+      web-search-enabled: ${WEB_SEARCH_ENABLED:false}
+      web-search:
+        provider: ${WEB_SEARCH_PROVIDER:tavily}
+        api-key: ${TAVILY_API_KEY:}
+        timeout-seconds: ${WEB_SEARCH_TIMEOUT:15}
 
     safeguard:
       enabled: ${SAFEGUARD_ENABLED:true}

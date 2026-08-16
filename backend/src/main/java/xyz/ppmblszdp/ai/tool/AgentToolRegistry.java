@@ -38,6 +38,7 @@ public class AgentToolRegistry {
             TranslationTool translationTool,
             CalendarTool calendarTool,
             TaskTool taskTool,
+            WebSearchTool webSearchTool,
             ObjectProvider<SubAgentTool> subAgentToolProvider,
             AiProviderProperties properties) {
 
@@ -61,6 +62,11 @@ public class AgentToolRegistry {
         if (properties.resolveAgent().isCalendarTaskEnabled()) {
             all.addAll(Arrays.asList(ToolCallbacks.from(calendarTool)));
             all.addAll(Arrays.asList(ToolCallbacks.from(taskTool)));
+        }
+
+        // Web 搜索工具：默认关闭，需 app.ai.agent.web-search-enabled=true 才注入
+        if (properties.resolveAgent().isWebSearchEnabled()) {
+            all.addAll(Arrays.asList(ToolCallbacks.from(webSearchTool)));
         }
 
         // 按 orchestratorEnabled 开关条件性注入子代理工具（分析/代码/摘要三个 @Tool）
