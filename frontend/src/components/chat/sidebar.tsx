@@ -17,6 +17,7 @@ import {
   PanelLeftClose,
   Plus,
   Search,
+  Server,
   Sparkles,
   Trash2,
   Users,
@@ -313,6 +314,17 @@ export function Sidebar({
             >
               <BookTemplate className="size-4 text-indigo-500 transition-transform duration-200 group-hover:scale-110" />
               <span>Prompt 模板库</span>
+            </Link>
+          </div>
+
+          {/* MCP Server 状态与接入入口 */}
+          <div className="px-0.5 pt-0.5">
+            <Link
+              href="/settings/mcp-server"
+              className="group flex items-center gap-2 rounded-xl border border-zinc-200/70 bg-white/70 px-3 py-2.5 text-xs font-semibold text-zinc-700 shadow-xs transition-all duration-200 hover:border-cyan-500/40 hover:bg-white hover:text-cyan-600 hover:shadow-md hover:shadow-cyan-500/10 dark:border-zinc-800/70 dark:bg-zinc-900/50 dark:text-zinc-200 dark:hover:border-cyan-500/50 dark:hover:bg-zinc-900 dark:hover:text-cyan-400"
+            >
+              <Server className="size-4 text-cyan-500 transition-transform duration-200 group-hover:scale-110" />
+              <span>MCP Server 接入</span>
             </Link>
           </div>
         </div>
