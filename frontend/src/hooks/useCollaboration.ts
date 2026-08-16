@@ -247,5 +247,6 @@ export function useCollaboration(): CollaborationState {
   return useSyncExternalStore(
     collaborationStore.subscribe,
     collaborationStore.getSnapshot,
+    collaborationStore.getSnapshot,
   );
 }
