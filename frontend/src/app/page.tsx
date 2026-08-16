@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { BranchNav } from "@/components/chat/branch-nav";
 import { CitationViewerDrawer } from "@/components/chat/citation-viewer-drawer";
 import { CollaborationIndicator } from "@/components/chat/collaboration-indicator";
 import { ContextInheritanceModal } from "@/components/chat/context-inheritance-modal";
@@ -281,6 +282,9 @@ export default function Home() {
   const [promptTemplateDialogOpen, setPromptTemplateDialogOpen] =
     useState(false);
 
+  // 对话当前活跃分支 ID
+  const [activeBranchId, setActiveBranchId] = useState("main");
+
   // 将流式状态桥接进会话持久化 Hook：流式传输期间跳过 localStorage 全量写入，
   // 配合 useChatSession 内部的 500ms 防抖，避免每帧 SSE 更新阻塞主线程。
   useEffect(() => {
@@ -439,6 +443,15 @@ export default function Home() {
               onCatalogChange={setCatalog}
               recommendation={recommendation}
             />
+
+            {/* 对话分支与版本树导航 */}
+            {activeId && (
+              <BranchNav
+                sessionId={activeId}
+                activeBranchId={activeBranchId}
+                onSelectBranch={setActiveBranchId}
+              />
+            )}
 
             {/* 🎭 智能体角色快速切换入口 */}
             <Button
@@ -703,6 +716,30 @@ export default function Home() {
                         citations: m.citations || [cite],
                         activeCitationId: cite.citationId,
                       })
+                    }
+                    onForkBranch={
+                      activeId
+                        ? async (msgId) => {
+                            try {
+                              const { createBranch } = await import(
+                                "@/lib/branch-api"
+                              );
+                              const newBr = await createBranch(
+                                activeId,
+                                msgId,
+                                `分叉探索 ${Date.now() % 10000}`,
+                              );
+                              toast.success(
+                                `已从当前消息派生新分支: ${newBr.branchLabel}`,
+                              );
+                              setActiveBranchId(newBr.branchId);
+                            } catch (e: unknown) {
+                              toast.error(
+                                e instanceof Error ? e.message : "派生分支失败",
+                              );
+                            }
+                          }
+                        : undefined
                     }
                   />
                 );

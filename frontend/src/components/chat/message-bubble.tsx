@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Copy,
   FileText,
+  GitFork,
   Languages,
   Loader2,
   Maximize2,
@@ -99,6 +100,7 @@ interface MessageBubbleProps {
   onEditAndResend?: (newText: string) => void;
   onOpenCompare?: (prompt: string) => void;
   onCitationClick?: (citation: DocumentCitationItem) => void;
+  onForkBranch?: (messageId: string) => void;
 }
 
 const SUPPORTED_LANGUAGES = [
@@ -126,6 +128,7 @@ function MessageBubbleBase({
   onEditAndResend,
   onOpenCompare,
   onCitationClick,
+  onForkBranch,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
@@ -898,6 +901,18 @@ function MessageBubbleBase({
               </button>
             )}
 
+            {/* 对话分支分叉快捷入口 */}
+            {onForkBranch && (
+              <button
+                type="button"
+                onClick={() => onForkBranch(message.id)}
+                className="flex size-7 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-indigo-600 dark:hover:bg-zinc-800 dark:hover:text-indigo-400 transition-colors cursor-pointer"
+                title="以此消息为节点开启新探索分支 (Fork Branch)"
+              >
+                <GitFork className="size-3.5" />
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => handleFeedback(liked === true ? null : true)}
@@ -959,7 +974,8 @@ export const MessageBubble = memo(
     prev.onRegenerate === next.onRegenerate &&
     prev.onRegenerateWithModel === next.onRegenerateWithModel &&
     prev.onEditAndResend === next.onEditAndResend &&
-    prev.onOpenCompare === next.onOpenCompare,
+    prev.onOpenCompare === next.onOpenCompare &&
+    prev.onForkBranch === next.onForkBranch,
 );
 
 interface LiveMessageBubbleProps {
