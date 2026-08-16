@@ -203,6 +203,10 @@ app:
       worker-model: ${WORKER_MODEL:}                # 空=复用主模型
       worker-max-tokens: ${WORKER_MAX_TOKENS:2048}  # Worker 单次最大输出 token
       max-worker-depth: ${MAX_WORKER_DEPTH:1}       # Worker 嵌套深度上限（严禁 Worker→Worker 递归）
+      # ---- 日历与任务工具 ----
+      # calendar-task-enabled=true 时向 Agent 工具集注入 CalendarTool / TaskTool，
+      # Agent 可直接创建/查询/修改/删除日历事件与任务（数据按 user_id 隔离）。
+      calendar-task-enabled: ${CALENDAR_TASK_ENABLED:false}
 
     safeguard:
       enabled: ${SAFEGUARD_ENABLED:true}

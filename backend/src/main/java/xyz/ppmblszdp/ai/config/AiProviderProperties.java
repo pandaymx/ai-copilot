@@ -278,7 +278,8 @@ public record AiProviderProperties(
             @Name("worker-max-tokens") @Nullable Integer workerMaxTokens,
             @Name("max-worker-depth") @Nullable Integer maxWorkerDepth,
             @Name("code-sandbox") @Nullable CodeSandboxConfig codeSandbox,
-            @Name("code-review") @Nullable CodeReviewConfig codeReview) {
+            @Name("code-review") @Nullable CodeReviewConfig codeReview,
+            @Name("calendar-task-enabled") @Nullable Boolean calendarTaskEnabled) {
 
         public static AgentConfig defaults() {
             return new AgentConfig(
@@ -293,7 +294,8 @@ public record AiProviderProperties(
                     2048,
                     1,
                     CodeSandboxConfig.defaults(),
-                    CodeReviewConfig.defaults());
+                    CodeReviewConfig.defaults(),
+                    false);
         }
 
         /** 代码审查工具是否开启（默认 true）。 */
@@ -328,6 +330,11 @@ public record AiProviderProperties(
         /** 调度者-工作者模式是否开启。 */
         public boolean isOrchestratorEnabled() {
             return orchestratorEnabled != null && orchestratorEnabled;
+        }
+
+        /** 日历与任务工具（CalendarTool / TaskTool）是否开启，默认关闭。 */
+        public boolean isCalendarTaskEnabled() {
+            return calendarTaskEnabled != null && calendarTaskEnabled;
         }
 
         /** Worker 使用的供应商；null 表示复用主模型供应商。 */

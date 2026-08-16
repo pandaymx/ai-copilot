@@ -15,9 +15,12 @@ import xyz.ppmblszdp.ai.config.AiProviderProperties;
  * Agent 工具注册表：将各 {@code @Tool} Bean 封装为 {@link ToolCallback} 数组，供 {@code ChatService}
  * 在 Agent 模式开启时注入 {@code ChatClient.tools(...)}。
  *
- * <p>当 {@code app.ai.agent.orchestrator-enabled=true} 时，额外将
- * {@link SubAgentTool}（三个子代理工具：分析 / 代码 / 摘要）注入工具集；
- * 默认关闭，不影响现有 Agent 路径。
+ * <p>部分工具按配置开关条件性注入，避免默认开启影响现有 Agent 路径：
+ * <ul>
+ *   <li>{@code app.ai.agent.calendar-task-enabled}：注入 {@link CalendarTool} / {@link TaskTool}（默认关闭）；</li>
+ *   <li>{@code app.ai.agent.orchestrator-enabled}：注入 {@link SubAgentTool}（默认关闭）；</li>
+ *   <li>code-sandbox / code-review 各自开关控制。</li>
+ * </ul>
  */
 @Configuration
 public class AgentToolRegistry {
@@ -33,6 +36,8 @@ public class AgentToolRegistry {
             CodeSearchTool codeSearchTool,
             CodeReviewTool codeReviewTool,
             TranslationTool translationTool,
+            CalendarTool calendarTool,
+            TaskTool taskTool,
             ObjectProvider<SubAgentTool> subAgentToolProvider,
             AiProviderProperties properties) {
 
@@ -50,6 +55,12 @@ public class AgentToolRegistry {
         all.addAll(Arrays.asList(ToolCallbacks.from(translationTool)));
         if (properties.resolveAgent().isCodeReviewEnabled()) {
             all.addAll(Arrays.asList(ToolCallbacks.from(codeReviewTool)));
+        }
+
+        // 日历与任务工具：默认关闭，需 app.ai.agent.calendar-task-enabled=true 才注入
+        if (properties.resolveAgent().isCalendarTaskEnabled()) {
+            all.addAll(Arrays.asList(ToolCallbacks.from(calendarTool)));
+            all.addAll(Arrays.asList(ToolCallbacks.from(taskTool)));
         }
 
         // 按 orchestratorEnabled 开关条件性注入子代理工具（分析/代码/摘要三个 @Tool）

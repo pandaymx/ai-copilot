@@ -6,23 +6,31 @@ import {
   AlertTriangle,
   BookOpen,
   Calculator,
+  Calendar,
+  CalendarDays,
   Check,
+  CheckSquare,
   ChevronDown,
   ChevronRight,
+  Clock,
   Code2,
   Copy,
   Download,
   ExternalLink,
   FileText,
+  Flag,
   Globe,
   ImageIcon,
   Lightbulb,
+  ListTodo,
   Loader2,
   Maximize2,
   Search,
   Server,
   ShieldCheck,
+  Tag,
   Terminal,
+  Users,
 } from "lucide-react";
 import { useState } from "react";
 import { PrismLight as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -762,6 +770,322 @@ export function DefaultToolRenderer({
 }
 
 // ----------------------------------------------------------------------
+// 日历事件 / 任务 工具辅助函数
+// ----------------------------------------------------------------------
+
+/** 将 ISO-8601 时间字符串（UTC）格式化为本地可读时间。 */
+function formatInstant(iso?: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+const TASK_STATUS_COLUMNS = ["TODO", "IN_PROGRESS", "DONE", "BLOCKED"] as const;
+const TASK_STATUS_LABEL: Record<string, string> = {
+  TODO: "待办",
+  IN_PROGRESS: "进行中",
+  DONE: "已完成",
+  BLOCKED: "受阻",
+};
+const PRIORITY_LABEL: Record<number, string> = {
+  1: "紧急",
+  2: "高",
+  3: "中",
+  4: "低",
+};
+const STATUS_STYLE: Record<string, string> = {
+  TODO: "border-zinc-700 text-zinc-300",
+  IN_PROGRESS: "border-amber-500/40 text-amber-300",
+  DONE: "border-emerald-500/40 text-emerald-300",
+  BLOCKED: "border-rose-500/40 text-rose-300",
+};
+
+// ----------------------------------------------------------------------
+// Calendar 渲染器 (calendar_tool)
+// ----------------------------------------------------------------------
+interface CalendarEventView {
+  id?: string;
+  title?: string;
+  description?: string;
+  start?: string;
+  end?: string;
+  allDay?: boolean;
+  reminderMinutes?: number;
+  attendees?: string[];
+  location?: string;
+}
+
+function CalendarRenderer({
+  argsJson,
+  resultJson,
+}: {
+  argsJson: string;
+  resultJson?: string;
+}) {
+  const res = safeParseJson<{
+    status?: string;
+    action?: string;
+    event?: CalendarEventView;
+    events?: CalendarEventView[];
+    count?: number;
+    ical?: string;
+    message?: string;
+  }>(resultJson);
+  const args = safeParseJson<{ action?: string }>(argsJson);
+  const action = res?.action || args?.action || "";
+  const isError = res?.status === "error";
+  const events = res?.events ?? (res?.event ? [res.event] : []);
+
+  return (
+    <div className="space-y-2 rounded-xl border border-sky-500/20 bg-gradient-to-br from-sky-950/20 via-cyan-950/15 to-blue-950/20 p-3.5 text-xs shadow-inner">
+      <div className="flex items-center justify-between border-b border-sky-500/20 pb-2">
+        <div className="flex items-center gap-2">
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-sky-500/20 text-sky-300">
+            <CalendarDays className="size-3.5" />
+          </span>
+          <span className="font-semibold text-sky-300 text-xs">日历事件</span>
+          {action ? (
+            <span className="rounded bg-sky-500/20 px-1.5 py-0.5 font-mono text-[9px] uppercase text-sky-300">
+              {action}
+            </span>
+          ) : null}
+        </div>
+        {res?.ical ? <CopyButton content={res.ical} label="复制 iCal" /> : null}
+      </div>
+
+      {isError ? (
+        <div className="rounded-lg border border-rose-500/30 bg-rose-950/30 px-3 py-2 text-rose-200">
+          {res?.message || "日历操作失败"}
+        </div>
+      ) : null}
+
+      {res?.ical ? (
+        <div className="rounded-lg bg-black/40 p-2">
+          <div className="mb-1 font-mono text-[10px] text-sky-400">
+            iCal 导出 (RFC 5545)
+          </div>
+          <pre className="max-h-44 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-sky-200">
+            {res.ical}
+          </pre>
+        </div>
+      ) : null}
+
+      {events.length > 0 ? (
+        <div className="space-y-1.5">
+          {events.map((ev, i) => (
+            <div
+              key={ev.id || `ev-${i}`}
+              className="rounded-lg border border-sky-500/15 bg-sky-950/25 px-2.5 py-1.5"
+            >
+              <div className="flex items-center gap-1.5 font-semibold text-sky-100">
+                <Calendar className="size-3 shrink-0 text-sky-400" />
+                <span className="truncate">{ev.title || "(无标题)"}</span>
+              </div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-zinc-400">
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="size-3" />
+                  {formatInstant(ev.start)}
+                  {ev.end ? ` → ${formatInstant(ev.end)}` : ""}
+                </span>
+                {ev.reminderMinutes ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Clock className="size-3" />
+                    提前 {ev.reminderMinutes} 分钟提醒
+                  </span>
+                ) : null}
+                {ev.location ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Server className="size-3" />
+                    {ev.location}
+                  </span>
+                ) : null}
+              </div>
+              {ev.attendees && ev.attendees.length > 0 ? (
+                <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-zinc-400">
+                  <Users className="size-3" />
+                  {ev.attendees.map((a) => (
+                    <span
+                      key={a}
+                      className="rounded bg-sky-500/15 px-1.5 py-0.5 text-sky-300"
+                    >
+                      {a}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              {ev.description ? (
+                <div className="mt-0.5 text-[10px] text-zinc-500">
+                  {ev.description}
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="text-right font-mono text-[9px] text-zinc-500">
+        操作结果快照
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// Task 渲染器 (task_tool) —— Kanban 风格看板
+// ----------------------------------------------------------------------
+interface TaskView {
+  id?: string;
+  title?: string;
+  description?: string;
+  status?: string;
+  priority?: number;
+  dueDate?: string;
+  tags?: string[];
+  assignee?: string;
+  dependencies?: string[];
+}
+
+function TaskBoardRenderer({
+  argsJson,
+  resultJson,
+}: {
+  argsJson: string;
+  resultJson?: string;
+}) {
+  const res = safeParseJson<{
+    status?: string;
+    action?: string;
+    task?: TaskView;
+    tasks?: TaskView[];
+    count?: number;
+    message?: string;
+  }>(resultJson);
+  const args = safeParseJson<{ action?: string }>(argsJson);
+  const action = res?.action || args?.action || "";
+  const isError = res?.status === "error";
+  const tasks = res?.tasks ?? (res?.task ? [res.task] : []);
+
+  return (
+    <div className="space-y-2 rounded-xl border border-violet-500/20 bg-gradient-to-br from-violet-950/20 via-purple-950/15 to-fuchsia-950/20 p-3.5 text-xs shadow-inner">
+      <div className="flex items-center justify-between border-b border-violet-500/20 pb-2">
+        <div className="flex items-center gap-2">
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-violet-500/20 text-violet-300">
+            <ListTodo className="size-3.5" />
+          </span>
+          <span className="font-semibold text-violet-300 text-xs">
+            任务看板
+          </span>
+          {action ? (
+            <span className="rounded bg-violet-500/20 px-1.5 py-0.5 font-mono text-[9px] uppercase text-violet-300">
+              {action}
+            </span>
+          ) : null}
+          {tasks.length > 0 ? (
+            <span className="font-mono text-[10px] text-zinc-400">
+              ({tasks.length})
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      {isError ? (
+        <div className="rounded-lg border border-rose-500/30 bg-rose-950/30 px-3 py-2 text-rose-200">
+          {res?.message || "任务操作失败"}
+        </div>
+      ) : null}
+
+      {tasks.length > 0 ? (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {TASK_STATUS_COLUMNS.map((col) => {
+            const colTasks = tasks.filter((t) => (t.status || "TODO") === col);
+            return (
+              <div
+                key={col}
+                className="flex flex-col gap-1.5 rounded-lg border border-white/5 bg-black/30 p-1.5"
+              >
+                <div
+                  className={cn(
+                    "flex items-center justify-between rounded px-1.5 py-0.5 text-[10px] font-semibold border bg-black/40",
+                    STATUS_STYLE[col] ?? "border-zinc-700 text-zinc-300",
+                  )}
+                >
+                  <span>{TASK_STATUS_LABEL[col] ?? col}</span>
+                  <span className="font-mono">{colTasks.length}</span>
+                </div>
+                {colTasks.map((t, i) => (
+                  <div
+                    key={t.id || `t-${col}-${i}`}
+                    className="rounded-md border border-white/10 bg-violet-950/30 px-2 py-1.5"
+                  >
+                    <div className="flex items-start gap-1 font-medium text-violet-100">
+                      <CheckSquare className="mt-0.5 size-3 shrink-0 text-violet-400" />
+                      <span className="leading-tight">
+                        {t.title || "(无标题)"}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1 text-[9px] text-zinc-400">
+                      <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/15 px-1 text-amber-300">
+                        <Flag className="size-2.5" />
+                        {PRIORITY_LABEL[t.priority ?? 3] ?? t.priority ?? 3}
+                      </span>
+                      {t.dueDate ? (
+                        <span className="inline-flex items-center gap-0.5 rounded bg-sky-500/15 px-1 text-sky-300">
+                          <Clock className="size-2.5" />
+                          {formatInstant(t.dueDate)}
+                        </span>
+                      ) : null}
+                      {t.assignee ? (
+                        <span className="inline-flex items-center gap-0.5 rounded bg-emerald-500/15 px-1 text-emerald-300">
+                          <Users className="size-2.5" />
+                          {t.assignee}
+                        </span>
+                      ) : null}
+                    </div>
+                    {t.tags && t.tags.length > 0 ? (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {t.tags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="inline-flex items-center gap-0.5 rounded bg-zinc-700/40 px-1 text-[9px] text-zinc-300"
+                          >
+                            <Tag className="size-2.5" />
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    {t.dependencies && t.dependencies.length > 0 ? (
+                      <div className="mt-1 text-[9px] text-zinc-500">
+                        依赖：{t.dependencies.length} 项
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+                {colTasks.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-white/5 px-2 py-2 text-center text-[9px] text-zinc-600">
+                    无
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      <div className="text-right font-mono text-[9px] text-zinc-500">
+        操作结果快照
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
 // Code Execution Sandbox Renderer
 // ----------------------------------------------------------------------
 interface CodeExecutionArgs {
@@ -1249,6 +1573,16 @@ export function ToolResultRenderer({
         resultJson={resultJson}
       />
     );
+  }
+
+  // 日历事件工具：以日历视图卡片渲染返回的快照数据
+  if (name === "calendar_tool" || name.includes("calendar")) {
+    return <CalendarRenderer argsJson={argsJson} resultJson={resultJson} />;
+  }
+
+  // 任务工具：以 Kanban 风格看板卡片渲染返回的快照数据
+  if (name === "task_tool" || name.includes("task_tool")) {
+    return <TaskBoardRenderer argsJson={argsJson} resultJson={resultJson} />;
   }
 
   return <DefaultToolRenderer resultJson={resultJson} />;
