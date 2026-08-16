@@ -14,7 +14,37 @@ import {
   describe,
   expect,
   it,
+  mock,
 } from "bun:test";
+
+mock.module("next/navigation", () => ({
+  useRouter: () => ({
+    push: () => {},
+    replace: () => {},
+    prefetch: () => {},
+  }),
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+mock.module("next/link", () => ({
+  default: ({
+    children,
+    href,
+    className,
+    onClick,
+  }: {
+    children: React.ReactNode;
+    href?: string;
+    className?: string;
+    onClick?: () => void;
+  }) => (
+    <a href={href} className={className} onClick={onClick}>
+      {children}
+    </a>
+  ),
+}));
+
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { type ChatSession, Sidebar } from "../components/chat/sidebar";

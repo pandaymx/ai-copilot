@@ -21,8 +21,8 @@ import {
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useTheme } from "next-themes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 import {
   type CommandContext,
