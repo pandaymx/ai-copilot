@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Bookmark,
   BookOpen,
   Bot,
   Check,
@@ -12,6 +13,7 @@ import {
   Loader2,
   Maximize2,
   Pencil,
+  Pin,
   RotateCcw,
   ShieldAlert,
   ShieldCheck,
@@ -43,6 +45,7 @@ import {
   type TranslateResponse,
   translateApi,
 } from "@/lib/api";
+import { toggleBookmark, togglePin } from "@/lib/bookmark-api";
 import { cn } from "@/lib/utils";
 import { tts } from "@/lib/voice";
 import { CompressionMarker } from "./compression-marker";
@@ -144,6 +147,32 @@ function MessageBubbleBase({
   const [speaking, setSpeaking] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const audioUrlRef = useRef<string | null>(null);
+
+  // 消息置顶与收藏状态
+  const [isPinned, setIsPinned] = useState(false);
+  const [isBookmarked, setIsBookmarked] = useState(false);
+
+  const handleTogglePin = async () => {
+    try {
+      const res = await togglePin(message.id, {
+        sessionId: conversationId || "default",
+        role: message.role,
+        content: message.content,
+      });
+      setIsPinned(res.pinned);
+    } catch {}
+  };
+
+  const handleToggleBookmark = async () => {
+    try {
+      const res = await toggleBookmark(message.id, {
+        sessionId: conversationId || "default",
+        role: message.role,
+        content: message.content,
+      });
+      setIsBookmarked(res.bookmarked);
+    } catch {}
+  };
 
   // 翻译功能状态
   const [translation, setTranslation] = useState<TranslateResponse | null>(
@@ -747,6 +776,34 @@ function MessageBubbleBase({
                 <Swords className="size-3" />
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={handleTogglePin}
+              className={cn(
+                "flex size-6 items-center justify-center rounded-lg transition-colors cursor-pointer",
+                isPinned
+                  ? "text-amber-600 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-400"
+                  : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200",
+              )}
+              title={isPinned ? "取消置顶固定" : "置顶固定到会话顶部"}
+            >
+              <Pin className="size-3" />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleToggleBookmark}
+              className={cn(
+                "flex size-6 items-center justify-center rounded-lg transition-colors cursor-pointer",
+                isBookmarked
+                  ? "text-amber-600 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-400"
+                  : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200",
+              )}
+              title={isBookmarked ? "取消收藏" : "收藏到我的收藏夹"}
+            >
+              <Bookmark className="size-3" />
+            </button>
           </div>
         )}
 
@@ -912,6 +969,36 @@ function MessageBubbleBase({
                 <GitFork className="size-3.5" />
               </button>
             )}
+
+            {/* 消息置顶 */}
+            <button
+              type="button"
+              onClick={handleTogglePin}
+              className={cn(
+                "flex size-7 items-center justify-center rounded-lg transition-colors cursor-pointer",
+                isPinned
+                  ? "text-amber-600 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-400"
+                  : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200",
+              )}
+              title={isPinned ? "取消置顶固定" : "置顶固定到会话顶部"}
+            >
+              <Pin className="size-3.5" />
+            </button>
+
+            {/* 消息收藏 */}
+            <button
+              type="button"
+              onClick={handleToggleBookmark}
+              className={cn(
+                "flex size-7 items-center justify-center rounded-lg transition-colors cursor-pointer",
+                isBookmarked
+                  ? "text-amber-600 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-400"
+                  : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200",
+              )}
+              title={isBookmarked ? "取消收藏" : "收藏到我的收藏夹"}
+            >
+              <Bookmark className="size-3.5" />
+            </button>
 
             <button
               type="button"

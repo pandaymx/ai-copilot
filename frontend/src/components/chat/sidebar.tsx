@@ -3,6 +3,7 @@
 import {
   Award,
   BarChart3,
+  Bookmark,
   BookTemplate,
   Brain,
   Calendar,
@@ -28,6 +29,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { BookmarksDrawer } from "@/components/chat/bookmarks-drawer";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -136,6 +138,7 @@ export function Sidebar({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [showBookmarksDrawer, setShowBookmarksDrawer] = useState(false);
 
   useEffect(() => {
     setCurrentUser(getStoredUser());
@@ -350,6 +353,18 @@ export function Sidebar({
               <BarChart3 className="size-4 text-amber-500 transition-transform duration-200 group-hover:scale-110" />
               <span>对话洞察分析</span>
             </Link>
+          </div>
+
+          {/* 我的收藏夹入口 */}
+          <div className="px-0.5 pt-0.5">
+            <button
+              type="button"
+              onClick={() => setShowBookmarksDrawer(true)}
+              className="group flex items-center gap-2 w-full text-left rounded-xl border border-zinc-200/70 bg-white/70 px-3 py-2.5 text-xs font-semibold text-zinc-700 shadow-xs transition-all duration-200 hover:border-amber-500/40 hover:bg-white hover:text-amber-600 hover:shadow-md hover:shadow-amber-500/10 dark:border-zinc-800/70 dark:bg-zinc-900/50 dark:text-zinc-200 dark:hover:border-amber-500/50 dark:hover:bg-zinc-900 dark:hover:text-amber-400"
+            >
+              <Bookmark className="size-4 text-amber-500 transition-transform duration-200 group-hover:scale-110" />
+              <span>我的收藏夹</span>
+            </button>
           </div>
         </div>
 
@@ -589,6 +604,11 @@ export function Sidebar({
           )}
         </div>
       </div>
+
+      <BookmarksDrawer
+        open={showBookmarksDrawer}
+        onClose={() => setShowBookmarksDrawer(false)}
+      />
     </aside>
   );
 }
