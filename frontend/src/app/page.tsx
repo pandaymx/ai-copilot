@@ -240,6 +240,7 @@ export default function Home() {
     isStreaming,
     stop,
     streamStore,
+    recommendation,
     error: streamError,
     handleSend,
     handleRegenerate,
@@ -430,6 +431,7 @@ export default function Home() {
               value={model}
               onChange={setModel}
               onCatalogChange={setCatalog}
+              recommendation={recommendation}
             />
 
             {/* 🎭 智能体角色快速切换入口 */}

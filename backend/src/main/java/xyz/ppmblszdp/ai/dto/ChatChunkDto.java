@@ -799,4 +799,39 @@ public record ChatChunkDto(
         return metrics(
                 new StreamMetricsDto(timeToFirstToken, tokensPerSecond, totalDuration, toolCallDuration, isEstimated));
     }
+
+    /**
+     * 智能模型推荐帧（单帧快照，通常在会话建立后下发推荐模型信息）。
+     */
+    public static ChatChunkDto recommendation(ModelRecommendationDto recommendation) {
+        return new ChatChunkDto(
+                "recommendation",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                recommendation);
+    }
 }

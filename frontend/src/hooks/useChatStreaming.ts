@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { KeyedMutator } from "swr";
 import type {
@@ -10,7 +10,11 @@ import type {
 import type { SelectedModel } from "@/components/chat/model-selector";
 import type { ChatSession } from "@/components/chat/sidebar";
 import { useTokenBudget } from "@/context/token-budget-context";
-import { type StreamStore, useSpringAiStream } from "@/hooks/useSpringAiStream";
+import {
+  type ModelRecommendation,
+  type StreamStore,
+  useSpringAiStream,
+} from "@/hooks/useSpringAiStream";
 import type { DocChatDocItem } from "@/lib/api";
 import { renameSessionApi } from "@/lib/api";
 import { fetchTitle } from "@/lib/title";
@@ -51,6 +55,8 @@ export interface UseChatStreamingResult {
   error: Error | null;
   stop: () => void;
   streamStore: StreamStore;
+  recommendation: ModelRecommendation | null;
+  setRecommendation: (rec: ModelRecommendation | null) => void;
   handleSend: (
     textOverride?: string,
     modelOverride?: { provider: string; model: string },
@@ -86,11 +92,16 @@ export function useChatStreaming({
   const liveIdRef = useRef<string | null>(null);
   const liveUserTextRef = useRef<string>("");
   const { updateFromSseUsage } = useTokenBudget();
+  const [recommendation, setRecommendation] =
+    useState<ModelRecommendation | null>(null);
 
   const { loading, error, send, stop, streamStore } = useSpringAiStream({
     endpoint: "/api/chat/stream",
     onUsage: (u) => {
       updateFromSseUsage(u);
+    },
+    onRecommendation: (rec) => {
+      setRecommendation(rec);
     },
     onConversationId: (serverConvId) => {
       if (!serverConvId) return;
@@ -395,6 +406,8 @@ export function useChatStreaming({
     error,
     stop,
     streamStore,
+    recommendation,
+    setRecommendation,
     handleSend,
     handleRegenerate,
     handleEditAndResend,

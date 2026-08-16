@@ -260,5 +260,49 @@ describe("ModelSelector Component Tests - components/chat/model-selector.tsx", (
 
       unmount();
     });
+
+    it("should render recommendation alert and support one-click switch", () => {
+      let newSelected: SelectedModel | null = null;
+      const selected: SelectedModel = {
+        provider: "openai",
+        model: "gpt-4o",
+      };
+      const rec = {
+        providerId: "deepseek",
+        modelId: "deepseek-chat",
+        displayName: "DeepSeek Chat",
+        reason: "高性价比通用对话",
+        estimatedCostRmb: 0.003,
+      };
+
+      const { container, unmount } = renderComponent(
+        <ModelSelector
+          value={selected}
+          onChange={(val) => {
+            newSelected = val;
+          }}
+          recommendation={rec}
+        />,
+      );
+
+      expect(container.textContent).toContain("推荐模型: DeepSeek Chat");
+      expect(container.textContent).toContain("高性价比通用对话");
+
+      const switchBtn = Array.from(container.querySelectorAll("button")).find(
+        (b) => b.textContent === "一键切换",
+      ) as HTMLButtonElement;
+      expect(switchBtn).toBeDefined();
+
+      act(() => {
+        switchBtn.click();
+      });
+
+      expect(newSelected!).toEqual({
+        provider: "deepseek",
+        model: "deepseek-chat",
+      });
+
+      unmount();
+    });
   });
 });

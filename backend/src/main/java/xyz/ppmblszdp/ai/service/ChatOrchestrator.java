@@ -117,6 +117,13 @@ public class ChatOrchestrator implements DisposableBean {
     @Autowired
     private CollaborationBus collabBus;
 
+    @Autowired(required = false)
+    private xyz.ppmblszdp.ai.recommendation.ModelRecommender modelRecommender;
+
+    public void setModelRecommender(xyz.ppmblszdp.ai.recommendation.ModelRecommender modelRecommender) {
+        this.modelRecommender = modelRecommender;
+    }
+
     @Autowired
     public ChatOrchestrator(
             ProviderRegistry registry,
@@ -676,14 +683,19 @@ public class ChatOrchestrator implements DisposableBean {
                                     intentResult != null ? intentResult.intent().name() : null,
                                     intentResult != null ? intentResult.label() : null,
                                     buildInteractionDto(interactionAnalysis));
+                            List<ChatChunkDto> headChunks = new ArrayList<>();
+                            headChunks.add(initChunk);
+                            ChatChunkDto.ModelRecommendationDto recDto =
+                                    computeRecommendation(intentResult, effectiveResolved, req.message());
+                            if (recDto != null) {
+                                headChunks.add(ChatChunkDto.recommendation(recDto));
+                            }
                             if (docContext != null
                                     && docContext.citations() != null
                                     && !docContext.citations().isEmpty()) {
-                                return Flux.concat(
-                                        Flux.just(initChunk, ChatChunkDto.citations(docContext.citations())),
-                                        chunkFlux);
+                                headChunks.add(ChatChunkDto.citations(docContext.citations()));
                             }
-                            return Flux.concat(Flux.just(initChunk), chunkFlux);
+                            return Flux.concat(Flux.fromIterable(headChunks), chunkFlux);
                         }
                         return chunkFlux;
                     })
@@ -910,6 +922,11 @@ public class ChatOrchestrator implements DisposableBean {
 
         List<ChatChunkDto> headerChunks = new ArrayList<>();
         headerChunks.add(initChunk);
+        ChatChunkDto.ModelRecommendationDto recDto =
+                computeRecommendation(intentResult, primaryResolved, request.message());
+        if (recDto != null) {
+            headerChunks.add(ChatChunkDto.recommendation(recDto));
+        }
         if (docContext != null
                 && docContext.citations() != null
                 && !docContext.citations().isEmpty()) {
@@ -1423,5 +1440,22 @@ public class ChatOrchestrator implements DisposableBean {
             log.info("客户端取消 ReAct 连接 (convId={})", req.conversationId());
             isAborted.set(true);
         });
+    }
+
+    private ChatChunkDto.ModelRecommendationDto computeRecommendation(
+            IntentResult intentResult, xyz.ppmblszdp.ai.registry.ResolvedModel resolved, String userMessage) {
+        if (modelRecommender == null || intentResult == null) {
+            return null;
+        }
+        try {
+            var rec = modelRecommender.recommend(intentResult.intent(), resolved, userMessage);
+            if (rec != null) {
+                return new ChatChunkDto.ModelRecommendationDto(
+                        rec.providerId(), rec.modelId(), rec.displayName(), rec.reason(), rec.estimatedCostRmb());
+            }
+        } catch (Exception e) {
+            log.debug("计算模型推荐异常（已降级忽略）: {}", e.getMessage());
+        }
+        return null;
     }
 }

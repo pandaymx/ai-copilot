@@ -61,6 +61,14 @@ export interface InteractionMetadata {
   strategies?: string[];
 }
 
+export interface ModelRecommendation {
+  providerId: string;
+  modelId: string;
+  displayName?: string;
+  reason?: string;
+  estimatedCostRmb?: number;
+}
+
 export interface UseSpringAiStreamOptions {
   /** 后端流式接口地址，默认复用 Spring AI 的 SSE 端点。 */
   endpoint?: string;
@@ -103,6 +111,8 @@ export interface UseSpringAiStreamOptions {
   onContextCompression?: (metadata: CompressionMetadata) => void;
   /** 收到文档对话精准引用时的回调 */
   onCitations?: (citations: DocumentCitationItem[]) => void;
+  /** 收到智能模型推荐时的回调 */
+  onRecommendation?: (recommendation: ModelRecommendation) => void;
   /** 流完整结束后回调（成功完成或异常均触发），参数为最终累计文本、思考过程、Token 用量与流式指标。 */
   onFinish?: (
     finalContent: string,
@@ -200,6 +210,8 @@ export interface StreamData {
   contextCompression?: CompressionMetadata | null;
   /** 文档对话精准引用列表（若开启了文档对话模式）。 */
   citations?: DocumentCitationItem[];
+  /** 智能模型推荐元数据（若后端基于意图推荐了更优模型）。 */
+  recommendation?: ModelRecommendation | null;
 }
 
 export class StreamStore {
@@ -214,6 +226,7 @@ export class StreamStore {
     taskPlan: null,
     contextCompression: null,
     citations: [],
+    recommendation: null,
   };
   private listeners = new Set<() => void>();
 
@@ -345,6 +358,14 @@ export class StreamStore {
     }
   }
 
+  /** 更新智能模型推荐 */
+  updateRecommendation(recommendation: ModelRecommendation) {
+    this.data = { ...this.data, recommendation };
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+
   reset() {
     this.data = {
       content: "",
@@ -356,6 +377,7 @@ export class StreamStore {
       taskPlan: null,
       contextCompression: null,
       citations: [],
+      recommendation: null,
     };
     for (const listener of this.listeners) {
       listener();
@@ -436,6 +458,7 @@ export function useSpringAiStream(
     onToolResult,
     onContextCompression,
     onCitations,
+    onRecommendation,
     onFinish,
   } = options;
 
@@ -454,6 +477,7 @@ export function useSpringAiStream(
   const onToolResultRef = useRef(onToolResult);
   const onContextCompressionRef = useRef(onContextCompression);
   const onCitationsRef = useRef(onCitations);
+  const onRecommendationRef = useRef(onRecommendation);
   const onFinishRef = useRef(onFinish);
   useEffect(() => {
     onConversationIdRef.current = onConversationId;
@@ -469,6 +493,7 @@ export function useSpringAiStream(
     onToolResultRef.current = onToolResult;
     onContextCompressionRef.current = onContextCompression;
     onCitationsRef.current = onCitations;
+    onRecommendationRef.current = onRecommendation;
     onFinishRef.current = onFinish;
   }, [
     onConversationId,
@@ -484,6 +509,7 @@ export function useSpringAiStream(
     onToolResult,
     onContextCompression,
     onCitations,
+    onRecommendation,
     onFinish,
   ]);
 
@@ -700,6 +726,18 @@ export function useSpringAiStream(
                     streamStoreRef.current.updateContextCompression(meta);
                     onContextCompressionRef.current?.(meta);
                   } catch {}
+                  return;
+                }
+                if (
+                  parsed?.type === "recommendation" ||
+                  parsed?.recommendation
+                ) {
+                  const rec: ModelRecommendation =
+                    parsed.recommendation ?? parsed;
+                  if (rec?.modelId && rec?.providerId) {
+                    streamStoreRef.current.updateRecommendation(rec);
+                    onRecommendationRef.current?.(rec);
+                  }
                   return;
                 }
                 // 业务级错误帧：统一置位 error，渲染错误卡片并终止后续增量处理。

@@ -73,11 +73,20 @@ export interface SelectedModel {
   model: string;
 }
 
+export interface ModelRecommendationInfo {
+  providerId: string;
+  modelId: string;
+  displayName?: string;
+  reason?: string;
+  estimatedCostRmb?: number;
+}
+
 interface ModelSelectorProps {
   value: SelectedModel;
   onChange: (selected: SelectedModel) => void;
   providers?: BackendProviderEntry[];
   onCatalogChange?: (catalog: BackendProviderEntry[]) => void;
+  recommendation?: ModelRecommendationInfo | null;
 }
 
 const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
@@ -238,6 +247,7 @@ export function ModelSelector({
   value,
   onChange,
   providers: initialProviders,
+  recommendation,
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const [catalog, setCatalog] = useState<BackendProviderEntry[]>(
@@ -423,6 +433,38 @@ export function ModelSelector({
           </span>
         </div>
       )}
+
+      {/* 智能意图推荐气泡与快捷切换 */}
+      {recommendation &&
+        (recommendation.providerId !== value.provider ||
+          recommendation.modelId !== value.model) && (
+          <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs text-violet-700 dark:bg-violet-950/40 dark:text-violet-300 shadow-2xs backdrop-blur-md">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Sparkles className="size-3.5 shrink-0 text-violet-500 animate-pulse" />
+              <span className="truncate">
+                推荐模型:{" "}
+                <strong className="font-semibold text-violet-900 dark:text-violet-100">
+                  {recommendation.displayName || recommendation.modelId}
+                </strong>
+                {recommendation.reason && ` · ${recommendation.reason}`}
+                {recommendation.estimatedCostRmb !== undefined &&
+                  ` (预估 ¥${recommendation.estimatedCostRmb}/次)`}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                onChange({
+                  provider: recommendation.providerId,
+                  model: recommendation.modelId,
+                })
+              }
+              className="shrink-0 rounded-lg bg-violet-600 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-violet-500 transition-colors cursor-pointer"
+            >
+              一键切换
+            </button>
+          </div>
+        )}
 
       {/* 选择器触发展开按钮 */}
       <button
@@ -629,6 +671,23 @@ export function ModelSelector({
                               <span>在线</span>
                             </span>
                           )}
+
+                          {/* AI 智能推荐指示 */}
+                          {recommendation?.providerId ===
+                            activeProviderObj.id &&
+                            recommendation?.modelId === m.id && (
+                              <span
+                                className="flex items-center gap-1 rounded-md bg-violet-500/15 border border-violet-500/30 text-violet-600 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold"
+                                title={
+                                  recommendation.reason
+                                    ? `推荐理由: ${recommendation.reason}`
+                                    : "意图匹配推荐"
+                                }
+                              >
+                                <Sparkles className="size-2.5 text-violet-500" />
+                                <span>AI 推荐</span>
+                              </span>
+                            )}
 
                           {m.badge && (
                             <span className="rounded-md bg-indigo-500/10 dark:bg-indigo-400/15 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600 dark:text-indigo-400">
