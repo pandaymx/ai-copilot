@@ -18,6 +18,11 @@ spring:
     username: ${POSTGRES_USER:ai}
     password: ${POSTGRES_PASSWORD:ai}
     driver-class-name: org.postgresql.Driver
+    readonly:
+      url: ${POSTGRES_READONLY_URL:}
+      username: ${POSTGRES_READONLY_USER:}
+      password: ${POSTGRES_READONLY_PASSWORD:}
+      driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: ${HIKARI_MAXIMUM_POOL_SIZE:20}
       minimum-idle: ${HIKARI_MINIMUM_IDLE:5}
@@ -215,6 +220,13 @@ app:
         provider: ${WEB_SEARCH_PROVIDER:tavily}
         api-key: ${TAVILY_API_KEY:}
         timeout-seconds: ${WEB_SEARCH_TIMEOUT:15}
+      # ---- 数据库只读查询工具 ----
+      # db-query-enabled=true 时向 Agent 工具集注入 DatabaseQueryTool，
+      # Agent 支持 NL→SQL 自动转译与安全只读查询。
+      db-query-enabled: ${DB_QUERY_ENABLED:false}
+      db-query:
+        max-rows: ${DB_QUERY_MAX_ROWS:200}
+        timeout-seconds: ${DB_QUERY_TIMEOUT:15}
 
     safeguard:
       enabled: ${SAFEGUARD_ENABLED:true}

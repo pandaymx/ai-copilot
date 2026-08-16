@@ -4,6 +4,7 @@ import katex from "katex";
 import {
   AlertCircle,
   AlertTriangle,
+  BarChart3,
   BookOpen,
   Calculator,
   Calendar,
@@ -15,6 +16,7 @@ import {
   Clock,
   Code2,
   Copy,
+  Database,
   Download,
   ExternalLink,
   FileText,
@@ -28,6 +30,7 @@ import {
   Search,
   Server,
   ShieldCheck,
+  Table,
   Tag,
   Terminal,
   Users,
@@ -1461,6 +1464,326 @@ export function CodeExecutionRenderer({
 }
 
 // ----------------------------------------------------------------------
+// 8. 数据库查询结果渲染器 (DatabaseQueryTool / db_query)
+// ----------------------------------------------------------------------
+export function DbQueryRenderer({
+  argsJson,
+  resultJson,
+}: {
+  argsJson: string;
+  resultJson?: string;
+}) {
+  const args = safeParseJson<{
+    question?: string;
+    sql?: string;
+    maxRows?: number;
+  }>(argsJson);
+
+  const result = safeParseJson<{
+    success: boolean;
+    sql?: string;
+    columns?: string[];
+    rows?: Record<string, unknown>[];
+    rowCount?: number;
+    truncated?: boolean;
+    executionTimeMs?: number;
+    error?: string;
+  }>(resultJson);
+
+  const [viewMode, setViewMode] = useState<"table" | "chart">("table");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  const question = args?.question;
+  const sql = result?.sql || args?.sql;
+  const columns = result?.columns || [];
+  const rows = result?.rows || [];
+  const rowCount = result?.rowCount ?? rows.length;
+  const executionTimeMs = result?.executionTimeMs ?? 0;
+  const isTruncated = result?.truncated ?? false;
+  const error = result?.error;
+  const isSuccess = result?.success !== false && !error;
+
+  // 智能推断数值列以支持图表渲染
+  const numericColumns = columns.filter((col) =>
+    rows.some((r) => {
+      const v = r[col];
+      return (
+        typeof v === "number" ||
+        (!Number.isNaN(Number(v)) && typeof v === "string" && v !== "")
+      );
+    }),
+  );
+  const labelColumn =
+    columns.find((col) => !numericColumns.includes(col)) || columns[0];
+  const chartValueColumn = numericColumns[0];
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const paginatedRows = rows.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+
+  // 计算柱状图最大值
+  const maxVal = chartValueColumn
+    ? Math.max(
+        1,
+        ...rows.map((r) => {
+          const n = Number(r[chartValueColumn]);
+          return Number.isNaN(n) ? 0 : n;
+        }),
+      )
+    : 1;
+
+  return (
+    <div className="space-y-3">
+      {/* 头部元信息与 SQL 预览 */}
+      <div className="rounded-xl border border-zinc-200/80 bg-zinc-50/60 dark:border-zinc-800/80 dark:bg-zinc-900/60 p-3.5 space-y-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="flex size-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <Database className="size-4" />
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                <span>PostgreSQL 只读查询</span>
+                {isSuccess ? (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                    成功 ({executionTimeMs}ms)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                    执行失败
+                  </span>
+                )}
+              </div>
+              {question && (
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate max-w-md">
+                  问题: {question}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* 视图切换按钮 */}
+          {isSuccess && rows.length > 0 && numericColumns.length > 0 && (
+            <div className="flex items-center rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800/80 p-0.5">
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={cn(
+                  "flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                  viewMode === "table"
+                    ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100 shadow-sm"
+                    : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200",
+                )}
+              >
+                <Table className="size-3.5" />
+                <span>表格</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("chart")}
+                className={cn(
+                  "flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                  viewMode === "chart"
+                    ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100 shadow-sm"
+                    : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200",
+                )}
+              >
+                <BarChart3 className="size-3.5" />
+                <span>图表</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* SQL 代码展示 */}
+        {sql && (
+          <div className="relative rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-950 overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-1.5 border-b border-zinc-800 bg-zinc-900/90 text-[11px] text-zinc-400 font-mono">
+              <span>SQL 语句</span>
+              <CopyButton content={sql} />
+            </div>
+            <div className="max-h-40 overflow-auto p-2 text-xs font-mono">
+              <SyntaxHighlighter
+                language="sql"
+                style={oneDark}
+                customStyle={{
+                  margin: 0,
+                  padding: "0.25rem",
+                  background: "transparent",
+                  fontSize: "12px",
+                }}
+              >
+                {sql}
+              </SyntaxHighlighter>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 异常提示 */}
+      {!isSuccess && error && (
+        <div className="flex items-start gap-2 rounded-xl border border-rose-500/20 bg-rose-50/50 dark:bg-rose-950/20 p-3 text-xs text-rose-700 dark:text-rose-300">
+          <AlertCircle className="size-4 shrink-0 mt-0.5 text-rose-500" />
+          <div className="space-y-1">
+            <p className="font-semibold">数据库查询执行异常</p>
+            <p className="font-mono text-[11px] text-rose-600 dark:text-rose-400 break-all">
+              {error}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* 正常结果展示 */}
+      {isSuccess && (
+        <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden shadow-xs">
+          {/* 统计条 */}
+          <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 px-3.5 py-2 text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-50/50 dark:bg-zinc-900/50">
+            <div>
+              共返回{" "}
+              <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                {rowCount}
+              </span>{" "}
+              行记录
+              {isTruncated && (
+                <span className="ml-1.5 text-amber-600 dark:text-amber-400 font-medium">
+                  (已达行数上限并截断)
+                </span>
+              )}
+            </div>
+            {rows.length > pageSize && viewMode === "table" && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 text-[11px] disabled:opacity-40 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                >
+                  上一页
+                </button>
+                <span className="text-[11px]">
+                  {currentPage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={currentPage >= totalPages}
+                  onClick={() =>
+                    setCurrentPage((p) => Math.min(totalPages, p + 1))
+                  }
+                  className="px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 text-[11px] disabled:opacity-40 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                >
+                  下一页
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 表格视图 */}
+          {viewMode === "table" && (
+            <div className="overflow-x-auto max-h-96">
+              {rows.length === 0 ? (
+                <div className="py-8 text-center text-xs text-zinc-400">
+                  查询结果为空 (0 rows)
+                </div>
+              ) : (
+                <table className="w-full text-left text-xs border-collapse font-mono">
+                  <thead>
+                    <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50 sticky top-0">
+                      {columns.map((col) => (
+                        <th
+                          key={col}
+                          className="px-3 py-2 text-[11px] font-semibold text-zinc-600 dark:text-zinc-300 whitespace-nowrap"
+                        >
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                    {paginatedRows.map((row, idx) => (
+                      <tr
+                        // biome-ignore lint/suspicious/noArrayIndexKey: simple table row index
+                        key={idx}
+                        className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40 transition-colors"
+                      >
+                        {columns.map((col) => (
+                          <td
+                            key={col}
+                            className="px-3 py-2 text-zinc-800 dark:text-zinc-200 whitespace-nowrap max-w-xs truncate"
+                            title={String(row[col] ?? "")}
+                          >
+                            {row[col] === null ? (
+                              <span className="text-zinc-400 italic font-sans text-[11px]">
+                                NULL
+                              </span>
+                            ) : (
+                              String(row[col])
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
+          {/* 图表视图 (柱状图) */}
+          {viewMode === "chart" && chartValueColumn && (
+            <div className="p-4 space-y-3">
+              <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                以{" "}
+                <span className="font-semibold text-zinc-700 dark:text-zinc-300">
+                  {labelColumn}
+                </span>{" "}
+                为维度， 展示{" "}
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                  {chartValueColumn}
+                </span>{" "}
+                的数值分布：
+              </div>
+              <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                {rows.slice(0, 30).map((row, idx) => {
+                  const label = String(row[labelColumn] ?? `Item ${idx + 1}`);
+                  const val = Number(row[chartValueColumn]) || 0;
+                  const percent = Math.min(
+                    100,
+                    Math.max(2, (val / maxVal) * 100),
+                  );
+
+                  return (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: simple chart bar index
+                    <div key={idx} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs font-mono">
+                        <span className="truncate max-w-[200px] text-zinc-700 dark:text-zinc-300 font-medium">
+                          {label}
+                        </span>
+                        <span className="text-zinc-500 font-semibold">
+                          {val}
+                        </span>
+                      </div>
+                      <div className="h-3 w-full rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300"
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
 // Main Dispatcher: ToolResultRenderer
 // ----------------------------------------------------------------------
 export function ToolResultRenderer({
@@ -1543,6 +1866,15 @@ export function ToolResultRenderer({
     name.includes("search_web")
   ) {
     return <WebSearchRenderer argsJson={argsJson} resultJson={resultJson} />;
+  }
+
+  if (
+    name === "db_query" ||
+    name === "database_query" ||
+    name.includes("db_query") ||
+    name.includes("database_query")
+  ) {
+    return <DbQueryRenderer argsJson={argsJson} resultJson={resultJson} />;
   }
 
   // 代码审查：必须在 code_ 通用分支之前匹配，避免被 CodeSearchToolRenderer 提前拦截

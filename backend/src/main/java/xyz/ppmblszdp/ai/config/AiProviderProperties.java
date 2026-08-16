@@ -281,7 +281,9 @@ public record AiProviderProperties(
             @Name("code-review") @Nullable CodeReviewConfig codeReview,
             @Name("calendar-task-enabled") @Nullable Boolean calendarTaskEnabled,
             @Name("web-search-enabled") @Nullable Boolean webSearchEnabled,
-            @Name("web-search") @Nullable WebSearchConfig webSearch) {
+            @Name("web-search") @Nullable WebSearchConfig webSearch,
+            @Name("db-query-enabled") @Nullable Boolean dbQueryEnabled,
+            @Name("db-query") @Nullable DbQueryConfig dbQuery) {
 
         public AgentConfig(
                 @Nullable Boolean enabled,
@@ -312,7 +314,9 @@ public record AiProviderProperties(
                     codeReview,
                     calendarTaskEnabled,
                     false,
-                    WebSearchConfig.defaults());
+                    WebSearchConfig.defaults(),
+                    false,
+                    DbQueryConfig.defaults());
         }
 
         public static AgentConfig defaults() {
@@ -331,7 +335,9 @@ public record AiProviderProperties(
                     CodeReviewConfig.defaults(),
                     false,
                     false,
-                    WebSearchConfig.defaults());
+                    WebSearchConfig.defaults(),
+                    false,
+                    DbQueryConfig.defaults());
         }
 
         /** 代码审查工具是否开启（默认 true）。 */
@@ -382,6 +388,15 @@ public record AiProviderProperties(
             return webSearch != null ? webSearch : WebSearchConfig.defaults();
         }
 
+        /** 数据库只读查询工具（DatabaseQueryTool）是否开启，默认关闭。 */
+        public boolean isDbQueryEnabled() {
+            return dbQueryEnabled != null && dbQueryEnabled;
+        }
+
+        public DbQueryConfig resolveDbQuery() {
+            return dbQuery != null ? dbQuery : DbQueryConfig.defaults();
+        }
+
         /** Worker 使用的供应商；null 表示复用主模型供应商。 */
         @Nullable
         public String resolveWorkerProvider() {
@@ -430,6 +445,29 @@ public record AiProviderProperties(
 
         public String resolveProvider() {
             return (provider != null && !provider.isBlank()) ? provider.trim().toLowerCase() : "tavily";
+        }
+
+        public int resolveTimeoutSeconds() {
+            return (timeoutSeconds != null && timeoutSeconds > 0) ? timeoutSeconds : 15;
+        }
+    }
+
+    /** 数据库查询工具配置（绑定 {@code app.ai.agent.db-query.*}）。 */
+    public record DbQueryConfig(
+            @Name("allowed-tables") @Nullable List<String> allowedTables,
+            @Name("max-rows") @Nullable Integer maxRows,
+            @Name("timeout-seconds") @Nullable Integer timeoutSeconds) {
+
+        public static DbQueryConfig defaults() {
+            return new DbQueryConfig(List.of(), 200, 15);
+        }
+
+        public List<String> resolveAllowedTables() {
+            return allowedTables != null ? allowedTables : List.of();
+        }
+
+        public int resolveMaxRows() {
+            return (maxRows != null && maxRows > 0) ? maxRows : 200;
         }
 
         public int resolveTimeoutSeconds() {

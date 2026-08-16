@@ -39,6 +39,7 @@ public class AgentToolRegistry {
             CalendarTool calendarTool,
             TaskTool taskTool,
             WebSearchTool webSearchTool,
+            DatabaseQueryTool databaseQueryTool,
             ObjectProvider<SubAgentTool> subAgentToolProvider,
             AiProviderProperties properties) {
 
@@ -67,6 +68,11 @@ public class AgentToolRegistry {
         // Web 搜索工具：默认关闭，需 app.ai.agent.web-search-enabled=true 才注入
         if (properties.resolveAgent().isWebSearchEnabled()) {
             all.addAll(Arrays.asList(ToolCallbacks.from(webSearchTool)));
+        }
+
+        // 数据库查询工具：默认关闭，需 app.ai.agent.db-query-enabled=true 才注入
+        if (properties.resolveAgent().isDbQueryEnabled()) {
+            all.addAll(Arrays.asList(ToolCallbacks.from(databaseQueryTool)));
         }
 
         // 按 orchestratorEnabled 开关条件性注入子代理工具（分析/代码/摘要三个 @Tool）
