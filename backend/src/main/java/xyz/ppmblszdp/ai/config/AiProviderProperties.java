@@ -283,7 +283,8 @@ public record AiProviderProperties(
             @Name("web-search-enabled") @Nullable Boolean webSearchEnabled,
             @Name("web-search") @Nullable WebSearchConfig webSearch,
             @Name("db-query-enabled") @Nullable Boolean dbQueryEnabled,
-            @Name("db-query") @Nullable DbQueryConfig dbQuery) {
+            @Name("db-query") @Nullable DbQueryConfig dbQuery,
+            @Name("email-enabled") @Nullable Boolean emailEnabled) {
 
         public AgentConfig(
                 @Nullable Boolean enabled,
@@ -316,7 +317,8 @@ public record AiProviderProperties(
                     false,
                     WebSearchConfig.defaults(),
                     false,
-                    DbQueryConfig.defaults());
+                    DbQueryConfig.defaults(),
+                    false);
         }
 
         public static AgentConfig defaults() {
@@ -337,7 +339,13 @@ public record AiProviderProperties(
                     false,
                     WebSearchConfig.defaults(),
                     false,
-                    DbQueryConfig.defaults());
+                    DbQueryConfig.defaults(),
+                    false);
+        }
+
+        /** 邮件工具（EmailTool）是否开启，默认关闭。 */
+        public boolean isEmailEnabled() {
+            return emailEnabled != null && emailEnabled;
         }
 
         /** 代码审查工具是否开启（默认 true）。 */

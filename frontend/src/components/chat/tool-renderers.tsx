@@ -26,6 +26,7 @@ import {
   Lightbulb,
   ListTodo,
   Loader2,
+  Mail,
   Maximize2,
   Search,
   Server,
@@ -1088,6 +1089,154 @@ function TaskBoardRenderer({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Email 渲染器 (email_tool) —— 邮件外发与草稿卡片
+// ---------------------------------------------------------------------------
+interface EmailItemView {
+  messageId?: string;
+  id?: string;
+  to?: string[];
+  subject?: string;
+  status?: string;
+  preview?: string;
+  bodySnippet?: string;
+  timestamp?: number;
+  createdAt?: number;
+}
+
+interface EmailToolData {
+  action?: string;
+  success?: boolean;
+  result?: EmailItemView;
+  draft?: EmailItemView;
+  history?: EmailItemView[];
+}
+
+function EmailRenderer({
+  argsJson,
+  resultJson,
+}: {
+  argsJson?: string;
+  resultJson?: string;
+}) {
+  let parsedArgs: { action?: string; payload?: string } = {};
+  try {
+    if (argsJson) parsedArgs = JSON.parse(argsJson);
+  } catch {}
+
+  let data: EmailToolData = {};
+  try {
+    if (resultJson) data = JSON.parse(resultJson);
+  } catch {}
+
+  const action = (data.action || parsedArgs.action || "SEND").toUpperCase();
+  const email = data.result || data.draft;
+  const history = data.history || [];
+
+  return (
+    <div className="my-2 space-y-2.5 rounded-xl border border-zinc-200/80 bg-zinc-900/90 p-3.5 text-xs text-zinc-200 dark:border-zinc-800">
+      {/* 头部标题与操作 */}
+      <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
+        <div className="flex items-center gap-2">
+          <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/20 text-blue-400">
+            <Mail className="size-3.5" />
+          </div>
+          <span className="font-semibold text-zinc-100">
+            {action === "DRAFT"
+              ? "邮件草稿生成"
+              : action === "LIST_HISTORY"
+                ? "外发邮件记录"
+                : "邮件代发结果"}
+          </span>
+        </div>
+        <span
+          className={cn(
+            "rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase",
+            action === "DRAFT"
+              ? "bg-amber-500/20 text-amber-400"
+              : action === "LIST_HISTORY"
+                ? "bg-purple-500/20 text-purple-400"
+                : "bg-emerald-500/20 text-emerald-400",
+          )}
+        >
+          {email?.status || action}
+        </span>
+      </div>
+
+      {/* 单封邮件展示 */}
+      {email && (
+        <div className="space-y-2 rounded-lg bg-zinc-950/60 p-3 border border-zinc-800/60">
+          <div className="flex items-start justify-between gap-2">
+            <div className="space-y-1 min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[11px] text-zinc-400 font-medium">
+                  收件人:
+                </span>
+                {(email.to || []).map((addr) => (
+                  <span
+                    key={addr}
+                    className="rounded bg-blue-500/15 text-blue-300 px-1.5 py-0.2 text-[10px] font-mono"
+                  >
+                    {addr}
+                  </span>
+                ))}
+              </div>
+              <div className="font-bold text-xs text-white truncate">
+                主题: {email.subject || "无主题"}
+              </div>
+            </div>
+            {email.messageId && (
+              <span className="font-mono text-[9px] text-zinc-500 shrink-0">
+                ID: {email.messageId.substring(0, 12)}...
+              </span>
+            )}
+          </div>
+
+          {email.preview && (
+            <div className="rounded bg-zinc-900/90 p-2 text-[11px] text-zinc-300 font-mono whitespace-pre-wrap line-clamp-4 border border-zinc-800/40">
+              {email.preview}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 发送历史列表 */}
+      {action === "LIST_HISTORY" && (
+        <div className="space-y-1.5">
+          {history.length === 0 ? (
+            <p className="text-center text-[11px] text-zinc-500 py-2">
+              暂无历史外发记录
+            </p>
+          ) : (
+            history.map((h) => (
+              <div
+                key={h.id}
+                className="flex items-center justify-between p-2 rounded bg-zinc-950/40 border border-zinc-800/40 text-[11px]"
+              >
+                <div className="space-y-0.5 truncate">
+                  <div className="font-semibold text-zinc-200 truncate">
+                    {h.subject}
+                  </div>
+                  <div className="text-[10px] text-zinc-400 font-mono">
+                    至: {(h.to || []).join(", ")}
+                  </div>
+                </div>
+                <span className="text-[9px] font-mono text-emerald-400 shrink-0 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                  {h.status}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      <div className="text-right font-mono text-[9px] text-zinc-500">
+        AI-Copilot Email Gateway
+      </div>
+    </div>
+  );
+}
+
 // ----------------------------------------------------------------------
 // Code Execution Sandbox Renderer
 // ----------------------------------------------------------------------
@@ -1915,6 +2064,11 @@ export function ToolResultRenderer({
   // 任务工具：以 Kanban 风格看板卡片渲染返回的快照数据
   if (name === "task_tool" || name.includes("task_tool")) {
     return <TaskBoardRenderer argsJson={argsJson} resultJson={resultJson} />;
+  }
+
+  // 邮件工具：以邮件卡片渲染返回的外发/草稿结果
+  if (name === "email_tool" || name.includes("email")) {
+    return <EmailRenderer argsJson={argsJson} resultJson={resultJson} />;
   }
 
   return <DefaultToolRenderer resultJson={resultJson} />;

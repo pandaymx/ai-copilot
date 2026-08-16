@@ -40,6 +40,7 @@ public class AgentToolRegistry {
             TaskTool taskTool,
             WebSearchTool webSearchTool,
             DatabaseQueryTool databaseQueryTool,
+            EmailTool emailTool,
             ObjectProvider<SubAgentTool> subAgentToolProvider,
             AiProviderProperties properties) {
 
@@ -73,6 +74,11 @@ public class AgentToolRegistry {
         // 数据库查询工具：默认关闭，需 app.ai.agent.db-query-enabled=true 才注入
         if (properties.resolveAgent().isDbQueryEnabled()) {
             all.addAll(Arrays.asList(ToolCallbacks.from(databaseQueryTool)));
+        }
+
+        // 邮件工具：默认关闭，需 app.ai.agent.email-enabled=true 才注入
+        if (properties.resolveAgent().isEmailEnabled()) {
+            all.addAll(Arrays.asList(ToolCallbacks.from(emailTool)));
         }
 
         // 按 orchestratorEnabled 开关条件性注入子代理工具（分析/代码/摘要三个 @Tool）
