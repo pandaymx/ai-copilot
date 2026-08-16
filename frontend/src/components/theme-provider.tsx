@@ -47,12 +47,11 @@ function applyThemeClasses(
   valueObject?: ValueObject,
 ): void {
   const el = document.documentElement;
-  const values = valueObject ? Object.values(valueObject) : null;
   const list = (attr: string) => {
     const isClass = attr === "class";
     const resolved = valueObject && value ? valueObject[value] || value : value;
     if (isClass) {
-      const classes = values ?? [value];
+      const classes = valueObject ? Object.keys(valueObject) : DEFAULT_THEMES;
       for (const c of classes ?? []) {
         if (c) el.classList.remove(c);
       }
