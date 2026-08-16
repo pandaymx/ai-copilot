@@ -378,6 +378,17 @@ export function Sidebar({
               <span>红队安全对抗</span>
             </Link>
           </div>
+
+          {/* AI 内容生成模板向导入口 */}
+          <div className="px-0.5 pt-0.5">
+            <Link
+              href="/templates"
+              className="group flex items-center gap-2 rounded-xl border border-zinc-200/70 bg-white/70 px-3 py-2.5 text-xs font-semibold text-zinc-700 shadow-xs transition-all duration-200 hover:border-purple-500/40 hover:bg-white hover:text-purple-600 hover:shadow-md hover:shadow-purple-500/10 dark:border-zinc-800/70 dark:bg-zinc-900/50 dark:text-zinc-200 dark:hover:border-purple-500/50 dark:hover:bg-zinc-900 dark:hover:text-purple-400"
+            >
+              <BookTemplate className="size-4 text-purple-500 transition-transform duration-200 group-hover:scale-110" />
+              <span>内容创作模板</span>
+            </Link>
+          </div>
         </div>
 
         {/* 会话列表：分组滚动展示 */}
