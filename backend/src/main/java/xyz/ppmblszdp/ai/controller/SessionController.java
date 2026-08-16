@@ -13,11 +13,16 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
+import xyz.ppmblszdp.ai.collab.CollabEvent;
+import xyz.ppmblszdp.ai.collab.CollaborationBus;
 import xyz.ppmblszdp.ai.dto.ConversationSummaryDto;
 import xyz.ppmblszdp.ai.dto.SessionDto;
 import xyz.ppmblszdp.ai.identity.AuthProperties;
 import xyz.ppmblszdp.ai.identity.UserIdentityFilter;
+import xyz.ppmblszdp.ai.repository.SessionParticipant;
+import xyz.ppmblszdp.ai.repository.SessionParticipantRepository;
 import xyz.ppmblszdp.ai.service.ConversationSummaryService;
+import xyz.ppmblszdp.ai.service.ParticipantAuthService;
 import xyz.ppmblszdp.ai.service.SessionService;
 
 /**
@@ -33,18 +38,29 @@ public class SessionController {
     private final SessionService sessionService;
     private final ConversationSummaryService summaryService;
     private final AuthProperties authProperties;
+    private final ParticipantAuthService participantAuth;
+    private final SessionParticipantRepository participantRepository;
+    private final CollaborationBus collabBus;
 
     @org.springframework.beans.factory.annotation.Autowired
     public SessionController(
-            SessionService sessionService, ConversationSummaryService summaryService, AuthProperties authProperties) {
+            SessionService sessionService,
+            ConversationSummaryService summaryService,
+            AuthProperties authProperties,
+            ParticipantAuthService participantAuth,
+            SessionParticipantRepository participantRepository,
+            CollaborationBus collabBus) {
         this.sessionService = sessionService;
         this.summaryService = summaryService;
         this.authProperties = authProperties;
+        this.participantAuth = participantAuth;
+        this.participantRepository = participantRepository;
+        this.collabBus = collabBus;
     }
 
     /** 兼容测试套件 2 参数构造器 */
     public SessionController(SessionService sessionService, AuthProperties authProperties) {
-        this(sessionService, null, authProperties);
+        this(sessionService, null, authProperties, null, null, null);
     }
 
     /** 从请求交换解析当前用户身份（严格模式缺 Header 抛 401） */
@@ -138,4 +154,78 @@ public class SessionController {
     public record SummaryRequest(String provider, String model) {}
 
     public record KnowledgeSaveRequest(ConversationSummaryDto summary, String customTitle) {}
+
+    // ---- 共享会话协作端点（修正点 5：所有写/删/邀请均经 Service 层 requireRole 二次断言）----
+
+    /** 列出会话全部参与者（含所有者）。非参与者返回 404。 */
+    @GetMapping("/{id}/participants")
+    public ResponseEntity<List<SessionDto.Participant>> listParticipants(
+            @PathVariable("id") String id, ServerWebExchange exchange) {
+        String userId = resolveIdentity(exchange);
+        if (!participantAuth.isParticipant(id, userId).blockOptional().orElse(false)) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(sessionService.listParticipants(id));
+    }
+
+    /** 查询当前用户在会话中的角色（frontend 决定只读态）。非参与者返回 404。 */
+    @GetMapping("/{id}/my-role")
+    public ResponseEntity<Map<String, String>> myRole(@PathVariable("id") String id, ServerWebExchange exchange) {
+        String userId = resolveIdentity(exchange);
+        SessionParticipant.Role role =
+                participantAuth.roleOf(id, userId).blockOptional().orElse(null);
+        if (role == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(Map.of("role", role.name()));
+    }
+
+    /** 邀请协作者（仅 OWNER）。role 仅允许 EDITOR / VIEWER。 */
+    @PostMapping("/{id}/participants")
+    public ResponseEntity<Map<String, String>> inviteParticipant(
+            @PathVariable("id") String id, @RequestBody InviteRequest request, ServerWebExchange exchange) {
+        String userId = resolveIdentity(exchange);
+        // 二次权限断言：必须是 OWNER
+        participantAuth.requireRole(id, userId, SessionParticipant.Role.OWNER).block();
+        if (request == null
+                || request.targetUserId() == null
+                || request.targetUserId().isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "targetUserId 不能为空"));
+        }
+        SessionParticipant.Role role;
+        try {
+            role = SessionParticipant.Role.valueOf(
+                    request.role() == null ? "VIEWER" : request.role().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "role 必须是 EDITOR 或 VIEWER"));
+        }
+        if (role == SessionParticipant.Role.OWNER) {
+            return ResponseEntity.badRequest().body(Map.of("error", "不能分配 OWNER 角色"));
+        }
+        participantRepository.upsert(id, request.targetUserId(), role).block();
+        // 通知在线成员刷新成员列表
+        collabBus.broadcast(
+                id,
+                new CollabEvent.Presence(
+                        "presence", id, request.targetUserId(), role.name(), "invited", System.currentTimeMillis()));
+        return ResponseEntity.ok(Map.of("role", role.name()));
+    }
+
+    /** 移除协作者（仅 OWNER，不能移除所有者）。 */
+    @DeleteMapping("/{id}/participants/{targetUserId}")
+    public ResponseEntity<Void> removeParticipant(
+            @PathVariable("id") String id,
+            @PathVariable("targetUserId") String targetUserId,
+            ServerWebExchange exchange) {
+        String userId = resolveIdentity(exchange);
+        participantAuth.requireRole(id, userId, SessionParticipant.Role.OWNER).block();
+        participantRepository.remove(id, targetUserId).block();
+        collabBus.broadcast(
+                id,
+                new CollabEvent.Presence(
+                        "presence", id, targetUserId, "VIEWER", "removed", System.currentTimeMillis()));
+        return ResponseEntity.ok().build();
+    }
+
+    public record InviteRequest(String targetUserId, String role) {}
 }

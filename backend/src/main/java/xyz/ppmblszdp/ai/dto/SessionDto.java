@@ -35,5 +35,7 @@ public record SessionDto(
         }
     }
 
+    public record Participant(String userId, String role) {}
+
     public record RenameRequest(String title) {}
 }

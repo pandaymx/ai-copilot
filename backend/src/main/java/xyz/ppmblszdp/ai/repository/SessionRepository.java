@@ -58,6 +58,16 @@ public class SessionRepository {
             jdbcTemplate.execute("DROP INDEX IF EXISTS idx_chat_session_updated;");
             jdbcTemplate.execute(
                     "CREATE INDEX IF NOT EXISTS idx_chat_session_user_updated ON chat_session(user_id, updated_at DESC);");
+            // 共享会话参与者关联表
+            jdbcTemplate.execute("""
+					CREATE TABLE IF NOT EXISTS session_participant (
+						session_id VARCHAR(255) NOT NULL,
+						user_id VARCHAR(255) NOT NULL,
+						role VARCHAR(20) NOT NULL,
+						created_at BIGINT NOT NULL,
+						PRIMARY KEY (session_id, user_id)
+					);
+					""");
             log.info("PostgreSQL 会话元数据表 'chat_session' 初始化/校验成功");
         } catch (Exception ex) {
             log.error("初始化 PostgreSQL 会话元数据表失败: {}", ex.getMessage(), ex);
@@ -129,11 +139,18 @@ public class SessionRepository {
         return jdbcTemplate.query(sql, ROW_MAPPER, userId);
     }
 
-    /** 根据 ID 与用户查询单个会话元数据（归属校验） */
+    /**
+     * 根据 ID 查询会话元数据。
+     *
+     * <p>支持共享会话：会话所有者（user_id 匹配）或任一参与者均可见。
+     * owner-only 写操作（deleteByIdAndUserId）仍仅依据 user_id 约束，不受此放宽影响。
+     */
     public Optional<SessionDto> findByIdAndUserId(String id, String userId) {
-        String sql =
-                "SELECT id, title, updated_at, is_default_title, parent_session_id, inherited_context_json FROM chat_session WHERE id = ? AND user_id = ?";
-        List<SessionDto> list = jdbcTemplate.query(sql, ROW_MAPPER, id, userId);
+        String sql = "SELECT id, title, updated_at, is_default_title, parent_session_id, inherited_context_json"
+                + " FROM chat_session WHERE id = ?"
+                + " AND (user_id = ? OR id IN (SELECT session_id FROM session_participant"
+                + " WHERE user_id = ? AND role IN ('OWNER','EDITOR','VIEWER')))";
+        List<SessionDto> list = jdbcTemplate.query(sql, ROW_MAPPER, id, userId, userId);
         return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
     }
 

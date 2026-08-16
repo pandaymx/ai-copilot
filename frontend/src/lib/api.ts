@@ -2116,3 +2116,82 @@ export async function matchPersonaApi(
     return null;
   }
 }
+
+// ==========================================
+// 10. 实时协作对话（Multi-user Collaboration）API
+// ==========================================
+
+import type { Participant, ParticipantRole } from "@/lib/collab-types";
+
+/** 获取当前用户身份（用于建立协作 WebSocket，见修正点 1）。 */
+export async function fetchMeApi(): Promise<string | null> {
+  try {
+    const res = await fetch("/api/me");
+    if (!res.ok) return null;
+    const data = (await res.json()) as { userId: string };
+    return data.userId;
+  } catch {
+    return null;
+  }
+}
+
+/** 查询当前用户在会话中的协作角色。 */
+export async function fetchMyRoleApi(
+  sessionId: string,
+): Promise<ParticipantRole | null> {
+  try {
+    const res = await fetch(`/api/chat/sessions/${sessionId}/my-role`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { role: ParticipantRole };
+    return data.role;
+  } catch {
+    return null;
+  }
+}
+
+/** 列出会话全部参与者（含所有者）。 */
+export async function listParticipantsApi(
+  sessionId: string,
+): Promise<Participant[] | null> {
+  try {
+    const res = await fetch(`/api/chat/sessions/${sessionId}/participants`);
+    if (!res.ok) return null;
+    return (await res.json()) as Participant[];
+  } catch {
+    return null;
+  }
+}
+
+/** 邀请协作者（仅 OWNER）。 */
+export async function inviteParticipantApi(
+  sessionId: string,
+  targetUserId: string,
+  role: ParticipantRole,
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/chat/sessions/${sessionId}/participants`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targetUserId, role }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** 移除协作者（仅 OWNER）。 */
+export async function removeParticipantApi(
+  sessionId: string,
+  targetUserId: string,
+): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `/api/chat/sessions/${sessionId}/participants/${encodeURIComponent(targetUserId)}`,
+      { method: "DELETE" },
+    );
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

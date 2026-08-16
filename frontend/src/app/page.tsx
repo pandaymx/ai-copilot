@@ -20,6 +20,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CitationViewerDrawer } from "@/components/chat/citation-viewer-drawer";
+import { CollaborationIndicator } from "@/components/chat/collaboration-indicator";
 import { ContextInheritanceModal } from "@/components/chat/context-inheritance-modal";
 import { ConversationSummaryModal } from "@/components/chat/conversation-summary-modal";
 import { DocumentChatBar } from "@/components/chat/document-chat-bar";
@@ -54,6 +55,7 @@ import { useTokenBudget } from "@/context/token-budget-context";
 import { useChatInput } from "@/hooks/useChatInput";
 import { useChatSession } from "@/hooks/useChatSession";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
+import { collaborationStore, useCollaboration } from "@/hooks/useCollaboration";
 import type { DocumentCitationItem, Persona } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -180,9 +182,44 @@ export default function Home() {
   // 实时 Token 预算与草稿估算 Hook
   const { setDraft, isOverBudget } = useTokenBudget();
 
+  // 实时协作状态（在线成员 / 角色 / 生成锁）
+  const collab = useCollaboration();
+  const isViewer = collab.role === "VIEWER";
+  // 会话处于生成中（无论谁触发）都禁用输入，避免并发触发（修正点 2）
+  const sessionGenerating = collab.generating;
+
   useEffect(() => {
     setDraft(input, currentModelObj);
   }, [input, currentModelObj, setDraft]);
+
+  // 订阅协作消息广播（其他成员的消息编辑/删除/流式助手），应用到本地消息列表
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    const off = collaborationStore.onMessage((evt) => {
+      if (evt.type === "message.updated") {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === evt.messageId)) return prev;
+          return [
+            ...prev,
+            {
+              id: evt.messageId,
+              role: evt.role === "assistant" ? "assistant" : "user",
+              content: evt.content,
+            } as never,
+          ];
+        });
+      } else if (evt.type === "message.deleted") {
+        setMessages((prev) => prev.filter((m) => m.id !== evt.messageId));
+      }
+    });
+    return () => {
+      off();
+    };
+  }, [setMessages]);
 
   // 智能体角色市场 (Persona Store) 弹窗与激活状态
   const [personaMarketOpen, setPersonaMarketOpen] = useState(false);
@@ -383,6 +420,9 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* 实时协作指示器（在线成员 / 邀请 / 正在输入） */}
+            {activeId && <CollaborationIndicator sessionId={activeId} />}
+
             {/* 全盘搜索按钮 */}
             <Button
               variant="ghost"
@@ -594,7 +634,19 @@ export default function Home() {
                     }
                     onEditAndResend={
                       !isAssistant
-                        ? (newText) => handleEditAndResend(index, newText)
+                        ? (newText) => {
+                            const oldMsg = messagesRef.current[index];
+                            if (oldMsg) {
+                              // 广播删除旧消息 + 新用户消息给协作者（自身已处理，会被过滤）
+                              collaborationStore.sendMessageDeleted(oldMsg.id);
+                              collaborationStore.sendMessageUpdated(
+                                `user-${activeId}-${Date.now()}`,
+                                "user",
+                                newText,
+                              );
+                            }
+                            handleEditAndResend(index, newText);
+                          }
                         : undefined
                     }
                     onOpenCompare={(prompt) => {
@@ -752,23 +804,39 @@ export default function Home() {
 
               {/* 文本输入区 */}
               <div className="flex items-end gap-2 px-1">
-                <textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  onPaste={handlePaste}
-                  placeholder={
-                    imageMode
-                      ? "输入图像生成提示词，例如：赛博朋克风格的雨夜未来城市街道..."
-                      : documentChatEnabled
-                        ? "向已挂载的专属文档提问（仅依据文档内容回答，附段落引用）..."
-                        : "发送消息给 AI Copilot... (Shift + Enter 换行，支持拖入/粘贴图片与代码文件)"
-                  }
-                  rows={1}
-                  disabled={isStreaming}
-                  className="max-h-50 min-h-[38px] flex-1 resize-none bg-transparent py-2 text-sm leading-relaxed text-zinc-900 placeholder:text-zinc-400 focus:outline-hidden disabled:opacity-50 dark:text-zinc-100 dark:placeholder:text-zinc-500"
-                />
+                {isViewer && (
+                  <div className="flex-1 rounded-lg border border-white/10 bg-slate-500/10 px-3 py-2.5 text-sm text-slate-400">
+                    您以只读身份查看此共享会话，无法发送消息。
+                  </div>
+                )}
+                {!isViewer && (
+                  <textarea
+                    ref={textareaRef}
+                    value={input}
+                    onChange={(e) => {
+                      setInput(e.target.value);
+                      if (!isViewer && !sessionGenerating) {
+                        collaborationStore.sendTyping(
+                          e.target.value.length > 0,
+                        );
+                      }
+                    }}
+                    onKeyDown={handleKeyDown}
+                    onPaste={handlePaste}
+                    placeholder={
+                      sessionGenerating
+                        ? "会话正在生成回复，请稍候…"
+                        : imageMode
+                          ? "输入图像生成提示词，例如：赛博朋克风格的雨夜未来城市街道..."
+                          : documentChatEnabled
+                            ? "向已挂载的专属文档提问（仅依据文档内容回答，附段落引用）..."
+                            : "发送消息给 AI Copilot... (Shift + Enter 换行，支持拖入/粘贴图片与代码文件)"
+                    }
+                    rows={1}
+                    disabled={isStreaming || sessionGenerating}
+                    className="max-h-50 min-h-[38px] flex-1 resize-none bg-transparent py-2 text-sm leading-relaxed text-zinc-900 placeholder:text-zinc-400 focus:outline-hidden disabled:opacity-50 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+                  />
+                )}
 
                 {/* 语音录入与状态按钮 */}
                 <div className="flex shrink-0 items-center gap-1.5 pb-1">
@@ -809,6 +877,8 @@ export default function Home() {
                       size="icon"
                       aria-label="发送"
                       disabled={
+                        isViewer ||
+                        sessionGenerating ||
                         isOverBudget ||
                         (!input.trim() && attachments.length === 0)
                       }

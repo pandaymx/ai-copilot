@@ -47,6 +47,8 @@ dependencies {
     implementation("org.apache.commons:commons-pool2")
     runtimeOnly("org.postgresql:postgresql")
     implementation("org.springframework.boot:spring-boot-starter-validation")
+    // 实时协作 WebSocket（WebFlux 响应式，非阻塞 STOMP broker）
+    implementation("org.springframework.boot:spring-boot-starter-websocket")
     // 可观测性：OpenTelemetry tracing（ChatClient / Advisor 链 span 经 OTLP 导出）
     implementation("io.micrometer:micrometer-tracing-bridge-otel")
     implementation("io.opentelemetry:opentelemetry-exporter-otlp")

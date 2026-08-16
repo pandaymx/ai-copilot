@@ -12,6 +12,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import xyz.ppmblszdp.ai.dto.MediaDto;
 import xyz.ppmblszdp.ai.dto.SessionDto;
+import xyz.ppmblszdp.ai.repository.SessionParticipant;
+import xyz.ppmblszdp.ai.repository.SessionParticipantRepository;
 import xyz.ppmblszdp.ai.repository.SessionRepository;
 
 /**
@@ -23,10 +25,15 @@ public class SessionService {
     private static final Logger log = LoggerFactory.getLogger(SessionService.class);
 
     private final SessionRepository sessionRepository;
+    private final SessionParticipantRepository participantRepository;
     private final ObjectProvider<ChatMemory> chatMemoryProvider;
 
-    public SessionService(SessionRepository sessionRepository, ObjectProvider<ChatMemory> chatMemoryProvider) {
+    public SessionService(
+            SessionRepository sessionRepository,
+            SessionParticipantRepository participantRepository,
+            ObjectProvider<ChatMemory> chatMemoryProvider) {
         this.sessionRepository = sessionRepository;
+        this.participantRepository = participantRepository;
         this.chatMemoryProvider = chatMemoryProvider;
     }
 
@@ -91,6 +98,7 @@ public class SessionService {
     /** 新建/置顶/更新会话元数据（绑定用户） */
     public void recordSession(String id, String userId, String title, boolean isDefaultTitle) {
         sessionRepository.upsertSession(id, userId, title, System.currentTimeMillis(), isDefaultTitle);
+        participantRepository.ensureOwner(id, userId).subscribe();
     }
 
     /** 写入带上下文继承关系的会话元数据 */
@@ -103,6 +111,24 @@ public class SessionService {
             String inheritedContextJson) {
         sessionRepository.upsertSessionWithInheritance(
                 id, userId, title, System.currentTimeMillis(), isDefaultTitle, parentSessionId, inheritedContextJson);
+        participantRepository.ensureOwner(id, userId).subscribe();
+    }
+
+    /** 查询指定用户在会话中的协作角色（非参与者为空）。 */
+    public java.util.Optional<SessionParticipant.Role> getParticipantRole(String id, String userId) {
+        return participantRepository.roleOf(id, userId).blockOptional();
+    }
+
+    /** 列出会话全部参与者（含所有者）。 */
+    public List<SessionDto.Participant> listParticipants(String id) {
+        return participantRepository
+                .listBySession(id)
+                .blockOptional()
+                .map(list -> list.stream()
+                        .map(p ->
+                                new SessionDto.Participant(p.userId(), p.role().name()))
+                        .toList())
+                .orElse(java.util.List.of());
     }
 
     /** 发送消息时刷新会话时间戳（绑定用户） */

@@ -35,6 +35,7 @@ import reactor.core.publisher.Sinks.Many;
 import reactor.core.scheduler.Schedulers;
 import reactor.util.retry.Retry;
 import xyz.ppmblszdp.ai.clarification.ClarificationAdvisor;
+import xyz.ppmblszdp.ai.collab.CollaborationBus;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.context.ContextAssembler;
 import xyz.ppmblszdp.ai.dto.ChatChunkDto;
@@ -112,6 +113,9 @@ public class ChatOrchestrator implements DisposableBean {
     private final ObjectProvider<xyz.ppmblszdp.ai.persona.service.PersonaStoreService> personaStoreServiceProvider;
 
     private final ConcurrentLinkedQueue<Disposable> fireAndForgetSubscriptions = new ConcurrentLinkedQueue<>();
+
+    @Autowired
+    private CollaborationBus collabBus;
 
     @Autowired
     public ChatOrchestrator(
@@ -432,6 +436,7 @@ public class ChatOrchestrator implements DisposableBean {
 
         IntentResult intentResult = intentClassifier.classify(request, resolved);
         InteractionAnalysis interactionAnalysis = interactionAnalyzer.analyze(request.message());
+
         boolean memoryPath = useMemory(request);
         ChatOptions options = buildChatOptions(resolved);
 
@@ -576,6 +581,12 @@ public class ChatOrchestrator implements DisposableBean {
             return streamReAct(effectiveResolved, request, userId, intentResult);
         }
 
+        // 共享会话：防止多 EDITOR 并发触发流式生成（修正点 2）
+        String convId = request.conversationId();
+        if (convId != null && !collabBus.tryAcquireGeneratingLock(convId, userId)) {
+            return Flux.just(ChatChunkDto.error("SESSION_BUSY", "该共享会话正在生成回复，请等待当前回复完成后再发送。"));
+        }
+
         boolean memoryPath = useMemory(request);
         ChatOptions options = buildChatOptions(effectiveResolved);
         boolean agentPath = useAgent(request, intentResult);
@@ -700,6 +711,14 @@ public class ChatOrchestrator implements DisposableBean {
                                     req.conversationId(),
                                     lastUsage.get(),
                                     fireAndForgetSubscriptions);
+                            // 释放共享会话生成锁并广播最终助手消息给协作者（修正点 2）
+                            collabBus.releaseGeneratingLock(req.conversationId(), userId, false);
+                            collabBus.broadcastSessionStatus(req.conversationId(), "idle", userId);
+                            if (fullContent.length() > 0) {
+                                String msgId = "assistant-" + req.conversationId() + "-" + System.currentTimeMillis();
+                                collabBus.broadcastMessageUpdated(
+                                        req.conversationId(), msgId, "assistant", fullContent.toString(), userId);
+                            }
                         }
                     })
                     .onErrorResume(ex -> {

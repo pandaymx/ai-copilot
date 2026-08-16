@@ -19,11 +19,13 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.beans.factory.ObjectProvider;
 import xyz.ppmblszdp.ai.dto.SessionDto;
+import xyz.ppmblszdp.ai.repository.SessionParticipantRepository;
 import xyz.ppmblszdp.ai.repository.SessionRepository;
 
 class SessionServiceTest {
 
     private SessionRepository sessionRepository;
+    private SessionParticipantRepository participantRepository;
     private ObjectProvider<ChatMemory> chatMemoryProvider;
     private ChatMemory chatMemory;
     private SessionService sessionService;
@@ -32,11 +34,12 @@ class SessionServiceTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         sessionRepository = mock(SessionRepository.class);
+        participantRepository = mock(SessionParticipantRepository.class);
         chatMemoryProvider = mock(ObjectProvider.class);
         chatMemory = mock(ChatMemory.class);
 
         when(chatMemoryProvider.getIfAvailable()).thenReturn(chatMemory);
-        sessionService = new SessionService(sessionRepository, chatMemoryProvider);
+        sessionService = new SessionService(sessionRepository, participantRepository, chatMemoryProvider);
     }
 
     @Test

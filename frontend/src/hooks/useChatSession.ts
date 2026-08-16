@@ -4,8 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR, { type KeyedMutator } from "swr";
 import type { ChatMessage } from "@/components/chat/message-bubble";
 import type { ChatSession } from "@/components/chat/sidebar";
+import { collaborationStore } from "@/hooks/useCollaboration";
 import {
   deleteSessionApi,
+  fetchMeApi,
   fetchSessionDetailApi,
   fetchSessionsApi,
   renameSessionApi,
@@ -153,6 +155,14 @@ export function useChatSession(
       }
       onSelectSessionCallback?.(id);
 
+      // 实时协作：非离线态下建立协作 WebSocket 连接（修正点 1）
+      if (!isOfflineFallback) {
+        void (async () => {
+          const me = await fetchMeApi();
+          if (me) collaborationStore.connect(id, me);
+        })();
+      }
+
       const detail = await fetchSessionDetailApi(id);
       if (detail?.messages && detail.messages.length > 0) {
         setMessages(detail.messages);
@@ -165,7 +175,7 @@ export function useChatSession(
         scrollToMessage(targetMessageId);
       }
     },
-    [activeId, onSelectSessionCallback, scrollToMessage],
+    [activeId, isOfflineFallback, onSelectSessionCallback, scrollToMessage],
   );
 
   const deleteSession = useCallback(
@@ -213,6 +223,7 @@ export function useChatSession(
   );
 
   const newSession = useCallback(() => {
+    collaborationStore.disconnect();
     setActiveId(null);
     setMessages([]);
     if (typeof window !== "undefined") {
