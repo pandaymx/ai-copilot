@@ -21,6 +21,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { BranchNav } from "@/components/chat/branch-nav";
+import { ChatModeSelector } from "@/components/chat/chat-mode-selector";
 import { CitationViewerDrawer } from "@/components/chat/citation-viewer-drawer";
 import { CollaborationIndicator } from "@/components/chat/collaboration-indicator";
 import { ContextInheritanceModal } from "@/components/chat/context-inheritance-modal";
@@ -57,7 +58,6 @@ import { VisionScenarioPills } from "@/components/chat/vision-scenario-pills";
 import { VoiceRecorderButton } from "@/components/chat/voice-recorder-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { useTokenBudget } from "@/context/token-budget-context";
 import { useChatInput } from "@/hooks/useChatInput";
 import { useChatSession } from "@/hooks/useChatSession";
@@ -1070,38 +1070,14 @@ export default function Home() {
 
               {/* 输入框底部功能条 */}
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-100 px-1 pt-2 dark:border-zinc-800/60">
-                <div className="flex items-center gap-3">
-                  {/* 图像生成模式开关 */}
-                  <div className="flex items-center gap-1.5">
-                    <Switch
-                      id="image-mode"
-                      checked={imageMode}
-                      onCheckedChange={setImageMode}
-                      className="scale-75"
-                    />
-                    <label
-                      htmlFor="image-mode"
-                      className="cursor-pointer text-xs font-medium text-zinc-500 dark:text-zinc-400"
-                    >
-                      生图模式
-                    </label>
-                  </div>
-
-                  {/* Agent 工具开关 */}
-                  <div className="flex items-center gap-1.5 border-l border-zinc-200 pl-3 dark:border-zinc-800">
-                    <Switch
-                      id="agent-mode"
-                      checked={agentEnabled}
-                      onCheckedChange={setAgentEnabled}
-                      className="scale-75"
-                    />
-                    <label
-                      htmlFor="agent-mode"
-                      className="cursor-pointer text-xs font-medium text-zinc-500 dark:text-zinc-400"
-                    >
-                      Agent 模式
-                    </label>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <ChatModeSelector
+                    imageMode={imageMode}
+                    onImageModeChange={setImageMode}
+                    agentEnabled={agentEnabled}
+                    onAgentEnabledChange={setAgentEnabled}
+                    disabled={isStreaming || sessionGenerating || isViewer}
+                  />
                 </div>
 
                 {/* 快捷清空草稿（二次确认） */}
