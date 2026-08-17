@@ -13,6 +13,7 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
+import xyz.ppmblszdp.ai.registry.TaskModelResolver;
 
 class LongTermMemoryProcessorTest {
 
@@ -107,7 +108,8 @@ class LongTermMemoryProcessorTest {
     void dedupAndUpsert_withConflictService_retainOld_shouldIgnoreNew() {
         xyz.ppmblszdp.ai.service.MemoryForgetService forgetService =
                 mock(xyz.ppmblszdp.ai.service.MemoryForgetService.class);
-        processor = new LongTermMemoryProcessor(mockVectorStore, null, forgetService, properties);
+        processor = new LongTermMemoryProcessor(
+                mockVectorStore, null, forgetService, properties, mock(TaskModelResolver.class));
 
         Document existingDoc =
                 new Document("old-id", "用户偏好：主要使用 Java 21 进行后端开发", java.util.Map.of("userId", "user-123"));
@@ -127,7 +129,8 @@ class LongTermMemoryProcessorTest {
     void dedupAndUpsert_withConflictService_merge_shouldInsertMerged() {
         xyz.ppmblszdp.ai.service.MemoryForgetService forgetService =
                 mock(xyz.ppmblszdp.ai.service.MemoryForgetService.class);
-        processor = new LongTermMemoryProcessor(mockVectorStore, null, forgetService, properties);
+        processor = new LongTermMemoryProcessor(
+                mockVectorStore, null, forgetService, properties, mock(TaskModelResolver.class));
 
         Document existingDoc =
                 new Document("old-id", "用户偏好：主要使用 Java 21 进行后端开发", java.util.Map.of("userId", "user-123"));

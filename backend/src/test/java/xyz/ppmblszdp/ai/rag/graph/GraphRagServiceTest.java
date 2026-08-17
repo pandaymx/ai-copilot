@@ -22,6 +22,8 @@ import xyz.ppmblszdp.ai.registry.ModelDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
+import xyz.ppmblszdp.ai.registry.TaskKey;
+import xyz.ppmblszdp.ai.registry.TaskModelResolver;
 
 class GraphRagServiceTest {
 
@@ -51,7 +53,10 @@ class GraphRagServiceTest {
 
         when(providerRegistry.resolve(any(), any())).thenReturn(resolved);
 
-        graphRagService = new GraphRagService(repository, providerRegistry);
+        TaskModelResolver taskModelResolver = mock(TaskModelResolver.class);
+        when(taskModelResolver.resolve(any(TaskKey.class))).thenReturn(resolved);
+
+        graphRagService = new GraphRagService(repository, providerRegistry, taskModelResolver);
     }
 
     @Test

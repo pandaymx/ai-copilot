@@ -13,6 +13,8 @@ import org.springframework.ai.converter.BeanOutputConverter;
 import org.springframework.stereotype.Service;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
+import xyz.ppmblszdp.ai.registry.TaskKey;
+import xyz.ppmblszdp.ai.registry.TaskModelResolver;
 
 /**
  * 记忆遗忘与优化算法服务：包含优先级时间衰减计算、LLM 记忆冲突检测/合并判定、以及细粒度记忆高层摘要压缩。
@@ -54,9 +56,11 @@ public class MemoryForgetService {
 			""";
 
     private final ProviderRegistry providerRegistry;
+    private final TaskModelResolver taskModelResolver;
 
-    public MemoryForgetService(ProviderRegistry providerRegistry) {
+    public MemoryForgetService(ProviderRegistry providerRegistry, TaskModelResolver taskModelResolver) {
         this.providerRegistry = providerRegistry;
+        this.taskModelResolver = taskModelResolver;
     }
 
     /**
@@ -154,7 +158,7 @@ public class MemoryForgetService {
         }
 
         try {
-            ResolvedModel resolved = providerRegistry.resolve(null, null);
+            ResolvedModel resolved = taskModelResolver.resolve(TaskKey.MEMORY_FORGET);
             ChatClient chatClient = resolved.chatClient();
 
             BeanOutputConverter<ConflictDecision> converter = new BeanOutputConverter<>(ConflictDecision.class);
@@ -196,7 +200,7 @@ public class MemoryForgetService {
         }
 
         try {
-            ResolvedModel resolved = providerRegistry.resolve(null, null);
+            ResolvedModel resolved = taskModelResolver.resolve(TaskKey.MEMORY_FORGET);
             ChatClient chatClient = resolved.chatClient();
 
             BeanOutputConverter<List<String>> converter = new BeanOutputConverter<>(

@@ -14,6 +14,8 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
+import xyz.ppmblszdp.ai.registry.TaskKey;
+import xyz.ppmblszdp.ai.registry.TaskModelResolver;
 
 /**
  * AI 自我反思与纠错核心判定引擎。
@@ -49,10 +51,13 @@ public class ReflectionEngine {
 
     private final ProviderRegistry providerRegistry;
     private final ReflectionProperties properties;
+    private final TaskModelResolver taskModelResolver;
 
-    public ReflectionEngine(ProviderRegistry providerRegistry, ReflectionProperties properties) {
+    public ReflectionEngine(
+            ProviderRegistry providerRegistry, ReflectionProperties properties, TaskModelResolver taskModelResolver) {
         this.providerRegistry = providerRegistry;
         this.properties = properties;
+        this.taskModelResolver = taskModelResolver;
     }
 
     /**
@@ -75,7 +80,7 @@ public class ReflectionEngine {
         }
 
         try {
-            ResolvedModel resolved = providerRegistry.resolve(null, null);
+            ResolvedModel resolved = taskModelResolver.resolve(TaskKey.REFLECTION);
             ChatClient client = resolved.chatClient();
 
             String userContent = "【用户问题 (Prompt)】:\n" + userPrompt + "\n\n"

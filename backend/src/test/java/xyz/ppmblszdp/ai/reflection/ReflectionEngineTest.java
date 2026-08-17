@@ -18,6 +18,8 @@ import xyz.ppmblszdp.ai.registry.ModelDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
+import xyz.ppmblszdp.ai.registry.TaskKey;
+import xyz.ppmblszdp.ai.registry.TaskModelResolver;
 
 class ReflectionEngineTest {
 
@@ -46,12 +48,15 @@ class ReflectionEngineTest {
 
         when(registry.resolve(any(), any())).thenReturn(resolved);
 
+        TaskModelResolver taskModelResolver = mock(TaskModelResolver.class);
+        when(taskModelResolver.resolve(any(TaskKey.class))).thenReturn(resolved);
+
         properties = new ReflectionProperties();
         properties.setEnabled(true);
         properties.setMinContentLength(20);
         properties.setTimeoutMs(3000);
 
-        engine = new ReflectionEngine(registry, properties);
+        engine = new ReflectionEngine(registry, properties, taskModelResolver);
     }
 
     @Test

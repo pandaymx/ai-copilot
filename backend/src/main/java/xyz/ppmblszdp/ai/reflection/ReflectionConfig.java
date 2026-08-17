@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
+import xyz.ppmblszdp.ai.registry.TaskModelResolver;
 
 /**
  * AI 自我反思与纠错 Spring 自动装配配置类。
@@ -16,8 +17,9 @@ public class ReflectionConfig {
 
     @Bean
     @ConditionalOnMissingBean
-    public ReflectionEngine reflectionEngine(ProviderRegistry providerRegistry, ReflectionProperties properties) {
-        return new ReflectionEngine(providerRegistry, properties);
+    public ReflectionEngine reflectionEngine(
+            ProviderRegistry providerRegistry, ReflectionProperties properties, TaskModelResolver taskModelResolver) {
+        return new ReflectionEngine(providerRegistry, properties, taskModelResolver);
     }
 
     @Bean

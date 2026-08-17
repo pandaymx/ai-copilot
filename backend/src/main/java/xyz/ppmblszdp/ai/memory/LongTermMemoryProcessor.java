@@ -19,6 +19,8 @@ import org.springframework.core.ParameterizedTypeReference;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
+import xyz.ppmblszdp.ai.registry.TaskKey;
+import xyz.ppmblszdp.ai.registry.TaskModelResolver;
 
 /**
  * 长期记忆核心处理器：负责双重触发摘要、前置硬规则链过滤、LLM 原子化事实提取以及 pgvector 向量去重/Upsert 更新。
@@ -52,6 +54,7 @@ public class LongTermMemoryProcessor {
     private final ProviderRegistry providerRegistry;
     private final xyz.ppmblszdp.ai.service.MemoryForgetService forgetService;
     private final AiProviderProperties properties;
+    private final TaskModelResolver taskModelResolver;
 
     /** 会话轮次计数器：conversationId -> atomic turn count */
     private final Map<String, AtomicInteger> sessionTurnCounters = new ConcurrentHashMap<>();
@@ -60,16 +63,18 @@ public class LongTermMemoryProcessor {
             VectorStore vectorStore,
             ProviderRegistry providerRegistry,
             xyz.ppmblszdp.ai.service.MemoryForgetService forgetService,
-            AiProviderProperties properties) {
+            AiProviderProperties properties,
+            TaskModelResolver taskModelResolver) {
         this.vectorStore = (vectorStore != null) ? new SafeVectorStore(vectorStore) : null;
         this.providerRegistry = providerRegistry;
         this.forgetService = forgetService;
         this.properties = properties;
+        this.taskModelResolver = taskModelResolver;
     }
 
     public LongTermMemoryProcessor(
             VectorStore vectorStore, ProviderRegistry providerRegistry, AiProviderProperties properties) {
-        this(vectorStore, providerRegistry, null, properties);
+        this(vectorStore, providerRegistry, null, properties, null);
     }
 
     /**
@@ -147,7 +152,7 @@ public class LongTermMemoryProcessor {
             return;
         }
         try {
-            ResolvedModel resolved = providerRegistry.resolve(null, null);
+            ResolvedModel resolved = taskModelResolver.resolve(TaskKey.MEMORY_EXTRACT);
             ChatClient chatClient = resolved.chatClient();
             String inputContent = "【用户】: " + userMessage + "\n【助手】: " + (assistantReply != null ? assistantReply : "");
 

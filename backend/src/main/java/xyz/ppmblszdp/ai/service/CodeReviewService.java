@@ -20,6 +20,8 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
+import xyz.ppmblszdp.ai.registry.TaskKey;
+import xyz.ppmblszdp.ai.registry.TaskModelResolver;
 import xyz.ppmblszdp.ai.tool.dto.CodeReviewDto;
 import xyz.ppmblszdp.ai.tool.dto.CodeReviewDto.CodeReviewFinding;
 import xyz.ppmblszdp.ai.tool.dto.CodeReviewDto.CodeReviewReport;
@@ -42,13 +44,15 @@ public class CodeReviewService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ProviderRegistry providerRegistry;
+    private final TaskModelResolver taskModelResolver;
 
     /** 沙箱工作区根目录：用于解析仅传 filePath 时的本地文件绝对路径，并拦截路径遍历。 */
     @Value("${ai.codereview.workspace-base-dir:${java.io.tmpdir}/ai-copilot/workspaces}")
     private String workspaceBaseDir;
 
-    public CodeReviewService(ProviderRegistry providerRegistry) {
+    public CodeReviewService(ProviderRegistry providerRegistry, TaskModelResolver taskModelResolver) {
         this.providerRegistry = providerRegistry;
+        this.taskModelResolver = taskModelResolver;
     }
 
     /** 工作区上下文：仅传 filePath 时用于定位与读取本地文件，附带防遍历校验。 */
@@ -245,7 +249,7 @@ public class CodeReviewService {
 
     private List<CodeReviewFinding> runLlmReview(String code, ReviewRequest req, String target) {
         try {
-            ResolvedModel resolved = providerRegistry.resolve(null, null);
+            ResolvedModel resolved = taskModelResolver.resolve(TaskKey.CODE_REVIEW);
             ChatClient chatClient = resolved.chatClient();
 
             BeanOutputConverter<CodeReviewReport> converter =

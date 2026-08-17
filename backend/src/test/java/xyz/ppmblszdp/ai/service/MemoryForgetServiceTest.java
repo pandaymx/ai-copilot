@@ -7,6 +7,7 @@ import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
+import xyz.ppmblszdp.ai.registry.TaskModelResolver;
 
 class MemoryForgetServiceTest {
 
@@ -15,7 +16,7 @@ class MemoryForgetServiceTest {
     @BeforeEach
     void setUp() {
         ProviderRegistry registry = mock(ProviderRegistry.class);
-        forgetService = new MemoryForgetService(registry);
+        forgetService = new MemoryForgetService(registry, mock(TaskModelResolver.class));
     }
 
     @Test

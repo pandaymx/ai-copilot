@@ -17,6 +17,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
+import xyz.ppmblszdp.ai.registry.TaskModelResolver;
 
 /**
  * 长期记忆配置：用户画像/偏好经 embedding 存入 pgvector，每次请求按 userId 维度向量检索后注入。
@@ -76,12 +77,14 @@ public class LongTermMemoryConfig {
             ObjectProvider<VectorStore> vectorStore,
             ObjectProvider<ProviderRegistry> providerRegistry,
             ObjectProvider<xyz.ppmblszdp.ai.service.MemoryForgetService> forgetServiceProvider,
-            AiProviderProperties properties) {
+            AiProviderProperties properties,
+            ObjectProvider<TaskModelResolver> taskModelResolverProvider) {
         VectorStore vs = vectorStore.getIfAvailable();
         ProviderRegistry registry = providerRegistry.getIfAvailable();
         xyz.ppmblszdp.ai.service.MemoryForgetService forgetService = forgetServiceProvider.getIfAvailable();
+        TaskModelResolver taskModelResolver = taskModelResolverProvider.getIfAvailable();
         log.info("长期记忆核心处理器 (LongTermMemoryProcessor) 装配完成 (包含冲突判定与衰减支持)");
-        return new LongTermMemoryProcessor(vs, registry, forgetService, properties);
+        return new LongTermMemoryProcessor(vs, registry, forgetService, properties, taskModelResolver);
     }
 
     @Bean

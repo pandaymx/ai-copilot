@@ -8,9 +8,11 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import xyz.ppmblszdp.ai.dto.ContentTemplateDto;
+import xyz.ppmblszdp.ai.registry.ResolvedModel;
+import xyz.ppmblszdp.ai.registry.TaskKey;
+import xyz.ppmblszdp.ai.registry.TaskModelResolver;
 import xyz.ppmblszdp.ai.repository.ContentGenerationRepository;
 
 /**
@@ -22,7 +24,7 @@ public class ContentTemplateService {
     private static final Logger log = LoggerFactory.getLogger(ContentTemplateService.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private final ObjectProvider<ChatClient.Builder> chatClientBuilderProvider;
+    private final TaskModelResolver taskModelResolver;
     private final ContentGenerationRepository repository;
 
     private static final List<ContentTemplateDto.ContentTemplateMetadata> BUILT_IN_TEMPLATES = List.of(
@@ -121,9 +123,8 @@ public class ContentTemplateService {
                             new ContentTemplateDto.TemplateField(
                                     "benefits", "有益技术效果", "相较现有技术达到的量化提升与性能优势", true, "textarea"))));
 
-    public ContentTemplateService(
-            ObjectProvider<ChatClient.Builder> chatClientBuilderProvider, ContentGenerationRepository repository) {
-        this.chatClientBuilderProvider = chatClientBuilderProvider;
+    public ContentTemplateService(TaskModelResolver taskModelResolver, ContentGenerationRepository repository) {
+        this.taskModelResolver = taskModelResolver;
         this.repository = repository;
     }
 
@@ -176,48 +177,43 @@ public class ContentTemplateService {
             Map<String, String> inputs,
             String customPrompt) {
 
-        ChatClient.Builder builder = chatClientBuilderProvider.getIfAvailable();
-        if (builder != null) {
-            try {
-                ChatClient chatClient = builder.build();
-                String systemPrompt =
-                        "你是一位专业的结构化内容创作与技术文档专家。请根据用户提供的模板要求与字段素材，输出格式规范、逻辑严谨、排版优美的高质量 Markdown 文档。请使用标准的 Markdown 标题、列表、加粗和引用。";
+        try {
+            ResolvedModel resolved = taskModelResolver.resolve(TaskKey.CONTENT_GEN);
+            ChatClient chatClient = resolved.chatClient();
+            String systemPrompt =
+                    "你是一位专业的结构化内容创作与技术文档专家。请根据用户提供的模板要求与字段素材，输出格式规范、逻辑严谨、排版优美的高质量 Markdown 文档。请使用标准的 Markdown 标题、列表、加粗和引用。";
 
-                StringBuilder userPromptBuilder = new StringBuilder();
-                userPromptBuilder.append("【文档类型】: ").append(template.name()).append("\n");
-                userPromptBuilder.append("【文档标题】: ").append(title).append("\n\n");
-                userPromptBuilder.append("【用户填写的素材与信息】:\n");
+            StringBuilder userPromptBuilder = new StringBuilder();
+            userPromptBuilder.append("【文档类型】: ").append(template.name()).append("\n");
+            userPromptBuilder.append("【文档标题】: ").append(title).append("\n\n");
+            userPromptBuilder.append("【用户填写的素材与信息】:\n");
 
-                for (var field : template.fields()) {
-                    String val = inputs.getOrDefault(field.name(), "");
-                    userPromptBuilder
-                            .append("- ")
-                            .append(field.label())
-                            .append(": ")
-                            .append(val)
-                            .append("\n");
-                }
-
-                if (customPrompt != null && !customPrompt.isBlank()) {
-                    userPromptBuilder
-                            .append("\n【附加补充要求】: ")
-                            .append(customPrompt)
-                            .append("\n");
-                }
-
-                String generated = chatClient
-                        .prompt()
-                        .system(systemPrompt)
-                        .user(userPromptBuilder.toString())
-                        .call()
-                        .content();
-
-                if (generated != null && !generated.isBlank()) {
-                    return generated;
-                }
-            } catch (Exception e) {
-                log.warn("调用 ChatClient 生成内容异常，降级到结构化模板拼装: {}", e.getMessage());
+            for (var field : template.fields()) {
+                String val = inputs.getOrDefault(field.name(), "");
+                userPromptBuilder
+                        .append("- ")
+                        .append(field.label())
+                        .append(": ")
+                        .append(val)
+                        .append("\n");
             }
+
+            if (customPrompt != null && !customPrompt.isBlank()) {
+                userPromptBuilder.append("\n【附加补充要求】: ").append(customPrompt).append("\n");
+            }
+
+            String generated = chatClient
+                    .prompt()
+                    .system(systemPrompt)
+                    .user(userPromptBuilder.toString())
+                    .call()
+                    .content();
+
+            if (generated != null && !generated.isBlank()) {
+                return generated;
+            }
+        } catch (Exception e) {
+            log.warn("调用 ChatClient 生成内容异常，降级到结构化模板拼装: {}", e.getMessage());
         }
 
         // 离线/降级默认生成器

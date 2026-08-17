@@ -21,6 +21,8 @@ import xyz.ppmblszdp.ai.rag.graph.dto.KnowledgeRelation;
 import xyz.ppmblszdp.ai.rag.graph.repository.KnowledgeGraphRepository;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
+import xyz.ppmblszdp.ai.registry.TaskKey;
+import xyz.ppmblszdp.ai.registry.TaskModelResolver;
 
 /**
  * 知识图谱抽取与 GraphRAG 联合检索核心服务。
@@ -54,10 +56,15 @@ public class GraphRagService {
 
     private final KnowledgeGraphRepository graphRepository;
     private final ProviderRegistry providerRegistry;
+    private final TaskModelResolver taskModelResolver;
 
-    public GraphRagService(KnowledgeGraphRepository graphRepository, ProviderRegistry providerRegistry) {
+    public GraphRagService(
+            KnowledgeGraphRepository graphRepository,
+            ProviderRegistry providerRegistry,
+            TaskModelResolver taskModelResolver) {
         this.graphRepository = graphRepository;
         this.providerRegistry = providerRegistry;
+        this.taskModelResolver = taskModelResolver;
     }
 
     /**
@@ -73,7 +80,7 @@ public class GraphRagService {
                 : "doc-" + UUID.randomUUID().toString().substring(0, 8);
 
         try {
-            ResolvedModel resolved = providerRegistry.resolve(null, null);
+            ResolvedModel resolved = taskModelResolver.resolve(TaskKey.GRAPH_EXTRACT);
             ChatClient client = resolved.chatClient();
 
             String rawJson = client.prompt()

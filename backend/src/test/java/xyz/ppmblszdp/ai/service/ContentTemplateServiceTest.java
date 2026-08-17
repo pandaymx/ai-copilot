@@ -5,12 +5,15 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.ObjectProvider;
 import xyz.ppmblszdp.ai.dto.ContentTemplateDto;
+import xyz.ppmblszdp.ai.registry.ResolvedModel;
+import xyz.ppmblszdp.ai.registry.TaskKey;
+import xyz.ppmblszdp.ai.registry.TaskModelResolver;
 import xyz.ppmblszdp.ai.repository.ContentGenerationRepository;
 
 class ContentTemplateServiceTest {
@@ -21,8 +24,9 @@ class ContentTemplateServiceTest {
     @BeforeEach
     void setUp() {
         repository = mock(ContentGenerationRepository.class);
-        ObjectProvider mockProvider = mock(ObjectProvider.class);
-        service = new ContentTemplateService(mockProvider, repository);
+        TaskModelResolver resolver = mock(TaskModelResolver.class);
+        when(resolver.resolve(TaskKey.CONTENT_GEN)).thenReturn(mock(ResolvedModel.class));
+        service = new ContentTemplateService(resolver, repository);
     }
 
     @Test
