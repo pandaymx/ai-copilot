@@ -222,46 +222,119 @@ function MermaidBlock({
   const [showCode, setShowCode] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
 
+  // 流式阶段启发式判断 Mermaid 代码是否"可能完整"，避免未闭合图反复解析刷屏。
+  // 非流式时一律返回 true，交由 mermaid 暴露真实语法错误。
+  const isLikelyComplete = useMemo(() => {
+    if (!isStreaming) return true;
+    const clean = code.trim();
+    if (!clean) return false;
+
+    // 合法 diagram 类型关键字：存在其一才认为有实质内容
+    const diagramKeywords = [
+      "graph",
+      "flowchart",
+      "sequenceDiagram",
+      "classDiagram",
+      "stateDiagram",
+      "erDiagram",
+      "gantt",
+      "pie",
+      "journey",
+      "timeline",
+      "mindmap",
+      "gitGraph",
+      "quadrantChart",
+      "requirementDiagram",
+      "C4Context",
+      "block-beta",
+      "sankey-beta",
+      "xychart-beta",
+    ];
+    const hasKeyword = diagramKeywords.some((kw) =>
+      new RegExp(`(^|\\s)${kw}`, "i").test(clean),
+    );
+    if (!hasKeyword) return false;
+
+    // 末行若为半截连接符（--> / --- / -.- 等）单独结尾，视为未写完
+    const lines = clean.split("\n");
+    const lastNonEmpty = [...lines].reverse().find((l) => l.trim().length > 0);
+    if (
+      lastNonEmpty &&
+      /^(-{2,}|>{1,2}|-{1,2}>|\.-)\s*$/.test(lastNonEmpty.trim())
+    ) {
+      return false;
+    }
+
+    return true;
+  }, [code, isStreaming]);
+
   useEffect(() => {
     let isMounted = true;
     const cleanCode = code.trim();
-    if (!cleanCode) return;
-
-    const renderDiagram = async () => {
-      setLoading(true);
-      try {
-        const { default: mermaid } = await import("mermaid");
-        mermaid.initialize({
-          startOnLoad: false,
-          theme: isDark ? "dark" : "default",
-          securityLevel: "loose",
-          fontFamily: "var(--font-sans), system-ui, sans-serif",
-        });
-
-        // 唯一渲染元素 key 避免冲突
-        const renderKey = `svg-${containerId}-${Math.random().toString(36).substring(2, 7)}`;
-        const { svg: renderedSvg } = await mermaid.render(renderKey, cleanCode);
-
-        if (isMounted) {
-          setSvg(renderedSvg);
-          setError(null);
-          setLoading(false);
-        }
-      } catch (err: unknown) {
-        if (isMounted) {
-          const message = err instanceof Error ? err.message : String(err);
-          setError(message);
-          setLoading(false);
-        }
+    if (!cleanCode) {
+      if (isMounted) {
+        setSvg("");
+        setError(null);
+        setLoading(false);
       }
-    };
+      return;
+    }
 
-    renderDiagram();
+    // 流式且代码可能不完整：跳过本帧渲染，保留已有 svg/loading，避免刷屏
+    if (!isLikelyComplete) {
+      if (isMounted) setLoading(true);
+      return;
+    }
+
+    // 防抖：合并高频流式帧，降低 mermaid.render 调用次数
+    const timer = setTimeout(
+      () => {
+        const renderDiagram = async () => {
+          setLoading(true);
+          try {
+            const { default: mermaid } = await import("mermaid");
+            mermaid.initialize({
+              startOnLoad: false,
+              theme: isDark ? "dark" : "default",
+              securityLevel: "loose",
+              fontFamily: "var(--font-sans), system-ui, sans-serif",
+            });
+
+            // 唯一渲染元素 key 避免冲突
+            const renderKey = `svg-${containerId}-${Math.random().toString(36).substring(2, 7)}`;
+            const { svg: renderedSvg } = await mermaid.render(
+              renderKey,
+              cleanCode,
+            );
+
+            if (isMounted) {
+              setSvg(renderedSvg);
+              setError(null);
+              setLoading(false);
+            }
+          } catch (err: unknown) {
+            if (!isMounted) return;
+            const message = err instanceof Error ? err.message : String(err);
+            if (isStreaming) {
+              // 流式阶段静默：不展示可见错误，保留已有图表或 loading 态
+              setLoading(false);
+            } else {
+              setError(message);
+              setLoading(false);
+            }
+          }
+        };
+
+        renderDiagram();
+      },
+      isStreaming ? 350 : 0,
+    );
 
     return () => {
       isMounted = false;
+      clearTimeout(timer);
     };
-  }, [code, isDark, containerId]);
+  }, [code, isDark, containerId, isLikelyComplete, isStreaming]);
 
   const handleCopy = async () => {
     try {

@@ -139,4 +139,40 @@ graph TD;
 
     unmount();
   });
+
+  it("should not show visible error panel for incomplete streaming mermaid", async () => {
+    // 未闭合/残缺的 mermaid 代码块在流式阶段不应抛出可见的"语法解析失败"
+    const partialMermaid = "```mermaid\ngraph TD;\n    A-->B;\n    B--";
+
+    const { container, unmount } = renderComponent(
+      <Markdown content={partialMermaid} isStreaming={true} />,
+    );
+
+    // 等待防抖 + 渲染周期结束
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    });
+
+    expect(container.textContent).not.toContain("Mermaid 语法解析失败");
+    expect(container.textContent).not.toContain("Syntax error");
+
+    unmount();
+  });
+
+  it("should show error panel for invalid non-streaming mermaid", async () => {
+    // 非流式阶段，明确非法的 mermaid 应展示语法解析失败提示
+    const invalidMermaid = "```mermaid\nthis is not a valid diagram;;;\n```";
+
+    const { container, unmount } = renderComponent(
+      <Markdown content={invalidMermaid} isStreaming={false} />,
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    });
+
+    expect(container.textContent).toContain("Mermaid 语法解析失败");
+
+    unmount();
+  });
 });
