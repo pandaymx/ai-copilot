@@ -69,9 +69,14 @@ public class CollabController implements WebSocketHandler {
     }
 
     private Mono<Void> establish(WebSocketSession session, String sessionId, String userId) {
-        SessionParticipant.Role role =
-                authService.roleOf(sessionId, userId).blockOptional().orElse(SessionParticipant.Role.VIEWER);
+        return authService
+                .roleOf(sessionId, userId)
+                .map(role -> role != null ? role : SessionParticipant.Role.VIEWER)
+                .flatMap(role -> doEstablish(session, sessionId, userId, role));
+    }
 
+    private Mono<Void> doEstablish(
+            WebSocketSession session, String sessionId, String userId, SessionParticipant.Role role) {
         List<String> online = bus.join(sessionId, userId, role.name());
         long now = System.currentTimeMillis();
         bus.broadcast(sessionId, new CollabEvent.Presence("presence", sessionId, userId, role.name(), "join", now));

@@ -37,7 +37,9 @@ public class MemoryService {
     private static final Logger log = LoggerFactory.getLogger(MemoryService.class);
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final String MEMORY_TABLE = "ai_long_term_memory";
+    // 与 Spring AI pgvector autoconfigure 实际建表名保持一致（默认集合名为 vector_store）。
+    // 长期记忆专用，与 RAG 独立表 ai_rag_documents 物理隔离。
+    private static final String MEMORY_TABLE = "vector_store";
 
     private final JdbcTemplate jdbcTemplate;
     private final SafeVectorStore vectorStore;

@@ -5,6 +5,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 /**
  * 共享会话参与者关联表（session_participant）。
@@ -40,51 +41,61 @@ public class SessionParticipantRepository {
 
     /** 新增/更新参与者角色。 */
     public Mono<Void> upsert(String sessionId, String userId, SessionParticipant.Role role) {
-        return Mono.fromRunnable(
-                () -> jdbcTemplate.update("""
-                                INSERT INTO session_participant
-                                    (session_id, user_id, role, created_at)
-                                VALUES (?, ?, ?, ?)
-                                ON CONFLICT (session_id, user_id)
-                                DO UPDATE SET role = EXCLUDED.role
-                                """, sessionId, userId, role.name(), System.currentTimeMillis()));
+        return Mono.<Void>fromRunnable(() -> {
+                    jdbcTemplate.update("""
+                            INSERT INTO session_participant
+                                (session_id, user_id, role, created_at)
+                            VALUES (?, ?, ?, ?)
+                            ON CONFLICT (session_id, user_id)
+                            DO UPDATE SET role = EXCLUDED.role
+                            """, sessionId, userId, role.name(), System.currentTimeMillis());
+                })
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     /** 移除参与者（不移除所有者自身）。 */
     public Mono<Void> remove(String sessionId, String userId) {
-        return Mono.fromRunnable(() -> jdbcTemplate.update(
-                "DELETE FROM session_participant WHERE session_id = ? AND user_id = ? AND role <> 'OWNER'",
-                sessionId,
-                userId));
+        return Mono.<Void>fromRunnable(() -> {
+                    jdbcTemplate.update(
+                            "DELETE FROM session_participant WHERE session_id = ? AND user_id = ? AND role <> 'OWNER'",
+                            sessionId,
+                            userId);
+                })
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     /** 查询某用户在会话中的角色；非参与者返回 null。 */
     public Mono<SessionParticipant.Role> roleOf(String sessionId, String userId) {
         return Mono.fromCallable(() -> {
-            List<String> roles = jdbcTemplate.query(
-                    "SELECT role FROM session_participant WHERE session_id = ? AND user_id = ?",
-                    (rs, rn) -> rs.getString("role"),
-                    sessionId,
-                    userId);
-            return roles.isEmpty() ? null : SessionParticipant.Role.valueOf(roles.get(0));
-        });
+                    List<String> roles = jdbcTemplate.query(
+                            "SELECT role FROM session_participant WHERE session_id = ? AND user_id = ?",
+                            (rs, rn) -> rs.getString("role"),
+                            sessionId,
+                            userId);
+                    return roles.isEmpty() ? null : SessionParticipant.Role.valueOf(roles.get(0));
+                })
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     /** 列出会话全部参与者（含所有者）。 */
     public Mono<List<SessionParticipant>> listBySession(String sessionId) {
         return Mono.fromCallable(() -> jdbcTemplate.query(
-                "SELECT session_id, user_id, role FROM session_participant WHERE session_id = ? ORDER BY created_at ASC",
-                ROW_MAPPER,
-                sessionId));
+                        "SELECT session_id, user_id, role FROM session_participant WHERE session_id = ? ORDER BY created_at ASC",
+                        ROW_MAPPER,
+                        sessionId))
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     /** 将所有者也写入参与者表（创建会话或首次协作时调用）。 */
     public Mono<Void> ensureOwner(String sessionId, String ownerId) {
-        return Mono.fromRunnable(() -> jdbcTemplate.update("""
-                                INSERT INTO session_participant
-                                    (session_id, user_id, role, created_at)
+        return Mono.<Void>fromRunnable(() -> {
+                    jdbcTemplate.update("""
+                            INSERT INTO session_participant
+                                (session_id, user_id, role, created_at)
                                 VALUES (?, ?, 'OWNER', ?)
-                                ON CONFLICT (session_id, user_id) DO NOTHING
-                                """, sessionId, ownerId, System.currentTimeMillis()));
+                            ON CONFLICT (session_id, user_id) DO NOTHING
+                            """, sessionId, ownerId, System.currentTimeMillis());
+                })
+                .subscribeOn(Schedulers.boundedElastic());
     }
 }

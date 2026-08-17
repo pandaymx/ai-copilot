@@ -115,20 +115,15 @@ public class SessionService {
     }
 
     /** 查询指定用户在会话中的协作角色（非参与者为空）。 */
-    public java.util.Optional<SessionParticipant.Role> getParticipantRole(String id, String userId) {
-        return participantRepository.roleOf(id, userId).blockOptional();
+    public reactor.core.publisher.Mono<SessionParticipant.Role> getParticipantRole(String id, String userId) {
+        return participantRepository.roleOf(id, userId);
     }
 
     /** 列出会话全部参与者（含所有者）。 */
-    public List<SessionDto.Participant> listParticipants(String id) {
-        return participantRepository
-                .listBySession(id)
-                .blockOptional()
-                .map(list -> list.stream()
-                        .map(p ->
-                                new SessionDto.Participant(p.userId(), p.role().name()))
-                        .toList())
-                .orElse(java.util.List.of());
+    public reactor.core.publisher.Mono<List<SessionDto.Participant>> listParticipants(String id) {
+        return participantRepository.listBySession(id).map(list -> list.stream()
+                .map(p -> new SessionDto.Participant(p.userId(), p.role().name()))
+                .toList());
     }
 
     /** 发送消息时刷新会话时间戳（绑定用户） */

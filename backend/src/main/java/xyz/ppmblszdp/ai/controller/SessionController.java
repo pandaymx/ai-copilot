@@ -159,72 +159,87 @@ public class SessionController {
 
     /** 列出会话全部参与者（含所有者）。非参与者返回 404。 */
     @GetMapping("/{id}/participants")
-    public ResponseEntity<List<SessionDto.Participant>> listParticipants(
+    public Mono<ResponseEntity<List<SessionDto.Participant>>> listParticipants(
             @PathVariable("id") String id, ServerWebExchange exchange) {
         String userId = resolveIdentity(exchange);
-        if (!participantAuth.isParticipant(id, userId).blockOptional().orElse(false)) {
-            return ResponseEntity.notFound().build();
-        }
-        return ResponseEntity.ok(sessionService.listParticipants(id));
+        return participantAuth.isParticipant(id, userId).flatMap(isPart -> {
+            if (!isPart) {
+                return Mono.just(ResponseEntity.notFound().<List<SessionDto.Participant>>build());
+            }
+            return sessionService.listParticipants(id).map(ResponseEntity::ok);
+        });
     }
 
     /** 查询当前用户在会话中的角色（frontend 决定只读态）。非参与者返回 404。 */
     @GetMapping("/{id}/my-role")
-    public ResponseEntity<Map<String, String>> myRole(@PathVariable("id") String id, ServerWebExchange exchange) {
+    public Mono<ResponseEntity<Map<String, String>>> myRole(@PathVariable("id") String id, ServerWebExchange exchange) {
         String userId = resolveIdentity(exchange);
-        SessionParticipant.Role role =
-                participantAuth.roleOf(id, userId).blockOptional().orElse(null);
-        if (role == null) {
-            return ResponseEntity.notFound().build();
-        }
-        return ResponseEntity.ok(Map.of("role", role.name()));
+        return participantAuth
+                .roleOf(id, userId)
+                .map(role -> ResponseEntity.ok(Map.of("role", role.name())))
+                .defaultIfEmpty(ResponseEntity.notFound().build());
     }
 
     /** 邀请协作者（仅 OWNER）。role 仅允许 EDITOR / VIEWER。 */
     @PostMapping("/{id}/participants")
-    public ResponseEntity<Map<String, String>> inviteParticipant(
+    public Mono<ResponseEntity<Map<String, String>>> inviteParticipant(
             @PathVariable("id") String id, @RequestBody InviteRequest request, ServerWebExchange exchange) {
         String userId = resolveIdentity(exchange);
-        // 二次权限断言：必须是 OWNER
-        participantAuth.requireRole(id, userId, SessionParticipant.Role.OWNER).block();
-        if (request == null
-                || request.targetUserId() == null
-                || request.targetUserId().isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "targetUserId 不能为空"));
-        }
-        SessionParticipant.Role role;
-        try {
-            role = SessionParticipant.Role.valueOf(
-                    request.role() == null ? "VIEWER" : request.role().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", "role 必须是 EDITOR 或 VIEWER"));
-        }
-        if (role == SessionParticipant.Role.OWNER) {
-            return ResponseEntity.badRequest().body(Map.of("error", "不能分配 OWNER 角色"));
-        }
-        participantRepository.upsert(id, request.targetUserId(), role).block();
-        // 通知在线成员刷新成员列表
-        collabBus.broadcast(
-                id,
-                new CollabEvent.Presence(
-                        "presence", id, request.targetUserId(), role.name(), "invited", System.currentTimeMillis()));
-        return ResponseEntity.ok(Map.of("role", role.name()));
+        return participantAuth
+                .requireRole(id, userId, SessionParticipant.Role.OWNER)
+                .then(Mono.defer(() -> {
+                    if (request == null
+                            || request.targetUserId() == null
+                            || request.targetUserId().isBlank()) {
+                        return Mono.just(ResponseEntity.badRequest().body(Map.of("error", "targetUserId 不能为空")));
+                    }
+                    SessionParticipant.Role role;
+                    try {
+                        role = SessionParticipant.Role.valueOf(
+                                request.role() == null
+                                        ? "VIEWER"
+                                        : request.role().toUpperCase());
+                    } catch (IllegalArgumentException e) {
+                        return Mono.just(ResponseEntity.badRequest().body(Map.of("error", "role 必须是 EDITOR 或 VIEWER")));
+                    }
+                    if (role == SessionParticipant.Role.OWNER) {
+                        return Mono.just(ResponseEntity.badRequest().body(Map.of("error", "不能分配 OWNER 角色")));
+                    }
+                    return participantRepository
+                            .upsert(id, request.targetUserId(), role)
+                            .then(Mono.fromCallable(() -> {
+                                // 通知在线成员刷新成员列表
+                                collabBus.broadcast(
+                                        id,
+                                        new CollabEvent.Presence(
+                                                "presence",
+                                                id,
+                                                request.targetUserId(),
+                                                role.name(),
+                                                "invited",
+                                                System.currentTimeMillis()));
+                                return ResponseEntity.ok(Map.of("role", role.name()));
+                            }));
+                }));
     }
 
     /** 移除协作者（仅 OWNER，不能移除所有者）。 */
     @DeleteMapping("/{id}/participants/{targetUserId}")
-    public ResponseEntity<Void> removeParticipant(
+    public Mono<ResponseEntity<Void>> removeParticipant(
             @PathVariable("id") String id,
             @PathVariable("targetUserId") String targetUserId,
             ServerWebExchange exchange) {
         String userId = resolveIdentity(exchange);
-        participantAuth.requireRole(id, userId, SessionParticipant.Role.OWNER).block();
-        participantRepository.remove(id, targetUserId).block();
-        collabBus.broadcast(
-                id,
-                new CollabEvent.Presence(
-                        "presence", id, targetUserId, "VIEWER", "removed", System.currentTimeMillis()));
-        return ResponseEntity.ok().build();
+        return participantAuth
+                .requireRole(id, userId, SessionParticipant.Role.OWNER)
+                .then(participantRepository.remove(id, targetUserId))
+                .then(Mono.fromCallable(() -> {
+                    collabBus.broadcast(
+                            id,
+                            new CollabEvent.Presence(
+                                    "presence", id, targetUserId, "VIEWER", "removed", System.currentTimeMillis()));
+                    return ResponseEntity.ok().<Void>build();
+                }));
     }
 
     public record InviteRequest(String targetUserId, String role) {}
