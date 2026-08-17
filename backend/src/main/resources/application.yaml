@@ -281,6 +281,12 @@ app:
         - key: TASK_PLAN
           providers: [openai/gpt-4o-mini, google/gemini-3.5-flash, deepseek/deepseek-chat]
 
+    # 语义缓存（5-#4）。复用主 PostgreSQL 实例的 ai_semantic_cache 表（pgvector）。
+    # enabled=true 时，对用户输入做语义相似检索，命中直接返回缓存响应；
+    # 响应完成后异步写回缓存（TTL 7 天，按 user_id 多租户隔离）。
+    semantic-cache:
+      enabled: ${AI_SEMANTIC_CACHE_ENABLED:true}
+
     # 一等公民：仅需声明「对外暴露哪些模型」及展示元数据。
     # 连接参数（apiKey/baseUrl）仍由上方 spring.ai.* 管理，未配置密钥时由 starter 行为决定。
     first-class:

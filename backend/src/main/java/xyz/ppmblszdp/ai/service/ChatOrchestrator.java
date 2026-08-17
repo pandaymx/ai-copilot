@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -34,6 +35,7 @@ import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks.Many;
 import reactor.core.scheduler.Schedulers;
 import reactor.util.retry.Retry;
+import xyz.ppmblszdp.ai.cache.SemanticCacheService;
 import xyz.ppmblszdp.ai.clarification.ClarificationAdvisor;
 import xyz.ppmblszdp.ai.collab.CollaborationBus;
 import xyz.ppmblszdp.ai.config.AiProviderProperties;
@@ -111,6 +113,7 @@ public class ChatOrchestrator implements DisposableBean {
     private final ObjectProvider<DocumentChatService> documentChatServiceProvider;
     private final ObjectProvider<xyz.ppmblszdp.ai.customtool.service.CustomToolService> customToolServiceProvider;
     private final ObjectProvider<xyz.ppmblszdp.ai.persona.service.PersonaStoreService> personaStoreServiceProvider;
+    private final SemanticCacheService semanticCacheService;
 
     private final ConcurrentLinkedQueue<Disposable> fireAndForgetSubscriptions = new ConcurrentLinkedQueue<>();
 
@@ -156,7 +159,8 @@ public class ChatOrchestrator implements DisposableBean {
             ObjectProvider<ModelPerformanceTracker> performanceTrackerProvider,
             ObjectProvider<InteractionAnalyzer> interactionAnalyzerProvider,
             ObjectProvider<xyz.ppmblszdp.ai.customtool.service.CustomToolService> customToolServiceProvider,
-            ObjectProvider<xyz.ppmblszdp.ai.persona.service.PersonaStoreService> personaStoreServiceProvider) {
+            ObjectProvider<xyz.ppmblszdp.ai.persona.service.PersonaStoreService> personaStoreServiceProvider,
+            SemanticCacheService semanticCacheService) {
         this.registry = registry;
         this.contextAssembler = contextAssembler;
         this.sessionChatMemory = sessionChatMemory;
@@ -199,6 +203,7 @@ public class ChatOrchestrator implements DisposableBean {
         this.documentChatServiceProvider = documentChatServiceProvider;
         this.customToolServiceProvider = customToolServiceProvider;
         this.personaStoreServiceProvider = personaStoreServiceProvider;
+        this.semanticCacheService = semanticCacheService;
     }
 
     public ChatOrchestrator(
@@ -229,7 +234,8 @@ public class ChatOrchestrator implements DisposableBean {
             ObjectProvider<xyz.ppmblszdp.ai.feedback.IntentFeedbackAccumulator> intentFeedbackAccumulatorProvider,
             ObjectProvider<xyz.ppmblszdp.ai.context.ContextCompressor> contextCompressorProvider,
             ObjectProvider<DocumentChatService> documentChatServiceProvider,
-            ObjectProvider<ModelPerformanceTracker> performanceTrackerProvider) {
+            ObjectProvider<ModelPerformanceTracker> performanceTrackerProvider,
+            SemanticCacheService semanticCacheService) {
         this(
                 registry,
                 contextAssembler,
@@ -261,7 +267,8 @@ public class ChatOrchestrator implements DisposableBean {
                 performanceTrackerProvider,
                 null,
                 null,
-                null);
+                null,
+                semanticCacheService);
     }
 
     public ChatOrchestrator(
@@ -320,6 +327,10 @@ public class ChatOrchestrator implements DisposableBean {
                 intentFeedbackAccumulatorProvider,
                 contextCompressorProvider,
                 documentChatServiceProvider,
+                null,
+                null,
+                null,
+                null,
                 null);
     }
 
@@ -533,6 +544,15 @@ public class ChatOrchestrator implements DisposableBean {
     public Flux<ChatChunkDto> streamChatChunks(ChatRequest request, String userId) {
         ResolvedModel resolved = registry.resolve(request.provider(), request.model());
 
+        if (semanticCacheService != null && semanticCacheService.isEnabled() && !hasMedia(request)) {
+            Optional<String> hit =
+                    semanticCacheService.lookUp(userId, request.message(), request.provider(), request.model());
+            if (hit.isPresent()) {
+                log.debug("语义缓存命中，直接返回缓存响应");
+                return Flux.just(ChatChunkDto.content(hit.get()), ChatChunkDto.done());
+            }
+        }
+
         ImageGenerationService imgService = imageRouter.getAvailableImageService();
         if (imgService != null) {
             ImageRouter.ImageIntentResult intent = imageRouter.detectImageIntent(request, resolved);
@@ -701,12 +721,29 @@ public class ChatOrchestrator implements DisposableBean {
                     })
                     .concatWith(createMetricsChunk(
                             streamStartTime, firstTokenTime, toolDuration, lastUsage, fullContent, effectiveResolved))
-                    .doOnComplete(() -> recordLongTermMemoryAsync(
-                            userId, req.conversationId(), req.message(), fullContent.toString()))
+                    .doOnComplete(() -> {
+                        recordLongTermMemoryAsync(userId, req.conversationId(), req.message(), fullContent.toString());
+                        if (semanticCacheService != null && semanticCacheService.isEnabled()) {
+                            semanticCacheService.onComplete(
+                                    userId,
+                                    req.message(),
+                                    effectiveResolved.provider().providerId(),
+                                    effectiveResolved.model().id(),
+                                    fullContent.toString());
+                        }
+                    })
                     .doOnCancel(() -> {
                         if (fullContent.length() > 0) {
                             recordLongTermMemoryAsync(
                                     userId, req.conversationId(), req.message(), fullContent.toString());
+                            if (semanticCacheService != null && semanticCacheService.isEnabled()) {
+                                semanticCacheService.onComplete(
+                                        userId,
+                                        req.message(),
+                                        effectiveResolved.provider().providerId(),
+                                        effectiveResolved.model().id(),
+                                        fullContent.toString());
+                            }
                         }
                     })
                     .doFinally(signalType -> {
@@ -958,7 +995,17 @@ public class ChatOrchestrator implements DisposableBean {
                                                 resp, fullContent, primaryResolved, userId, firstTokenTime),
                                         usageAccum)))
                 .concatWith(createMetricsChunk(
-                        streamStartTime, firstTokenTime, toolDuration, usageAccum, fullContent, primaryResolved));
+                        streamStartTime, firstTokenTime, toolDuration, usageAccum, fullContent, primaryResolved))
+                .doOnComplete(() -> {
+                    if (semanticCacheService != null && semanticCacheService.isEnabled() && fullContent.length() > 0) {
+                        semanticCacheService.onComplete(
+                                userId,
+                                request.message(),
+                                primaryResolved.provider().providerId(),
+                                primaryResolved.model().id(),
+                                fullContent.toString());
+                    }
+                });
 
         if (agentPath && toolSink != null) {
             Flux<ChatChunkDto> merged = Flux.merge(contentFlux, toolSink.asFlux());
