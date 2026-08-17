@@ -292,6 +292,9 @@ export default function Home() {
   }, [isStreaming, setStreaming]);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  // 滚动容器引用，用于实时测量是否在底部（避免依赖 onScroll 维护的 ref，
+  // 否则 scrollIntoView 的 smooth 平滑动画中途会误判为“不在底部”而停止跟随）。
+  const mainRef = useRef<HTMLElement>(null);
 
   // 挂载后从 localStorage 恢复上次选中的模型（不在 useState 初始化时读取，
   // 否则服务端渲染与客户端首次渲染会不一致导致 hydration mismatch）。
@@ -321,21 +324,40 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // 自动滚动到底部
+  // 自动滚动到底部：实时测量用户是否贴近底部，仅在贴近时才跟随，
+  // 用户向上浏览历史时不被新消息强制拉回（尊重阅读）。
+  // 流式响应期间直接设置 scrollTop（即时、无动画），避免 smooth 动画在高频
+  // 更新下被打断、把正在阅读的位置拉回上方；非流式用平滑滚动。
   // biome-ignore lint/correctness/useExhaustiveDependencies: 副作用触发滚动
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const el = mainRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 120;
+    if (atBottom) {
+      if (isStreaming) {
+        el.scrollTop = el.scrollHeight;
+      } else {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      }
+    }
+  }, [messages, isStreaming]);
+
+  // 包装发送：发起新对话时先瞬移到底部，保证新会话从底部开始自动跟随
+  const triggerSend = (text?: string) => {
+    const el = mainRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    void (text ? (handleSend as (t?: string) => void)(text) : handleSend());
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    void handleSend();
+    triggerSend();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      void handleSend();
+      triggerSend();
     }
   };
 
@@ -626,7 +648,8 @@ export default function Home() {
 
         {/* 主消息列表区 */}
         <main
-          className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-smooth scrollbar-hidden"
+          ref={mainRef}
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto scrollbar-hidden"
           aria-live="polite"
         >
           {/* 文档对话模式专属顶部挂载管理栏 */}
@@ -652,7 +675,7 @@ export default function Home() {
           )}
 
           {messages.length === 0 ? (
-            <EmptyState onPickPrompt={(text) => void handleSend(text)} />
+            <EmptyState onPickPrompt={(text) => triggerSend(text)} />
           ) : (
             <div className="mx-auto w-full max-w-3xl py-4">
               {messages.map((m, index) => {

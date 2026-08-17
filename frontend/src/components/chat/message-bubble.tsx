@@ -1090,20 +1090,6 @@ export function LiveMessageBubble({
     contextCompression,
     citations,
   } = useStreamData(streamStore);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll into view on streaming content update
-  useEffect(() => {
-    containerRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [
-    content,
-    thinking,
-    toolCalls,
-    artifacts,
-    taskPlan,
-    contextCompression,
-    citations,
-  ]);
 
   const liveMessage: ChatMessage = {
     ...message,
@@ -1122,7 +1108,7 @@ export function LiveMessageBubble({
   };
 
   return (
-    <div ref={containerRef}>
+    <div>
       <MessageBubbleBase
         message={liveMessage}
         streaming={true}
