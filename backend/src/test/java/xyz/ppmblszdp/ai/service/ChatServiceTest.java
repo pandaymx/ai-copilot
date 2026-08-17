@@ -50,6 +50,7 @@ import xyz.ppmblszdp.ai.registry.ModelHealthTracker;
 import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
+import xyz.ppmblszdp.ai.registry.TaskModelRouter;
 import xyz.ppmblszdp.ai.repository.UsageRepository;
 import xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor;
 import xyz.ppmblszdp.ai.tool.ToolEventEmitter;
@@ -99,6 +100,7 @@ class ChatServiceTest {
         rateLimiter = mock(ObjectProvider.class);
         sessionService = mock(SessionService.class);
         properties = mock(AiProviderProperties.class);
+        when(properties.resolveRouting()).thenReturn(AiProviderProperties.RoutingConfig.disabled());
 
         AiProviderProperties.MemoryConfig memoryConfig = mock(AiProviderProperties.MemoryConfig.class);
         when(memoryConfig.isEnabled()).thenReturn(false);
@@ -395,7 +397,8 @@ class ChatServiceTest {
                 mcpToolProvider,
                 toolSearchFactory,
                 null,
-                imgProvider);
+                imgProvider,
+                new TaskModelRouter(registry, new ModelHealthTracker(), properties));
 
         ChatRequest req1 = new ChatRequest("绘制一张雪山风景图", null, "openai", "gpt-4o", null, null, null, null, null);
         Flux<ChatChunkDto> flux1 = serviceWithImg.streamChatChunks(req1, "user-1");

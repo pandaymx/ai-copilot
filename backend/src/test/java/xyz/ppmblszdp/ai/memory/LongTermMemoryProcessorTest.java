@@ -35,6 +35,7 @@ class LongTermMemoryProcessorTest {
                 null,
                 null,
                 null,
+                null,
                 null);
         processor = new LongTermMemoryProcessor(mockVectorStore, null, properties);
     }

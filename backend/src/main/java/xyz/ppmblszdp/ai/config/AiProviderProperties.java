@@ -39,7 +39,8 @@ public record AiProviderProperties(
         @Nullable AgentConfig agent,
         @Nullable ImageConfig image,
         @Nullable Map<String, FirstClassConfig> firstClass,
-        @Nullable List<SecondClassConfig> secondClass) {
+        @Nullable List<SecondClassConfig> secondClass,
+        @Nullable RoutingConfig routing) {
 
     /** 兜底的上下文窗口大小，未在任何层级配置时使用。 */
     public static final int FALLBACK_MAX_CONTEXT_TOKENS = 32768;
@@ -73,6 +74,15 @@ public record AiProviderProperties(
     /** Agent 工具调用子系统配置（绑定 {@code app.ai.agent.*}）。 */
     public AgentConfig resolveAgent() {
         return agent != null ? agent : AgentConfig.defaults();
+    }
+
+    /**
+     * 跨供应商任务级路由配置（绑定 {@code app.ai.routing.*}）。
+     *
+     * <p>5-#1 与 5-#2 共享的「任务梯队」单一事实来源。
+     */
+    public RoutingConfig resolveRouting() {
+        return routing != null ? routing : RoutingConfig.disabled();
     }
 
     /**
@@ -880,6 +890,60 @@ public record AiProviderProperties(
                     "draw a",
                     "draw an",
                     "draw ");
+        }
+    }
+
+    /**
+     * 跨供应商任务级路由配置（绑定 {@code app.ai.routing.*}）。
+     *
+     * <p>
+     * 这是 5-#1（{@code TaskModelRouter}）与 5-#2（{@code TaskModelResolver}）共享的
+     * 「任务梯队」单一事实来源。每个任务键映射一组候选 {@code providerId/modelId}，按
+     * 降级优先级排列；Router/Resolver 仅消费本配置，不各自维护副本。
+     *
+     * @param enabled 路由总开关；false 时 Router 直接返回用户指定模型（保持原 fallback）
+     * @param tiers   任务键 → 候选模型梯队列表
+     */
+    public record RoutingConfig(
+            @Nullable Boolean enabled, @Nullable List<TaskTier> tiers) {
+        public static RoutingConfig disabled() {
+            return new RoutingConfig(false, List.of());
+        }
+
+        public boolean isEnabled() {
+            return enabled != null && enabled;
+        }
+
+        public List<TaskTier> resolveTiers() {
+            return tiers == null ? List.of() : tiers;
+        }
+
+        /** 按任务键查找梯队；无匹配返回空。 */
+        public List<String> resolveProvidersFor(String taskKey) {
+            if (taskKey == null) {
+                return List.of();
+            }
+            return resolveTiers().stream()
+                    .filter(t -> taskKey.equals(t.key()))
+                    .map(TaskTier::providers)
+                    .findFirst()
+                    .orElse(List.of());
+        }
+    }
+
+    /**
+     * 单个任务的候选模型梯队。
+     *
+     * @param key      任务键（如 INTENT_CLASSIFY / TITLE / PROMPT_OPTIMIZE）
+     * @param providers 候选模型列表，格式 {@code providerId/modelId}，按降级优先级排列
+     */
+    public record TaskTier(@Nullable String key, @Nullable List<String> providers) {
+        public String resolveKey() {
+            return key != null ? key : "";
+        }
+
+        public List<String> resolveProviders() {
+            return providers == null ? List.of() : providers;
         }
     }
 }

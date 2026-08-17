@@ -2,10 +2,8 @@ package xyz.ppmblszdp.ai.service;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -15,10 +13,9 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import xyz.ppmblszdp.ai.dto.PromptOptimizeRequest;
 import xyz.ppmblszdp.ai.dto.PromptOptimizeResult;
-import xyz.ppmblszdp.ai.registry.ModelDescriptor;
-import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
+import xyz.ppmblszdp.ai.registry.TaskModelRouter;
 
 /**
  * Prompt 优化服务。
@@ -53,9 +50,11 @@ public class PromptOptimizer {
             + "AUDIENCE（缺少目标受众）, TONE（缺少语气/风格要求）";
 
     private final ProviderRegistry registry;
+    private final TaskModelRouter taskModelRouter;
 
-    public PromptOptimizer(ProviderRegistry registry) {
+    public PromptOptimizer(ProviderRegistry registry, TaskModelRouter taskModelRouter) {
         this.registry = registry;
+        this.taskModelRouter = taskModelRouter;
     }
 
     /**
@@ -79,7 +78,7 @@ public class PromptOptimizer {
         }
 
         // 深度优化走用户所选模型（更强推理），普通优化走最便宜的低成本模型。
-        ResolvedModel resolved = depth ? userResolved : selectLowCostModel(userResolved);
+        ResolvedModel resolved = depth ? userResolved : taskModelRouter.resolve("PROMPT_OPTIMIZE", userResolved);
         log.debug(
                 "Prompt 优化：depth={}, 用户模型={}/{}, 实际模型={}/{}",
                 depth,
@@ -143,33 +142,6 @@ public class PromptOptimizer {
         }
         String trimmed = s.trim();
         return trimmed.length() <= max ? trimmed : trimmed.substring(0, max);
-    }
-
-    /**
-     * 在用户所选供应商下挑选成本最低的模型用于普通优化。
-     *
-     * <p>普通优化为轻量文本任务，使用 {@code (inputPricePerK + outputPricePerK)} 最小模型即可，
-     * 显著降低开销；若供应商未登记任何模型则回退用户传入模型。
-     */
-    private ResolvedModel selectLowCostModel(ResolvedModel userResolved) {
-        ProviderDescriptor provider = userResolved.provider();
-        Map<String, ModelDescriptor> models = provider.models();
-        if (models == null || models.isEmpty()) {
-            return userResolved;
-        }
-        ModelDescriptor cheapest = null;
-        BigDecimal lowestCost = null;
-        for (ModelDescriptor md : models.values()) {
-            BigDecimal cost = md.inputPricePerK().add(md.outputPricePerK());
-            if (lowestCost == null || cost.compareTo(lowestCost) < 0) {
-                lowestCost = cost;
-                cheapest = md;
-            }
-        }
-        if (cheapest == null) {
-            return userResolved;
-        }
-        return new ResolvedModel(provider.chatModel(), provider, cheapest);
     }
 
     // ========================================================================

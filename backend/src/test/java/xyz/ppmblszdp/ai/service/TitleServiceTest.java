@@ -18,6 +18,7 @@ import xyz.ppmblszdp.ai.registry.ModelDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
+import xyz.ppmblszdp.ai.registry.TaskModelRouter;
 
 class TitleServiceTest {
 
@@ -43,7 +44,10 @@ class TitleServiceTest {
         ResolvedModel resolved = new ResolvedModel(chatModel, provider, model);
 
         when(registry.resolve(eq("openai"), eq("gpt-4o"))).thenReturn(resolved);
-        titleService = new TitleService(registry);
+
+        TaskModelRouter router = mock(TaskModelRouter.class);
+        when(router.resolve(any(), any())).thenAnswer(inv -> inv.getArgument(1));
+        titleService = new TitleService(registry, router);
     }
 
     @Test

@@ -40,6 +40,7 @@ class ContextCompressorTest {
                 null,
                 null,
                 null,
+                null,
                 null);
 
         @SuppressWarnings("unchecked")
@@ -72,6 +73,7 @@ class ContextCompressorTest {
                 null,
                 new ContextConfig(
                         null, null, null, null, new ContextCompressionConfig(true, null, null, "LIGHT", 2, 5000L)),
+                null,
                 null,
                 null,
                 null,
@@ -145,6 +147,7 @@ class ContextCompressorTest {
                 null,
                 null,
                 null,
+                null,
                 null);
 
         @SuppressWarnings("unchecked")
@@ -182,6 +185,7 @@ class ContextCompressorTest {
                 "System prompt",
                 new ContextConfig(
                         100, 0.5, 500, null, new ContextCompressionConfig(true, null, null, "LIGHT", 2, 5000L)),
+                null,
                 null,
                 null,
                 null,

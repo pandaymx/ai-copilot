@@ -16,7 +16,7 @@ class IntentClassifierTest {
 
     @BeforeEach
     void setUp() {
-        intentClassifier = new IntentClassifier();
+        intentClassifier = new IntentClassifier(null);
     }
 
     @Test

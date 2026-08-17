@@ -39,6 +39,7 @@ class ImageModelRegistryTest {
                 null,
                 new AiProviderProperties.ImageConfig("openai", "dall-e-3", 1024, 1024, "standard", "vivid", "b64_json"),
                 null,
+                null,
                 null);
 
         registry = new ImageModelRegistry(provider, properties);

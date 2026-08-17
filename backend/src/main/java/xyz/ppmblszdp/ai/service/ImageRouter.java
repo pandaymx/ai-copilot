@@ -1,8 +1,6 @@
 package xyz.ppmblszdp.ai.service;
 
-import java.math.BigDecimal;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,9 +17,8 @@ import xyz.ppmblszdp.ai.dto.ChatChunkDto;
 import xyz.ppmblszdp.ai.dto.ChatRequest;
 import xyz.ppmblszdp.ai.dto.ImageGenerationRequestDto;
 import xyz.ppmblszdp.ai.factory.ChatOptionsFactory;
-import xyz.ppmblszdp.ai.registry.ModelDescriptor;
-import xyz.ppmblszdp.ai.registry.ProviderDescriptor;
 import xyz.ppmblszdp.ai.registry.ResolvedModel;
+import xyz.ppmblszdp.ai.registry.TaskModelRouter;
 
 /**
  * 图像意图识别与图像生成流式路由服务。
@@ -35,11 +32,15 @@ public class ImageRouter {
 
     private final ObjectProvider<ImageGenerationService> imageGenerationServiceProvider;
     private final AiProviderProperties properties;
+    private final TaskModelRouter taskModelRouter;
 
     public ImageRouter(
-            ObjectProvider<ImageGenerationService> imageGenerationServiceProvider, AiProviderProperties properties) {
+            ObjectProvider<ImageGenerationService> imageGenerationServiceProvider,
+            AiProviderProperties properties,
+            TaskModelRouter taskModelRouter) {
         this.imageGenerationServiceProvider = imageGenerationServiceProvider;
         this.properties = properties;
+        this.taskModelRouter = taskModelRouter;
     }
 
     /** 图像意图判定与提炼出的提示词 DTO 记录。 */
@@ -92,7 +93,7 @@ public class ImageRouter {
         // 3. 调用 LLM 进行智能意图识别与提示词提炼
         //    意图识别为简单二元分类任务，显式改用当前供应商下最便宜的低成本模型，
         //    避免占用用户高等级（高成本）模型的额度。
-        ResolvedModel classifyModel = selectLowCostModel(resolved);
+        ResolvedModel classifyModel = taskModelRouter.resolve("IMAGE_INTENT", resolved);
         try {
             if (classifyModel != null && classifyModel.chatModel() != null) {
                 String systemPrompt = """
@@ -156,46 +157,6 @@ public class ImageRouter {
         // 4. LLM 异常时的降级规则校验
         boolean isReq = isImageGenerationRequestByRule(msg, keywords);
         return new ImageIntentResult(isReq, isReq ? extractImagePrompt(request) : "");
-    }
-
-    /**
-     * 在用户所选供应商下挑选成本最低的模型用于图像意图分类。
-     *
-     * <p>意图识别是轻量级二元分类任务，无需用户高等级模型的能力，使用清单中
-     * {@code (inputPricePerK + outputPricePerK)} 最小的模型即可，显著降低开销。
-     * 若供应商未登记任何模型（纯自定义模型场景），或传入模型为空，则回退到原模型。
-     *
-     * @param userResolved 用户传入模型解析结果（仅用于确定所属供应商与 ChatModel 实例）
-     * @return 用于意图分类的最终模型解析结果
-     */
-    private ResolvedModel selectLowCostModel(ResolvedModel userResolved) {
-        if (userResolved == null || userResolved.provider() == null) {
-            return userResolved;
-        }
-        ProviderDescriptor provider = userResolved.provider();
-        Map<String, ModelDescriptor> models = provider.models();
-        if (models == null || models.isEmpty()) {
-            return userResolved;
-        }
-        ModelDescriptor cheapest = null;
-        BigDecimal lowestCost = null;
-        for (ModelDescriptor md : models.values()) {
-            BigDecimal cost = md.inputPricePerK().add(md.outputPricePerK());
-            if (lowestCost == null || cost.compareTo(lowestCost) < 0) {
-                lowestCost = cost;
-                cheapest = md;
-            }
-        }
-        if (cheapest == null) {
-            return userResolved;
-        }
-        log.debug(
-                "图像意图识别：用户模型={}/{}，改用低成本模型={}/{}",
-                userResolved.provider().providerId(),
-                userResolved.model().id(),
-                provider.providerId(),
-                cheapest.id());
-        return new ResolvedModel(provider.chatModel(), provider, cheapest);
     }
 
     public boolean isImageGenerationRequestByRule(String msg, List<String> keywords) {

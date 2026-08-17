@@ -41,6 +41,11 @@ public final class ProviderRegistry {
         return new ArrayList<>(providers.keySet());
     }
 
+    /** 判断指定供应商 id 是否已成功注册（区分大小写精确匹配）。 */
+    public boolean isRegistered(String providerId) {
+        return providerId != null && !providerId.isBlank() && providers.containsKey(providerId.trim());
+    }
+
     /**
      * 路由解析：返回调用所需全部信息。
      *

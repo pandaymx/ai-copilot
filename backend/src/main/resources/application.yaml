@@ -248,6 +248,22 @@ app:
       style: ${AI_IMAGE_STYLE:vivid}
       response-format: ${AI_IMAGE_RESPONSE_FORMAT:b64_json}
 
+    # 跨供应商任务级路由（5-#1 / 5-#2 共享的「任务梯队」单一事实来源）。
+    # 每个任务键映射一组候选 providerId/modelId（按降级优先级排列），
+    # TaskModelRouter/TaskModelResolver 仅消费本配置，经注册表与健康校验后取首个可用。
+    # enabled=true 时路由生效；false 时回退用户指定模型（与改造前行为一致）。
+    routing:
+      enabled: ${AI_ROUTING_ENABLED:true}
+      task-tiers:
+        - key: INTENT_CLASSIFY
+          providers: [google/gemini-3.5-flash-lite, google/gemini-3.1-flash-lite, deepseek/deepseek-chat]
+        - key: IMAGE_INTENT
+          providers: [google/gemini-3.5-flash-lite, google/gemini-3.1-flash-lite, deepseek/deepseek-chat]
+        - key: TITLE
+          providers: [google/gemini-3.5-flash-lite, google/gemini-3.1-flash-lite, deepseek/deepseek-chat]
+        - key: PROMPT_OPTIMIZE
+          providers: [google/gemini-3.5-flash-lite, google/gemini-3.1-flash-lite, deepseek/deepseek-chat]
+
     # 一等公民：仅需声明「对外暴露哪些模型」及展示元数据。
     # 连接参数（apiKey/baseUrl）仍由上方 spring.ai.* 管理，未配置密钥时由 starter 行为决定。
     first-class:

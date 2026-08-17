@@ -24,6 +24,7 @@ import xyz.ppmblszdp.ai.memory.UsageQuotaChecker.UsageQuota;
 import xyz.ppmblszdp.ai.rag.advisor.RagAdvisorConfig.RagAdvisorFactory;
 import xyz.ppmblszdp.ai.registry.ModelHealthTracker;
 import xyz.ppmblszdp.ai.registry.ProviderRegistry;
+import xyz.ppmblszdp.ai.registry.TaskModelRouter;
 import xyz.ppmblszdp.ai.repository.UsageRepository;
 import xyz.ppmblszdp.ai.safeguard.SafeGuardAdvisor;
 import xyz.ppmblszdp.ai.tool.AugmentedToolCallbackProvider;
@@ -98,6 +99,7 @@ public class ChatService implements DisposableBean {
                 mcpToolProvider,
                 toolSearchFactory,
                 null,
+                null,
                 null);
     }
 
@@ -123,11 +125,12 @@ public class ChatService implements DisposableBean {
             ObjectProvider<SyncMcpToolCallbackProvider> mcpToolProvider,
             ObjectProvider<ToolSearchAdvisorFactory> toolSearchFactory,
             ObjectProvider<AugmentedToolCallbackProvider> augmentedToolProvider,
-            ObjectProvider<ImageGenerationService> imageGenerationServiceProvider) {
+            ObjectProvider<ImageGenerationService> imageGenerationServiceProvider,
+            TaskModelRouter taskModelRouter) {
         UsageRecorder uRecorder = new UsageRecorder(usageRepository, usageQuota);
-        ImageRouter iRouter = new ImageRouter(imageGenerationServiceProvider, properties);
+        ImageRouter iRouter = new ImageRouter(imageGenerationServiceProvider, properties, taskModelRouter);
         VoiceService vService = new VoiceService(speechModelProvider, registry);
-        IntentClassifier intentClassifier = new IntentClassifier();
+        IntentClassifier intentClassifier = new IntentClassifier(taskModelRouter);
         VisionService vVisionService = new VisionService();
         ChatOrchestrator cOrchestrator = new ChatOrchestrator(
                 registry,
