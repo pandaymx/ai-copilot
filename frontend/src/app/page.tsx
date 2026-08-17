@@ -26,7 +26,6 @@ import { CitationViewerDrawer } from "@/components/chat/citation-viewer-drawer";
 import { CollaborationIndicator } from "@/components/chat/collaboration-indicator";
 import { ContextInheritanceModal } from "@/components/chat/context-inheritance-modal";
 import { ConversationSummaryModal } from "@/components/chat/conversation-summary-modal";
-import { DocumentChatBar } from "@/components/chat/document-chat-bar";
 import { EmptyState } from "@/components/chat/empty-state";
 import { ExportDialog } from "@/components/chat/export-dialog";
 import { InheritedContextBanner } from "@/components/chat/inherited-context-banner";
@@ -173,8 +172,6 @@ export default function Home() {
     setDocumentChatEnabled,
     docChatDocuments,
     selectedDocIds,
-    setSelectedDocIds,
-    refreshDocChatDocs,
     fileInputRef,
     textareaRef,
     recorder,
@@ -644,21 +641,6 @@ export default function Home() {
           className="flex min-h-0 flex-1 flex-col overflow-y-auto scrollbar-hidden"
           aria-live="polite"
         >
-          {/* 文档对话模式专属顶部挂载管理栏（仅在开启文档对话模式时展示） */}
-          {documentChatEnabled && (
-            <div className="mx-auto w-full max-w-3xl px-4 pt-3 pb-1 animate-in fade-in duration-200">
-              <DocumentChatBar
-                enabled={documentChatEnabled}
-                onToggleEnabled={setDocumentChatEnabled}
-                conversationId={activeId || undefined}
-                documents={docChatDocuments}
-                selectedDocIds={selectedDocIds}
-                onSelectDocIds={setSelectedDocIds}
-                onDocumentsChange={() => void refreshDocChatDocs()}
-              />
-            </div>
-          )}
-
           {/* 跨会话继承专属上下文卡片 Banner */}
           {activeSession?.inheritedContextJson && (
             <InheritedContextBanner
@@ -802,7 +784,7 @@ export default function Home() {
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileChange}
-                accept="image/jpeg,image/png,image/webp,image/gif,text/*,.txt,.md,.json,.js,.ts,.tsx,.java,.py,.go,.rs"
+                accept="image/jpeg,image/png,image/webp,image/gif,text/*,.txt,.md,.json,.js,.ts,.tsx,.java,.py,.go,.rs,.pdf,.doc,.docx,.csv"
                 multiple
                 className="hidden"
               />
@@ -927,8 +909,8 @@ export default function Home() {
                         : imageMode
                           ? "输入图像生成提示词，例如：赛博朋克风格的雨夜未来城市街道..."
                           : documentChatEnabled
-                            ? "向已挂载的专属文档提问（仅依据文档内容回答，附段落引用）..."
-                            : "发送消息给 AI Copilot... (Shift + Enter 换行，支持拖入/粘贴图片与代码文件)"
+                            ? "文档问答模式：直接点击 📎 或拖入文档，仅依据文档内容回答并附段落引用..."
+                            : "发送消息给 AI Copilot... (Shift + Enter 换行，支持拖入/粘贴图片与代码/文档文件)"
                     }
                     rows={1}
                     disabled={isStreaming || sessionGenerating}
