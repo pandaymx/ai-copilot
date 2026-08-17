@@ -15,6 +15,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { cn } from "@/lib/utils";
+import { Markdown } from "./markdown";
 
 export interface ReasoningStep {
   id: string;
@@ -51,10 +52,29 @@ const DECISION_KEYWORDS = [
 export function parseThinkingToSteps(rawThinking: string): ReasoningStep[] {
   if (!rawThinking || !rawThinking.trim()) return [];
 
-  // 按照双换行、编号列表 (1. 2. 3.) 或 Markdown 标题/标记分块
-  const rawChunks = rawThinking
+  // 保护代码块与块级数学公式，避免分块时被切断后无法还原 Markdown 结构
+  const protectedTokens: string[] = [];
+  const protect = (text: string) =>
+    text
+      .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, (m) => {
+        protectedTokens.push(m);
+        return `\uE000${protectedTokens.length - 1}\uE001`;
+      })
+      .replace(/\$\$[\s\S]*?\$\$/g, (m) => {
+        protectedTokens.push(m);
+        return `\uE000${protectedTokens.length - 1}\uE001`;
+      });
+  const restore = (text: string) =>
+    text.replace(
+      /\uE000(\d+)\uE001/g,
+      (_m, idx) => protectedTokens[Number(idx)] ?? "",
+    );
+
+  // 按照双换行、编号列表 (1. 2. 3.)、Step/Phase 或 Markdown 标题分块。
+  // 注意：不在行首 `-`/`*`/`[` 处切割，避免破坏无序列表与链接的 Markdown 结构。
+  const rawChunks = protect(rawThinking)
     .split(
-      /(?:\r?\n){2,}|(?=\n\s*(?:[0-9]+\.|\*|-|Step\s*\d+|Phase\s*\d+|Goal|Analysis|Decision|Conclusion|\[|#))/i,
+      /(?:\r?\n){2,}|(?=\n\s*(?:[0-9]+\.|Step\s*\d+|Phase\s*\d+|\[Step\s*\d+\]|Goal|Analysis|Decision|Conclusion|#))/i,
     )
     .map((c) => c.trim())
     .filter(Boolean);
@@ -67,13 +87,14 @@ export function parseThinkingToSteps(rawThinking: string): ReasoningStep[] {
         title: "逻辑推导过程",
         category: "Action",
         isDecision: false,
-        content: rawThinking.trim(),
+        content: restore(rawThinking.trim()),
       },
     ];
   }
 
   return rawChunks.map((chunk, idx) => {
-    const lines = chunk
+    const restored = restore(chunk);
+    const lines = restored
       .split("\n")
       .map((l) => l.trim())
       .filter(Boolean);
@@ -86,7 +107,7 @@ export function parseThinkingToSteps(rawThinking: string): ReasoningStep[] {
 
     const title =
       titleClean.length > 50 ? `${titleClean.slice(0, 47)}...` : titleClean;
-    const lowerChunk = chunk.toLowerCase();
+    const lowerChunk = restored.toLowerCase();
 
     // 关键字与决策点识别
     const isDecision = DECISION_KEYWORDS.some((kw) =>
@@ -110,7 +131,7 @@ export function parseThinkingToSteps(rawThinking: string): ReasoningStep[] {
       title,
       category,
       isDecision,
-      content: chunk,
+      content: restored,
     };
   });
 }
@@ -327,10 +348,13 @@ export function ReasoningView({
                       </span>
                     </div>
 
-                    {/* 正文文本 */}
-                    <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-zinc-700 font-sans dark:text-zinc-300">
-                      {step.content}
-                    </p>
+                    {/* 正文文本（支持 Markdown 渲染：粗体、列表、代码块、表格、公式等） */}
+                    <div className="text-[11px] leading-relaxed text-zinc-700 font-sans dark:text-zinc-300 [&_pre]:text-[11px]">
+                      <Markdown
+                        content={step.content}
+                        isStreaming={streaming}
+                      />
+                    </div>
                   </div>
                 </div>
               );
