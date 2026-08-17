@@ -81,12 +81,14 @@ export interface ModelRecommendationInfo {
   estimatedCostRmb?: number;
 }
 
-interface ModelSelectorProps {
+export interface ModelSelectorProps {
   value: SelectedModel;
   onChange: (selected: SelectedModel) => void;
   providers?: BackendProviderEntry[];
   onCatalogChange?: (catalog: BackendProviderEntry[]) => void;
   recommendation?: ModelRecommendationInfo | null;
+  disabled?: boolean;
+  className?: string;
 }
 
 const DEFAULT_PROVIDERS: BackendProviderEntry[] = [
@@ -247,7 +249,10 @@ export function ModelSelector({
   value,
   onChange,
   providers: initialProviders,
+  onCatalogChange,
   recommendation,
+  disabled = false,
+  className,
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const [catalog, setCatalog] = useState<BackendProviderEntry[]>(
@@ -308,6 +313,7 @@ export function ModelSelector({
   }, []);
 
   // 尝试从后端获取动态模型清单 /api/models
+  // biome-ignore lint/correctness/useExhaustiveDependencies: onCatalogChange must not trigger re-fetches
   useEffect(() => {
     if (initialProviders && initialProviders.length > 0) return;
     let isMounted = true;
@@ -324,6 +330,7 @@ export function ModelSelector({
         }) => {
           if (isMounted && data.providers && data.providers.length > 0) {
             setCatalog(data.providers);
+            onCatalogChange?.(data.providers);
 
             // 校验当前选中的 (value.provider) 是否存在于后端返回的可用供应商清单中。
             // 若不存在（例如默认配置了 deepseek，但后端因缺少 API Key 仅注册了 ollama），
@@ -422,7 +429,10 @@ export function ModelSelector({
   const TriggerIcon = activeProviderAccent.icon;
 
   return (
-    <div className="relative inline-block text-left" ref={containerRef}>
+    <div
+      className={cn("relative inline-block text-left", className)}
+      ref={containerRef}
+    >
       {/* 选中的模型在当前属于 DOWN 时展现防熔断警告提示 */}
       {isCurrentModelDown && (
         <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:bg-amber-500/15 dark:text-amber-300 shadow-2xs backdrop-blur-md">
@@ -469,10 +479,11 @@ export function ModelSelector({
       {/* 选择器触发展开按钮 */}
       <button
         type="button"
+        disabled={disabled}
         onClick={() => setOpen((prev) => !prev)}
         aria-label="选择 AI 模型"
         className={cn(
-          "group inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold shadow-xs backdrop-blur-md transition-all duration-200",
+          "group inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold shadow-xs backdrop-blur-md transition-all duration-200 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50",
           open
             ? "border-indigo-500/80 bg-white/90 ring-2 ring-indigo-500/20 dark:border-indigo-500/80 dark:bg-zinc-900/90"
             : isCurrentModelDown

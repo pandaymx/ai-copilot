@@ -458,14 +458,6 @@ export default function Home() {
               </Button>
             )}
 
-            {/* 模型切换器 */}
-            <ModelSelector
-              value={model}
-              onChange={setModel}
-              onCatalogChange={setCatalog}
-              recommendation={recommendation}
-            />
-
             {/* 对话分支与版本树导航 */}
             {activeId && (
               <BranchNav
@@ -652,18 +644,20 @@ export default function Home() {
           className="flex min-h-0 flex-1 flex-col overflow-y-auto scrollbar-hidden"
           aria-live="polite"
         >
-          {/* 文档对话模式专属顶部挂载管理栏 */}
-          <div className="mx-auto w-full max-w-3xl px-4 pt-3 pb-1">
-            <DocumentChatBar
-              enabled={documentChatEnabled}
-              onToggleEnabled={setDocumentChatEnabled}
-              conversationId={activeId || undefined}
-              documents={docChatDocuments}
-              selectedDocIds={selectedDocIds}
-              onSelectDocIds={setSelectedDocIds}
-              onDocumentsChange={() => void refreshDocChatDocs()}
-            />
-          </div>
+          {/* 文档对话模式专属顶部挂载管理栏（仅在开启文档对话模式时展示） */}
+          {documentChatEnabled && (
+            <div className="mx-auto w-full max-w-3xl px-4 pt-3 pb-1 animate-in fade-in duration-200">
+              <DocumentChatBar
+                enabled={documentChatEnabled}
+                onToggleEnabled={setDocumentChatEnabled}
+                conversationId={activeId || undefined}
+                documents={docChatDocuments}
+                selectedDocIds={selectedDocIds}
+                onSelectDocIds={setSelectedDocIds}
+                onDocumentsChange={() => void refreshDocChatDocs()}
+              />
+            </div>
+          )}
 
           {/* 跨会话继承专属上下文卡片 Banner */}
           {activeSession?.inheritedContextJson && (
@@ -1070,12 +1064,24 @@ export default function Home() {
 
               {/* 输入框底部功能条 */}
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-100 px-1 pt-2 dark:border-zinc-800/60">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* 模型切换器 */}
+                  <ModelSelector
+                    value={model}
+                    onChange={setModel}
+                    onCatalogChange={setCatalog}
+                    recommendation={recommendation}
+                    disabled={isStreaming || sessionGenerating || isViewer}
+                  />
+
+                  {/* 模式选择器 */}
                   <ChatModeSelector
                     imageMode={imageMode}
                     onImageModeChange={setImageMode}
                     agentEnabled={agentEnabled}
                     onAgentEnabledChange={setAgentEnabled}
+                    documentChatEnabled={documentChatEnabled}
+                    onDocumentChatEnabledChange={setDocumentChatEnabled}
                     disabled={isStreaming || sessionGenerating || isViewer}
                   />
                 </div>

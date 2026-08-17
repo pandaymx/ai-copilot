@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BookOpen,
   Bot,
   Check,
   ChevronDown,
@@ -11,7 +12,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
-export type ChatMode = "chat" | "agent" | "image";
+export type ChatMode = "chat" | "agent" | "image" | "doc";
 
 export interface ChatModeOption {
   id: ChatMode;
@@ -70,6 +71,20 @@ export const CHAT_MODE_OPTIONS: ChatModeOption[] = [
       activeBorder: "border-purple-500/50 dark:border-purple-500/50",
     },
   },
+  {
+    id: "doc",
+    label: "文档对话",
+    shortLabel: "文档对话",
+    description: "基于挂载文档严格问答与页码引用",
+    icon: BookOpen,
+    accent: {
+      badge:
+        "bg-emerald-50 text-emerald-700 border-emerald-200/80 hover:bg-emerald-100/80 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60 dark:hover:bg-emerald-900/50",
+      iconBg: "bg-emerald-100 dark:bg-emerald-900/60",
+      iconColor: "text-emerald-600 dark:text-emerald-400",
+      activeBorder: "border-emerald-500/50 dark:border-emerald-500/50",
+    },
+  },
 ];
 
 export interface ChatModeSelectorProps {
@@ -77,6 +92,8 @@ export interface ChatModeSelectorProps {
   onImageModeChange: (enabled: boolean) => void;
   agentEnabled: boolean;
   onAgentEnabledChange: (enabled: boolean) => void;
+  documentChatEnabled?: boolean;
+  onDocumentChatEnabledChange?: (enabled: boolean) => void;
   disabled?: boolean;
   className?: string;
 }
@@ -86,6 +103,8 @@ export function ChatModeSelector({
   onImageModeChange,
   agentEnabled,
   onAgentEnabledChange,
+  documentChatEnabled = false,
+  onDocumentChatEnabledChange,
   disabled = false,
   className,
 }: ChatModeSelectorProps) {
@@ -97,7 +116,9 @@ export function ChatModeSelector({
     ? "image"
     : agentEnabled
       ? "agent"
-      : "chat";
+      : documentChatEnabled
+        ? "doc"
+        : "chat";
 
   const currentOption =
     CHAT_MODE_OPTIONS.find((opt) => opt.id === currentMode) ??
@@ -142,12 +163,19 @@ export function ChatModeSelector({
     if (mode === "image") {
       onImageModeChange(true);
       onAgentEnabledChange(false);
+      onDocumentChatEnabledChange?.(false);
     } else if (mode === "agent") {
       onImageModeChange(false);
       onAgentEnabledChange(true);
+      onDocumentChatEnabledChange?.(false);
+    } else if (mode === "doc") {
+      onImageModeChange(false);
+      onAgentEnabledChange(false);
+      onDocumentChatEnabledChange?.(true);
     } else {
       onImageModeChange(false);
       onAgentEnabledChange(false);
+      onDocumentChatEnabledChange?.(false);
     }
     setOpen(false);
   };
